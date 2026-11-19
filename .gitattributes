@@ -1,0 +1,22 @@
+# Normalize line endings so the repo works from both Windows (PowerShell) and WSL2.
+* text=auto eol=lf
+
+# Shell scripts and git hooks MUST stay LF or bash fails with "\r: command not found".
+*.sh text eol=lf
+.githooks/* text eol=lf
+
+# PowerShell scripts are run on Windows.
+*.ps1 text eol=crlf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.mp3 binary
+*.wav binary
+*.woff binary
+*.woff2 binary
+*.so binary
