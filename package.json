@@ -1,0 +1,18 @@
+{
+  "name": "codestreak",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CodeStreak: on-chain coding accountability arena on Solana devnet.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "prepare": "git config core.hooksPath .githooks || exit 0",
+    "hooks:install": "git config core.hooksPath .githooks",
+    "doctor": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/doctor.ps1",
+    "check:env": "node scripts/check-env.mjs",
+    "check:secrets": "node scripts/check-secrets.mjs --all",
+    "test:tooling": "node --test \"scripts/*.test.mjs\""
+  }
+}

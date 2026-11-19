@@ -1,0 +1,20 @@
+#!/bin/sh
+# CodeStreak pre-commit hook: blocks commits that contain secrets.
+# Installed automatically by `pnpm install` (prepare script) or `pnpm hooks:install`.
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-commit: node not found on PATH; cannot run the secret scanner." >&2
+  echo "Install Node 20+ or run the commit from a shell where node is available." >&2
+  exit 1
+fi
+
+node scripts/check-secrets.mjs --staged
+status=$?
+if [ $status -ne 0 ]; then
+  echo "" >&2
+  echo "Commit blocked by the CodeStreak secret scanner." >&2
+  echo "Remove the secret (or unstage the file) and try again." >&2
+  echo "False positive? Add the comment 'secret-scan:allow' on that line." >&2
+  exit $status
+fi
+exit 0
