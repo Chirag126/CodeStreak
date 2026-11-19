@@ -63,17 +63,41 @@ if (-not $wsl) {
 } else {
   # wsl -l -q prints UTF-16; strip NUL characters before matching.
   $distros = ((wsl.exe -l -q) -join "`n") -replace "`0", ''
-  if ($distros -match 'Ubuntu') { $ubuntu = $true; Write-Result 'OK' 'wsl distro' (($distros -split "`n" | Where-Object { $_ -match 'Ubuntu' } | Select-Object -First 1).Trim()) }
+  $distroName = ($distros -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -match 'Ubuntu' } | Select-Object -First 1)
+  if ($distroName) { $ubuntu = $true; Write-Result 'OK' 'wsl distro' $distroName }
   else { Write-Result 'FAIL' 'wsl distro' 'Ubuntu not found: wsl --install -d Ubuntu' }
 }
 
+# Converts a Windows path to its WSL path without passing backslashes through a shell.
+#   C:\dev\CodeStreak                    -> /mnt/c/dev/CodeStreak
+#   \\wsl$\Ubuntu\home\me\CodeStreak     -> /home/me/CodeStreak
+#   \\wsl.localhost\Ubuntu\home\me\Code  -> /home/me/Code
+function ConvertTo-WslPath([string]$WinPath) {
+  if ($WinPath -match '^\\\\wsl(\$|\.localhost)\\[^\\]+(\\.*)?$') {
+    $rest = $Matches[2]
+    if (-not $rest) { return '/' }
+    return ($rest -replace '\\', '/')
+  }
+  if ($WinPath -match '^([A-Za-z]):(\\.*)?$') {
+    $drive = $Matches[1].ToLower()
+    $rest = if ($Matches[2]) { $Matches[2] -replace '\\', '/' } else { '' }
+    return "/mnt/$drive$rest"
+  }
+  return $null
+}
+
 if ($ubuntu) {
-  $wslRepo = ((wsl.exe wslpath -a "$repoRoot") | Out-String).Trim()
+  $wslRepo = ConvertTo-WslPath $repoRoot
   Write-Host ""
   Write-Host "== WSL doctor ($wslRepo) ==" -ForegroundColor Cyan
-  # -i so ~/.bashrc PATH entries (cargo, solana, avm) are loaded.
-  wsl.exe -e bash -lic "cd '$wslRepo' && bash scripts/wsl/doctor.sh"
-  if ($LASTEXITCODE -ne 0) { Write-Result 'FAIL' 'wsl doctor' 'see failures above' } else { Write-Result 'OK' 'wsl doctor' 'passed' }
+  if (-not $wslRepo) {
+    Write-Result 'FAIL' 'wsl doctor' "cannot map $repoRoot to a WSL path; run in Ubuntu: bash scripts/wsl/doctor.sh"
+  } else {
+    # -i so ~/.bashrc PATH entries (cargo, solana, avm) are loaded. Single quotes keep spaces safe.
+    $escaped = $wslRepo -replace "'", "'\''"
+    wsl.exe -d $distroName -e bash -lic "cd '$escaped' && bash scripts/wsl/doctor.sh"
+    if ($LASTEXITCODE -ne 0) { Write-Result 'FAIL' 'wsl doctor' 'see failures above' } else { Write-Result 'OK' 'wsl doctor' 'passed' }
+  }
 }
 
 Write-Host ""
