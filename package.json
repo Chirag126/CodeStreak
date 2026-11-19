@@ -10,7 +10,7 @@
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || exit 0",
     "hooks:install": "git config core.hooksPath .githooks",
-    "doctor": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/doctor.ps1",
+    "check:setup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/doctor.ps1",
     "check:env": "node scripts/check-env.mjs",
     "check:secrets": "node scripts/check-secrets.mjs --all",
     "test:tooling": "node --test \"scripts/*.test.mjs\""

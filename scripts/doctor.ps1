@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
   CodeStreak Windows environment check.
-  Usage (PowerShell, repo root):  pnpm doctor
+  Usage (PowerShell or cmd, repo root):  pnpm check:setup
                          or:      powershell -ExecutionPolicy Bypass -File scripts/doctor.ps1
   Checks Node, pnpm, Git, hooks, WSL, then runs the WSL doctor and the env validator.
 #>
@@ -37,6 +37,14 @@ if ($pnpmVer) { Write-Result 'OK' 'pnpm' $pnpmVer } else { Write-Result 'FAIL' '
 
 $gitVer = Get-FirstLine 'git' @('--version')
 if ($gitVer) { Write-Result 'OK' 'git' $gitVer } else { Write-Result 'FAIL' 'git' 'not found' }
+
+if ($repoRoot -match 'OneDrive') {
+  Write-Result 'WARN' 'repo location' "$repoRoot is synced by OneDrive (file locks, node_modules upload, .env.local copied to the cloud). Move it to e.g. C:\dev\CodeStreak"
+} elseif ($repoRoot -match '\s') {
+  Write-Result 'WARN' 'repo location' "$repoRoot contains spaces; some build tools break on that"
+} else {
+  Write-Result 'OK' 'repo location' $repoRoot
+}
 
 Push-Location $repoRoot
 try {
