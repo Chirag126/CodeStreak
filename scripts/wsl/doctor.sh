@@ -51,8 +51,8 @@ done
 echo
 echo "== Solana CLI config =="
 if command -v solana >/dev/null 2>&1; then
-  rpc="$(solana config get 2>/dev/null | awk -F': ' '/RPC URL/ {print $2}')"
-  kp="$(solana config get 2>/dev/null | awk -F': ' '/Keypair Path/ {print $2}')"
+  rpc="$(solana config get 2>/dev/null | awk -F': ' '/RPC URL/ {print $2}' | sed 's/[[:space:]]*$//')"
+  kp="$(solana config get 2>/dev/null | awk -F': ' '/Keypair Path/ {print $2}' | sed 's/[[:space:]]*$//')"
   case "$rpc" in
     *mainnet*) bad "cluster" "$rpc  ->  run: solana config set --url devnet" ;;
     *devnet*)  ok "cluster" "$rpc" ;;
