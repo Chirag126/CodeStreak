@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CodeStreak · Phase 2 co-sign spike (devnet)</title>
+<style>
+  :root { --bg:#0d0f12; --card:#151920; --line:#252b35; --text:#e6e9ef; --muted:#8b93a3; --green:#3ddc84; --blue:#3b82f6; --red:#f05252; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.5 ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width:860px; margin:32px auto; padding:0 20px; }
+  h1 { font-size:18px; margin:0 0 4px; } .muted { color:var(--muted); }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; background:#1d2a1f; color:var(--green); font-size:12px; margin-left:8px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin:14px 0; }
+  h2 { font-size:14px; margin:0 0 10px; }
+  button { background:var(--blue); color:white; border:0; border-radius:8px; padding:8px 14px; font-weight:600; cursor:pointer; margin:4px 6px 4px 0; }
+  button.secondary { background:#273042; } button:disabled { opacity:.4; cursor:not-allowed; }
+  .wallet { display:flex; align-items:center; gap:10px; padding:8px; border:1px solid var(--line); border-radius:8px; margin:6px 0; }
+  .wallet img { width:24px; height:24px; } code { color:#c3cad6; word-break:break-all; }
+  #log { font:12px/1.6 ui-monospace,Consolas,monospace; white-space:pre-wrap; max-height:320px; overflow:auto; background:#0a0c0f; padding:10px; border-radius:8px; }
+  .ok { color:var(--green); } .bad { color:var(--red); } a { color:#7fb2ff; }
+</style>
+</head>
+<body>
+<main>
+  <h1>CodeStreak · Phase 2 co-sign spike <span class="badge">DEVNET · no real value</span></h1>
+  <p class="muted">Throwaway test page. It checks that MetaMask (Solana) can sign transactions whose fee is paid by the CodeStreak relayer.</p>
+
+  <section>
+    <h2>1 · Find wallets (Wallet Standard)</h2>
+    <div id="wallets" class="muted">Looking for wallets…</div>
+    <button class="secondary" id="loadSdk" title="Loads @metamask/connect-solana from esm.sh">Not listed? Load MetaMask Connect SDK</button>
+  </section>
+
+  <section>
+    <h2>2 · Connected account</h2>
+    <div id="account" class="muted">Not connected.</div>
+  </section>
+
+  <section>
+    <h2>3 · Tests</h2>
+    <button id="tMessage" disabled>A · Sign message (wallet ownership)</button>
+    <button id="tMemo" disabled>B · Co-signed memo tx</button>
+    <button id="tUsdc" disabled>C · Co-signed USDC self-transfer</button>
+    <button class="secondary" id="copy">Copy results</button>
+  </section>
+
+  <section>
+    <h2>Log</h2>
+    <div id="log"></div>
+  </section>
+</main>
+
+<script type="module">
+const DEVNET_CHAINS = ['solana:devnet', 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1'];
+const wallets = [];
+const results = { userAgent: navigator.userAgent, startedAt: new Date().toISOString(), wallets: [], tests: {} };
+let current = null; // { wallet, account }
+
+const $ = (id) => document.getElementById(id);
+const logEl = $('log');
+function log(msg, cls = '') {
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.innerHTML = `${new Date().toLocaleTimeString()}  ${msg}`;
+  logEl.appendChild(line); logEl.scrollTop = logEl.scrollHeight;
+}
+const b64 = (bytes) => btoa(String.fromCharCode(...bytes));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+async function api(path, body) {
+  const res = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || res.statusText);
+  return json;
+}
+
+// ---- Wallet Standard discovery, implemented directly (same protocol as @wallet-standard/app)
+const registry = { register: (...ws) => { for (const w of ws) if (!wallets.includes(w)) wallets.push(w); renderWallets(); return () => {}; } };
+window.addEventListener('wallet-standard:register-wallet', ({ detail }) => { try { detail(registry); } catch (e) { log(`register error: ${e.message}`, 'bad'); } });
+window.dispatchEvent(new CustomEvent('wallet-standard:app-ready', { detail: registry }));
+
+function renderWallets() {
+  const el = $('wallets');
+  const sol = wallets.filter((w) => w.chains.some((c) => c.startsWith('solana:')));
+  results.wallets = wallets.map((w) => ({ name: w.name, version: w.version, chains: w.chains, features: Object.keys(w.features) }));
+  if (sol.length === 0) { el.textContent = 'No Solana wallets registered yet. Make sure MetaMask is unlocked, then reload, or load the SDK.'; return; }
+  el.innerHTML = '';
+  for (const w of sol) {
+    const row = document.createElement('div'); row.className = 'wallet';
+    row.innerHTML = `<img src="${w.icon}" alt=""><div><b>${w.name}</b><br><span class="muted">chains: ${w.chains.join(', ')}</span><br><span class="muted">features: ${Object.keys(w.features).join(', ')}</span></div>`;
+    const btn = document.createElement('button'); btn.textContent = 'Connect'; btn.onclick = () => connect(w);
+    row.appendChild(btn); el.appendChild(row);
+  }
+}
+
+$('loadSdk').onclick = async () => {
+  try {
+    log('Loading @metamask/connect-solana from esm.sh…');
+    const { createSolanaClient } = await import('https://esm.sh/@metamask/connect-solana');
+    const cfg = await api('/api/config');
+    const client = await createSolanaClient({ dapp: { name: 'CodeStreak spike', url: location.origin }, api: { supportedNetworks: { devnet: 'https://api.devnet.solana.com' } } });
+    results.sdkUsed = true;
+    const w = client.getWallet?.();
+    if (w) registry.register(w);
+    log(`SDK loaded. Relayer ${cfg.relayer}`, 'ok');
+  } catch (e) { results.sdkError = e.message; log(`SDK failed: ${e.message}`, 'bad'); }
+};
+
+async function connect(wallet) {
+  try {
+    const { accounts } = await wallet.features['standard:connect'].connect();
+    const account = accounts.find((a) => a.chains?.some((c) => c.startsWith('solana:'))) ?? accounts[0];
+    if (!account) throw new Error('wallet returned no accounts');
+    if (account.address.startsWith('0x')) throw new Error('got an Ethereum 0x address; select the Solana account in MetaMask');
+    current = { wallet, account };
+    results.connected = { wallet: wallet.name, address: account.address, accountChains: account.chains };
+    const bal = await api('/api/balances', { address: account.address });
+    $('account').innerHTML = `<b>${wallet.name}</b> · <code>${account.address}</code><br>devnet SOL: ${bal.sol} · devnet USDC: ${bal.usdc}<br><span class="muted">account chains: ${(account.chains || []).join(', ')}</span>`;
+    for (const id of ['tMessage', 'tMemo', 'tUsdc']) $(id).disabled = false;
+    log(`Connected ${account.address}`, 'ok');
+  } catch (e) { log(`Connect failed: ${e.message}`, 'bad'); }
+}
+
+$('tMessage').onclick = async () => {
+  const t = (results.tests.signMessage = { started: new Date().toISOString() });
+  try {
+    const feature = current.wallet.features['solana:signMessage'];
+    if (!feature) throw new Error('wallet lacks solana:signMessage');
+    const { nonce, message } = await api('/api/nonce', { address: current.account.address, domain: location.host });
+    const [out] = await feature.signMessage({ account: current.account, message: new TextEncoder().encode(message) });
+    await api('/api/verify-message', { address: current.account.address, nonce, signedMessage: b64(out.signedMessage), signature: b64(out.signature) });
+    t.ok = true; log('A · signMessage verified by server ✔', 'ok');
+  } catch (e) { t.ok = false; t.error = e.message; log(`A · signMessage failed: ${e.message}`, 'bad'); }
+};
+
+async function cosign(kind, key, label) {
+  const t = (results.tests[key] = { started: new Date().toISOString() });
+  try {
+    const feature = current.wallet.features['solana:signTransaction'];
+    if (!feature) throw new Error('wallet lacks solana:signTransaction');
+    const { id, transaction } = await api('/api/build', { address: current.account.address, kind });
+    let out = null, chainUsed = null, errors = [];
+    for (const chain of DEVNET_CHAINS) {
+      try { [out] = await feature.signTransaction({ account: current.account, transaction: unb64(transaction), chain }); chainUsed = chain; break; }
+      catch (e) { errors.push(`${chain}: ${e.message}`); if (/reject|denied|cancel/i.test(e.message)) break; }
+    }
+    t.chainErrors = errors;
+    if (!out) throw new Error(`signTransaction failed: ${errors.join(' | ')}`);
+    t.chainUsed = chainUsed;
+    const r = await api('/api/submit', { id, signedTransaction: b64(out.signedTransaction), chainUsed });
+    t.ok = true; t.signature = r.signature;
+    log(`${label} confirmed ✔ <a href="${r.explorer}" target="_blank" rel="noreferrer">explorer</a> (chain id: ${chainUsed})`, 'ok');
+  } catch (e) { t.ok = false; t.error = e.message; log(`${label} failed: ${e.message}`, 'bad'); }
+}
+$('tMemo').onclick = () => cosign('memo', 'memo', 'B · memo tx');
+$('tUsdc').onclick = () => cosign('usdc', 'usdc', 'C · USDC self-transfer');
+
+$('copy').onclick = async () => {
+  const text = JSON.stringify(results, null, 2);
+  try { await navigator.clipboard.writeText(text); log('Results copied to clipboard. Paste them in the chat.', 'ok'); }
+  catch { log(`<pre>${text.replace(/</g, '&lt;')}</pre>`); }
+};
+
+setTimeout(() => { if (!wallets.length) renderWallets(); }, 1500);
+</script>
+</body>
+</html>
