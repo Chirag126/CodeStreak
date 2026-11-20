@@ -1,0 +1,16 @@
+[toolchain]
+anchor_version = "1.1.2"
+solana_version = "3.1.10"
+
+[programs.localnet]
+codestreak = "E2gcFxMCwr93z1vKour87fyD99VW1D7VJrTjCYeU4ZFv"
+
+[programs.devnet]
+codestreak = "E2gcFxMCwr93z1vKour87fyD99VW1D7VJrTjCYeU4ZFv"
+
+[provider]
+cluster = "devnet"
+wallet = "~/.config/codestreak/keys/upgrade-authority.json"
+
+[scripts]
+test = "cargo test"

@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+# spikes/ is intentionally NOT part of the workspace (Phase 2 throwaway experiments).
+
+# pnpm 10 blocks dependency install scripts by default. Allow only the ones we need.
+onlyBuiltDependencies:
+  - sharp
+  - unrs-resolver
+  - '@tailwindcss/oxide'

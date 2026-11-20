@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: Typecheck, lint, test, build (TypeScript)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # version comes from "packageManager" in package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # No lockfile is committed yet (it is created by the first local `pnpm install`).
+      # Switch to --frozen-lockfile and add `cache: pnpm` above once pnpm-lock.yaml is committed.
+      - name: Install
+        run: pnpm install --no-frozen-lockfile
+
+      - name: pnpm check (secrets, typecheck, lint, test, build)
+        run: pnpm check
+
+  program:
+    name: anchor build (Solana program)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System packages
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libudev-dev libssl-dev llvm libclang-dev protobuf-compiler
+
+      # Same official installer used for local setup (Rust, Solana CLI, Anchor via AVM).
+      - name: Install Solana toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSfL https://solana-install.solana.workers.dev | bash
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
+
+      - name: Versions
+        run: |
+          rustc --version
+          solana --version
+          anchor --version
+
+      - name: anchor build
+        run: anchor build
+
+      - name: Program artifacts
+        run: ls -la target/deploy target/idl

@@ -1,0 +1,24 @@
+{
+  "name": "@codestreak/worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CodeStreak background worker: verification, settlement crank and voice jobs (Render web service, woken by Supabase pg_cron).",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@codestreak/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.2",
+    "vitest": "^3.2.0"
+  }
+}

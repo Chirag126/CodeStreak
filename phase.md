@@ -1,0 +1,105 @@
+# CodeStreak build log
+
+One entry per roadmap phase: what was done, what was added, what was achieved, how it was tested, and what was learned. Newest phase last. Updated at the end of every phase.
+
+**Project:** on-chain coding accountability arena on Solana **devnet** (tokens have no real value).
+**Plan:** 46 phases over 5 days, solo. M = must, S = should.
+
+| # | Phase | Status | PR |
+|---|---|---|---|
+| 1 | Accounts, toolchain, keys, secret safety | ✅ Done | [#1](https://github.com/Chirag126/CodeStreak/pull/1) (+ fixes in [#2](https://github.com/Chirag126/CodeStreak/pull/2)) |
+| 2 | Risk spikes: wallet co-signing, GitHub, LeetCode | ✅ Done | [#2](https://github.com/Chirag126/CodeStreak/pull/2), [#3](https://github.com/Chirag126/CodeStreak/pull/3) |
+| 3 | Monorepo scaffold + CI | 🟡 In review | #4 |
+| 4 | Design system and motion | ⏳ Next | |
+
+---
+
+## Phase 1: Accounts, toolchain and keys (M)
+
+**Goal:** a machine that can build everything, four separate operator keys, and no way for secrets to reach git.
+
+**Added**
+- `.env.example`: every variable, grouped and labeled with the phase that needs it (devnet only).
+- `scripts/check-env.mjs` (`pnpm check:env`): validates `.env.local`. Rejects mainnet URLs, secrets in `NEXT_PUBLIC_*` and duplicate operator keys; later-phase variables show as `LATER`.
+- `scripts/check-secrets.mjs` + `.githooks/pre-commit`: blocks keypairs, base58 secret keys, PEM keys, GitHub/Supabase/Firecrawl/`sk_` keys, RPC API keys and `.env*` files from being committed.
+- `scripts/wsl/generate-keys.sh`: `upgrade-authority`, `relayer`, `verifier`, `admin` in `~/.config/codestreak/keys` (outside the repo, `chmod 600`).
+- `scripts/wsl/fund-devnet.sh`: idempotent devnet SOL top-ups; `--wallet` funds a user wallet; refuses mainnet.
+- `scripts/wsl/doctor.sh`, `scripts/doctor.ps1` (`pnpm check:setup`): one-command machine check.
+
+**Achieved:** Rust 1.97.1, Solana CLI 3.1.10, Anchor 1.1.2, Node 26 (Windows) / 24 (WSL), pnpm 10.34.7. Four funded keys, Supabase project, GitHub token, Firecrawl key. `check:env` reports 0 errors.
+
+**Tests:** 20 `node:test` tests, including a real git-hook integration test (blocks a fake token and `.env.local`).
+
+**Bugs found and fixed:** `pnpm doctor` is a built-in pnpm command (renamed to `check:setup`); Windows → WSL path lost its backslashes; trailing space in `solana config get` output.
+
+**Open:** repo still has a copy inside OneDrive (recommended location: `C:\dev\CodeStreak`). Upgrade-authority key needs ≥5 SOL before Phase 9.
+
+---
+
+## Phase 2: Risk spikes (M)
+
+**Goal:** prove the three riskiest assumptions against real services before building on them.
+
+**Added:** `spikes/` (not shipped): `cosign` (wallet + relayer test page), `github` (push → diff evidence), `leetcode` (Firecrawl profile parsing).
+
+**Achieved**
+- **Wallet co-signing works** with Phantom on devnet: signed-message ownership proof verified; memo and USDC transactions with the **relayer as fee payer** confirmed on devnet.
+- **GitHub evidence works:** PushEvent → Compare → Commit API gives real per-file diffs (16 API calls for 3 pushes).
+- **LeetCode via Firecrawl works:** live scrape, 1 credit, solved count + profile summary + Recent AC list with submission IDs.
+
+**Learned (changes to the plan)**
+- Phantom adds priority-fee instructions to unsigned transactions. **Fix:** the server sets the compute budget and the **relayer signs first**. This is the Phase 15 pattern.
+- MetaMask registers natively but this build cannot select Solana Devnet. **Phantom is the recommended devnet wallet**; MetaMask stays supported through the same Wallet Standard code. Onboarding needs an explicit "switch to Devnet" step.
+- Firecrawl caches up to 2 days by default: verification always sends `maxAge: 0`.
+- LeetCode submission IDs strictly increase, so new solves are detected **by ID**, not by "3 days ago" text.
+- GitHub push events no longer include commits (`before, head, push_id, ref, repository_id` only).
+- **Cheating holes found in real data:**
+  - merge commits repeat the merged diff;
+  - the same commit appears in several pushes;
+  - identical changes show up under different SHAs;
+  - commits from unlinked emails have no author id.
+
+**Tests:** 9 new unit tests (29 total); parser validated on a real profile; mocked end-to-end runs; live runs by the user.
+
+---
+
+## Phase 3: Monorepo scaffold + CI (M)
+
+**Goal:** one workspace where the web app, the worker, the Solana program and shared code build and are checked automatically.
+
+**Added**
+- **pnpm workspace:** `apps/web`, `apps/worker`, `packages/shared`; Anchor workspace in `programs/codestreak`. `spikes/` stays outside the workspace.
+- **`packages/shared`:**
+  - constants (devnet, mints, decimals, durations, verification states);
+  - **money as integer base units** (`parseAmount`/`formatAmount`, no floats);
+  - **UTC day math** with compressed demo days;
+  - **zod env schemas** (public / web server / worker) that never print values;
+  - **verification rules**: GitHub with all Phase 2 holes closed, and the LeetCode parser with snapshot diff.
+- **`apps/worker`:** framework-free HTTP service. Public `/health`, and `POST /jobs/:name` protected by `WORKER_JOB_SECRET` (constant-time compare). Never runs the same job twice at once. Ready to be woken by Supabase `pg_cron` on Render's free plan.
+- **`apps/web`:** Next.js 16 (App Router, Turbopack), React 19, Tailwind CSS 4, ESLint flat config, validated env, `/api/health`, scaffold home page. Reads the single root `.env.local`.
+- **`programs/codestreak`:** Anchor 1.1.2 program (`ping` instruction) pinned to Solana 3.1.10.
+- **Strict TypeScript** (`strict`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`), TypeScript 5.9 pinned (TS 7 exists, but typescript-eslint and Next.js need TypeScript's JS API).
+- **One command for everything:** `pnpm check` = secret scan → typecheck → lint → test → build.
+- **GitHub Actions CI** on every PR and push to `main`:
+  - TypeScript job: `pnpm check`.
+  - Program job: `anchor build` using the same Solana installer as local setup.
+
+**GitHub rules now enforced in code (from Phase 2 real data)**
+1. Merge commits never count.
+2. A commit counts once even if it appears in several pushes.
+3. Identical changes count once even under different SHAs, paths or repos (content hash of meaningful lines).
+4. Only commits whose GitHub author id is the user's count.
+5. Only the user's own non-fork repos count (MVP).
+6. The day is decided by **push time**, never the author date.
+7. Only meaningful lines in eligible source files count; bulk commits are flagged, not failed.
+
+**Tests:** 26 shared tests (GitHub rules incl. each Phase 2 finding, LeetCode, money, UTC time) + 6 worker server tests run green locally; env schema tests and everything else run in CI.
+
+**Achieved**
+- **CI green on the first run** (PR #4):
+  - TypeScript job: real `pnpm install`, then typecheck, lint, all tests (incl. the zod env tests), Next.js production build (compiled in 3.7 s).
+  - Program job: `anchor build` with **anchor-cli 1.1.2 + solana-cli 3.1.10**, the same versions as the local machine (the installer pins them).
+- Found by CI and fixed: Anchor 1.x's `#[program]` macro checks the `custom-heap` / `custom-panic` features, so they are now declared in `Cargo.toml` (no more unexpected-cfg warnings).
+- Still to confirm on the user's machine: `pnpm check`, `anchor build`, `anchor keys sync`.
+
+**Open:** commit `pnpm-lock.yaml` after the first install, then switch CI to `--frozen-lockfile`. Run `anchor keys sync` once and commit the real program ID.
