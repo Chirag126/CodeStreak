@@ -1,20 +1,167 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
 
-/* Minimal brand tokens for the scaffold. Phase 4 replaces this with the full design system. */
-@theme {
-  --color-charcoal-950: #0b0d10;
-  --color-charcoal-900: #111418;
-  --color-charcoal-800: #181c22;
-  --color-charcoal-700: #232831;
+/* ---------------------------------------------------------------------------
+   CodeStreak design tokens. Source of truth: src/design/tokens.ts
+   (tokens.test.ts fails if a value here drifts from tokens.ts).
+   --------------------------------------------------------------------------- */
+
+@theme static {
+  --color-charcoal-950: #0a0c0f;
+  --color-charcoal-900: #101318;
+  --color-charcoal-850: #151920;
+  --color-charcoal-800: #1b2029;
+  --color-charcoal-700: #262c37;
+  --color-charcoal-600: #39414f;
+  --color-charcoal-500: #646e80;
+  --color-charcoal-400: #8f97a6;
+  --color-charcoal-300: #b6bcc8;
+  --color-charcoal-100: #e6e9ef;
+
+  --color-electric-300: #86efb4;
   --color-electric-400: #3ddc84;
-  --color-cobalt-500: #3b6ef6;
+  --color-electric-500: #22c06b;
+  --color-electric-600: #179e56;
+  --color-electric-950: #04160b;
+
+  --color-cobalt-300: #9db8ff;
+  --color-cobalt-400: #6b95ff;
+  --color-cobalt-600: #2c5be0;
+  --color-cobalt-700: #2349b8;
+
+  --color-danger-400: #f87171;
+  --color-danger-600: #c53030;
+  --color-danger-700: #a32626;
+
+  --color-warning-400: #fbbf24;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --animate-shimmer: shimmer 1.8s ease-in-out infinite;
+  @keyframes shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
 }
 
+/* Semantic roles (shadcn/ui naming). Dark only. */
 :root {
-  color-scheme: dark;
+  --background: #0a0c0f;
+  --foreground: #e6e9ef;
+  --card: #101318;
+  --card-foreground: #e6e9ef;
+  --popover: #151920;
+  --popover-foreground: #e6e9ef;
+  --muted: #1b2029;
+  --muted-foreground: #8f97a6;
+  --secondary: #1b2029;
+  --secondary-foreground: #e6e9ef;
+  --border: #262c37;
+  --input: #646e80;
+  --ring: #3ddc84;
+  --primary: #3ddc84;
+  --primary-foreground: #04160b;
+  --accent: #2c5be0;
+  --accent-foreground: #ffffff;
+  --link: #6b95ff;
+  --success: #3ddc84;
+  --warning: #fbbf24;
+  --destructive: #c53030;
+  --destructive-foreground: #ffffff;
+  --destructive-text: #f87171;
+  --radius: 0.75rem;
 }
 
-body {
-  background: var(--color-charcoal-950);
-  color: #e6e9ef;
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-link: var(--link);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-text: var(--destructive-text);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 30%, transparent);
+  }
+}
+
+@layer utilities {
+  /* Subtle dotted backdrop for hero and empty states. */
+  .bg-dots {
+    background-image: radial-gradient(color-mix(in oklab, var(--foreground) 9%, transparent) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  /* Glass surface: use sparingly (header, floating panels). */
+  .surface-glass {
+    background: color-mix(in oklab, var(--background) 72%, transparent);
+    backdrop-filter: blur(14px) saturate(140%);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Reduced motion.
+   data-motion is set by MotionPreferenceProvider:
+     "reduce" -> user chose Reduced in the app
+     "full"   -> user chose Full in the app (overrides the OS setting)
+     (absent) -> follow the OS setting
+   --------------------------------------------------------------------------- */
+html[data-motion='reduce'] *,
+html[data-motion='reduce'] *::before,
+html[data-motion='reduce'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion='full']) *,
+  html:not([data-motion='full']) *::before,
+  html:not([data-motion='full']) *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
