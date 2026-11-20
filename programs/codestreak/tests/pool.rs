@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use anchor_lang::prelude::{Clock, Pubkey};
 use anchor_lang::solana_program::instruction::Instruction;
-use anchor_lang::{AccountDeserialize, AccountSerialize, InstructionData, ToAccountMetas};
+use anchor_lang::{AccountDeserialize, AccountSerialize, InstructionData, Space, ToAccountMetas};
 use codestreak::constants::*;
 use codestreak::state::{Challenge, ChallengePhase, Config, PoolState};
 use codestreak::InitializePoolParams;
