@@ -6,7 +6,7 @@ use anchor_lang::prelude::*;
 
 // Placeholder id. After your first `anchor build`, run `anchor keys sync` to replace it
 // (here and in Anchor.toml) with the id of target/deploy/codestreak-keypair.json.
-declare_id!("E2gcFxMCwr93z1vKour87fyD99VW1D7VJrTjCYeU4ZFv");
+declare_id!("A4ohMziwegRbnV2DFHKW1YkNoVNeeiWuCJS5MjWeJT7J");
 
 #[program]
 pub mod codestreak {

@@ -2,11 +2,15 @@
 anchor_version = "1.1.2"
 solana_version = "3.1.10"
 
-[programs.localnet]
-codestreak = "E2gcFxMCwr93z1vKour87fyD99VW1D7VJrTjCYeU4ZFv"
+[features]
+resolution = true
+skip-lint = false
 
 [programs.devnet]
-codestreak = "E2gcFxMCwr93z1vKour87fyD99VW1D7VJrTjCYeU4ZFv"
+codestreak = "A4ohMziwegRbnV2DFHKW1YkNoVNeeiWuCJS5MjWeJT7J"
+
+[programs.localnet]
+codestreak = "A4ohMziwegRbnV2DFHKW1YkNoVNeeiWuCJS5MjWeJT7J"
 
 [provider]
 cluster = "devnet"
@@ -14,3 +18,5 @@ wallet = "~/.config/codestreak/keys/upgrade-authority.json"
 
 [scripts]
 test = "cargo test"
+
+[hooks]
