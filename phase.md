@@ -10,8 +10,9 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 | 1 | Accounts, toolchain, keys, secret safety | ✅ Done | [#1](https://github.com/Chirag126/CodeStreak/pull/1) (+ fixes in [#2](https://github.com/Chirag126/CodeStreak/pull/2)) |
 | 2 | Risk spikes: wallet co-signing, GitHub, LeetCode | ✅ Done | [#2](https://github.com/Chirag126/CodeStreak/pull/2), [#3](https://github.com/Chirag126/CodeStreak/pull/3) |
 | 3 | Monorepo scaffold + CI | ✅ Done | [#4](https://github.com/Chirag126/CodeStreak/pull/4), [#5](https://github.com/Chirag126/CodeStreak/pull/5) |
-| 4 | Design system and motion | 🟡 In review | #6 |
-| 5 | Program: config and pool creation | ⏳ Next | |
+| 4 | Design system and motion | ✅ Done | [#6](https://github.com/Chirag126/CodeStreak/pull/6) |
+| 5 | Program: config and pool creation | 🟡 In review | [#7](https://github.com/Chirag126/CodeStreak/pull/7) |
+| 6 | Program: join and sponsor | ⏳ Next | |
 
 ---
 
@@ -139,3 +140,37 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - **`/styleguide`** (dev only, 404 in production, `noindex`): every token with its hex, a live contrast table, typography, all component states, working interactions (loading button, invalid input, switch, tabs, tooltip, dialog, progress), and motion demos with replay.
 
 **Tests:** 71 web tests (contrast pairs, CSS↔token sync, motion presets) pass locally; CI runs them with typecheck, lint and the Next.js build.
+
+---
+
+## Phase 5: Program: config and pool creation (M)
+
+**Goal:** the first real on-chain logic. A global config, and challenge pools that each own a token vault only the program can move funds from.
+
+**Added** (`programs/codestreak`)
+- **`Config` PDA** `["config"]`: `admin`, `default_verifier`, `allowed_mints` (max 4; devnet USDC and wrapped SOL in production).
+- **`initialize_config`:** one-time, and **only the program's upgrade authority** (the deploy key) can run it, so nobody can grab admin rights between deployment and setup. The admin can be a different key (the `admin` operator key).
+- **`update_config`** (admin only): allowed mints (no duplicates), default verifier, admin rotation. Existing challenges are never affected: each keeps its own verifier copy and its mint is fixed.
+- **`initialize_pool`:**
+  - creates the **`Challenge` PDA** `["challenge", creator, challenge_id]` and its **vault** `["vault", challenge]`, an SPL token account whose authority is the challenge PDA;
+  - `payer` (the relayer) and `creator` are separate signers, so users don't need SOL for rent;
+  - works with classic SPL Token and Token-2022 mints (`token_interface`).
+- **Stored fields:** buy-in in base units; start; `day_length_secs` (86,400 real, 60+ for **demo** challenges, flagged `is_demo`); number of days; join deadline; participant limits; Shield price/limit/grace; verification and dispute windows; private-group `join_authority`; `rules_hash` of the published rules; zeroed counters for later phases.
+- **Lifecycle derived from the clock**, so no transaction is needed to move a challenge forward. Only Open / Cancelled / Settled are stored:
+  `Joining → Starting → Active → Verifying → DisputeWindow → AwaitingSettlement`, plus `Settled` / `Cancelled`. `day_index(now)` gives the current challenge day.
+- **Validation** (pure function, host-tested): buy-in > 0; day length 60 s…1 day; 1–60 days; start in the future (≤ 90 days ahead); join deadline in the future and ≤ start; 2 ≤ min ≤ max ≤ 1,000 participants; windows 1 min…7 days; consistent Shield settings; all time math overflow-checked.
+- **Events:** `ConfigInitialized`, `ConfigUpdated`, `PoolCreated` (for the indexer and UI).
+- **CI:** the program job now runs `cargo test -p codestreak` after `anchor build`.
+
+**Tests (16, all green in CI)**
+- 7 unit tests: every lifecycle phase boundary, stored states overriding the clock, day index, every validation rule, demo-length days, Shields on/off.
+- 9 LiteSVM tests against the compiled program (in-process Solana VM):
+  - pool + vault created with the relayer paying (creator's SOL untouched; vault owned by the token program, authority = challenge PDA, balance 0);
+  - private pool stores its join authority;
+  - lifecycle phases as time moves;
+  - wrong mint rejected; every invalid parameter rejected with its named error;
+  - duplicate challenge ID rejected; challenge can't be created without the creator's signature;
+  - a stranger can't initialize the config;
+  - only the admin can update the config (duplicate mints rejected), and a newly allowed mint becomes usable.
+
+**Learned:** Anchor 1.x's `anchor build` also compiles integration tests during its IDL step, so test compile errors surface as "Building IDL failed".

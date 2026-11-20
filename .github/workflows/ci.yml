@@ -63,3 +63,7 @@ jobs:
 
       - name: Program artifacts
         run: ls -la target/deploy target/idl
+
+      # Unit tests (validation, lifecycle) + LiteSVM integration tests against the built .so.
+      - name: Program tests
+        run: cargo test -p codestreak -- --nocapture
