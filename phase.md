@@ -95,6 +95,11 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 
 **Tests:** 26 shared tests (GitHub rules incl. each Phase 2 finding, LeetCode, money, UTC time) + 6 worker server tests run green locally; env schema tests and everything else run in CI.
 
-**Achieved:** see the PR's CI result (both jobs must be green), plus `pnpm check` and `anchor build` on the user's machine.
+**Achieved**
+- **CI green on the first run** (PR #4):
+  - TypeScript job: real `pnpm install`, then typecheck, lint, all tests (incl. the zod env tests), Next.js production build (compiled in 3.7 s).
+  - Program job: `anchor build` with **anchor-cli 1.1.2 + solana-cli 3.1.10**, the same versions as the local machine (the installer pins them).
+- Found by CI and fixed: Anchor 1.x's `#[program]` macro checks the `custom-heap` / `custom-panic` features, so they are now declared in `Cargo.toml` (no more unexpected-cfg warnings).
+- Still to confirm on the user's machine: `pnpm check`, `anchor build`, `anchor keys sync`.
 
 **Open:** commit `pnpm-lock.yaml` after the first install, then switch CI to `--frozen-lockfile`. Run `anchor keys sync` once and commit the real program ID.
