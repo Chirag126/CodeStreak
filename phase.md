@@ -9,8 +9,9 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 |---|---|---|---|
 | 1 | Accounts, toolchain, keys, secret safety | ✅ Done | [#1](https://github.com/Chirag126/CodeStreak/pull/1) (+ fixes in [#2](https://github.com/Chirag126/CodeStreak/pull/2)) |
 | 2 | Risk spikes: wallet co-signing, GitHub, LeetCode | ✅ Done | [#2](https://github.com/Chirag126/CodeStreak/pull/2), [#3](https://github.com/Chirag126/CodeStreak/pull/3) |
-| 3 | Monorepo scaffold + CI | 🟡 In review | #4 |
-| 4 | Design system and motion | ⏳ Next | |
+| 3 | Monorepo scaffold + CI | ✅ Done | [#4](https://github.com/Chirag126/CodeStreak/pull/4), [#5](https://github.com/Chirag126/CodeStreak/pull/5) |
+| 4 | Design system and motion | 🟡 In review | #6 |
+| 5 | Program: config and pool creation | ⏳ Next | |
 
 ---
 
@@ -104,4 +105,37 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 
 **Windows install fix:** `pnpm install` failed with `ERR_PNPM_EPERM ... symlink` in `C:\dev\CodeStreak` (folder permissions refuse the links pnpm's default layout creates). Added `.npmrc` with `node-linker=hoisted`: a flat npm-style `node_modules`, the same on Windows, WSL and CI.
 
-**Open:** commit `pnpm-lock.yaml` after the first install, then switch CI to `--frozen-lockfile`. Run `anchor keys sync` once and commit the real program ID.
+**Done on the user's machine:** `pnpm check` passes; `anchor build` + `anchor keys sync` → real program ID **`A4ohMziwegRbnV2DFHKW1YkNoVNeeiWuCJS5MjWeJT7J`** committed with `pnpm-lock.yaml` and `Cargo.lock`; program keypair backed up to `~/.config/codestreak/keys/program-keypair.json`.
+
+**Open:** CI still installs with `--no-frozen-lockfile` because PRs that add dependencies can't update the lockfile from the build environment; the user commits the updated lockfile after each such PR.
+
+---
+
+## Phase 4: Design system and motion (M)
+
+**Goal:** one visual language every later screen is built from: tokens, typography, components, motion and an app shell, all accessible.
+
+**Added**
+- **Tokens** (`src/design/tokens.ts`, the single source of truth):
+  - charcoal surfaces (950 → 100), electric green (primary/success), cobalt (accent/links), danger, warning;
+  - shadcn-style semantic roles (`background`, `primary`, `muted-foreground`, …).
+- **Contrast enforced in CI:** 21 foreground/background pairs with their WCAG minimum (7:1 body, 4.5:1 text, 3:1 input borders/focus ring) in `tokens.test.ts`. Another test fails if `globals.css` drifts from `tokens.ts`.
+  - Palette choices made by measurement: white on the original cobalt `#3b6ef6` was 4.42:1, so cobalt buttons use `#2c5be0` (5.71:1). Input borders moved to `#646e80`, the first gray at ≥3:1 on every surface.
+- **Tailwind 4 theme** (`globals.css`): palette, semantic roles, radii, Geist / Geist Mono fonts, shimmer animation, `bg-dots` and `surface-glass` utilities.
+- **Components** (`src/components/ui`, shadcn/ui v4 conventions on the `radix-ui` package): Button (7 variants, 4 sizes, loading, `asChild`), Badge (7 variants), Card (+ header/title/description/action/content/footer), Input (invalid state), Label, Separator, Skeleton, Switch, Tabs, Tooltip, Progress, Avatar, Dialog + side Sheet, plus CodeStreak pieces **Stat** (KPI tile) and **TokenAmount** (exact bigint amounts).
+- **Motion** (`motion` package, formerly Framer Motion):
+  - `src/lib/motion.ts` presets: durations, easings, springs, `fadeIn` / `fadeUp` / `scaleIn`, stagger;
+  - `motionSafe()` strips movement but keeps fades;
+  - components: `Reveal`, `Stagger` / `StaggerItem`, `AnimatedNumber`.
+- **Reduced motion, three layers:**
+  1. OS setting respected by default.
+  2. In-app toggle (System / Reduced / Full), saved in localStorage and synced across tabs.
+  3. The choice applies to Motion components (`MotionConfig`) **and** CSS animations/transitions (`html[data-motion]`), even if the OS says otherwise.
+- **App shell:**
+  - sticky glass header: logo, nav with an animated active pill, Devnet badge with tooltip, mobile sheet menu;
+  - footer: devnet notice, animation toggle, source link;
+  - skip-to-content link.
+  - Nav lists only routes that exist (no dead links).
+- **`/styleguide`** (dev only, 404 in production, `noindex`): every token with its hex, a live contrast table, typography, all component states, working interactions (loading button, invalid input, switch, tabs, tooltip, dialog, progress), and motion demos with replay.
+
+**Tests:** 71 web tests (contrast pairs, CSS↔token sync, motion presets) pass locally; CI runs them with typecheck, lint and the Next.js build.
