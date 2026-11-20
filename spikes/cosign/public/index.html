@@ -43,6 +43,7 @@
     <button id="tMemo" disabled>B · Co-signed memo tx</button>
     <button id="tUsdc" disabled>C · Co-signed USDC self-transfer</button>
     <button class="secondary" id="copy">Copy results</button>
+    <div style="margin-top:8px"><label><input type="checkbox" id="presign" checked> Relayer signs first (pre-sign). Untick to reproduce the "wallet modified" case.</label></div>
   </section>
 
   <section>
@@ -139,7 +140,9 @@ async function cosign(kind, key, label) {
   try {
     const feature = current.wallet.features['solana:signTransaction'];
     if (!feature) throw new Error('wallet lacks solana:signTransaction');
-    const { id, transaction } = await api('/api/build', { address: current.account.address, kind });
+    const presign = $('presign').checked;
+    t.presign = presign;
+    const { id, transaction } = await api('/api/build', { address: current.account.address, kind, presign });
     let out = null, chainUsed = null, errors = [];
     for (const chain of DEVNET_CHAINS) {
       try { [out] = await feature.signTransaction({ account: current.account, transaction: unb64(transaction), chain }); chainUsed = chain; break; }
