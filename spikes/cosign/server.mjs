@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
+import { ComputeBudgetProgram, Connection, Keypair, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
 import { buildSignInMessage, newNonce, verifySolanaSignature } from '../lib/wallet-auth.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -102,11 +102,22 @@ function verifyMessage({ address, nonce, signedMessage, signature }) {
   return { verified: true };
 }
 
-async function build({ address, kind }) {
+// The relayer pays, so the relayer (not the wallet) decides the compute budget and priority fee.
+// Having these instructions present also stops wallets such as Phantom from inserting their own.
+const COMPUTE_UNIT_LIMIT = 60_000;
+const COMPUTE_UNIT_PRICE_MICROLAMPORTS = 1_000; // 60 lamports priority fee at the limit
+
+const programsOf = (tx) => tx.instructions.map((ix) => ix.programId.toBase58());
+
+async function build({ address, kind, presign = true }) {
   const user = new PublicKey(address);
   const id = randomBytes(6).toString('hex');
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
   const tx = new Transaction({ feePayer: relayer.publicKey, blockhash, lastValidBlockHeight });
+  tx.add(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: COMPUTE_UNIT_LIMIT }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: COMPUTE_UNIT_PRICE_MICROLAMPORTS }),
+  );
 
   if (kind === 'memo') {
     tx.add(
@@ -143,9 +154,15 @@ async function build({ address, kind }) {
   }
 
   const message = tx.serializeMessage().toString('base64');
-  pending.set(id, { address, kind, message, blockhash, lastValidBlockHeight, expires: Date.now() + TTL_MS });
-  log(true, `built ${kind} tx`, `id=${id} fee_payer=relayer user=${address}`);
-  return { id, transaction: tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64') };
+  // Pre-signing: the relayer signs BEFORE the wallet. Wallets do not alter a transaction that
+  // already carries a signature (any change would invalidate it), and Phantom documents that it
+  // only adds priority fees to transactions without signatures. The relayer only ever signs the
+  // exact message built here, so handing it out pre-signed is safe: the worst case is that the
+  // user broadcasts this same transaction themselves.
+  if (presign) tx.partialSign(relayer);
+  pending.set(id, { address, kind, message, presign, programs: programsOf(tx), blockhash, lastValidBlockHeight, expires: Date.now() + TTL_MS });
+  log(true, `built ${kind} tx`, `id=${id} fee_payer=relayer presigned=${presign} user=${address}`);
+  return { id, presign, transaction: tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64') };
 }
 
 async function submit({ id, signedTransaction, chainUsed }) {
@@ -158,18 +175,22 @@ async function submit({ id, signedTransaction, chainUsed }) {
 
   // 1. The wallet must not have changed anything (instructions, fee payer, blockhash...).
   const unchanged = tx.serializeMessage().toString('base64') === entry.message;
-  log(unchanged, `${entry.kind}: wallet returned the exact message we built`, unchanged ? '' : `instructions now=${tx.instructions.length}`);
-  if (!unchanged) throw new Error('WALLET MODIFIED THE TRANSACTION: the relayer refuses to co-sign it');
+  if (!unchanged) {
+    const added = programsOf(tx).filter((p, i) => entry.programs[i] !== p);
+    log(false, `${entry.kind}: wallet modified the transaction`, `built=[${entry.programs.join(', ')}] returned=[${programsOf(tx).join(', ')}] changed=[${added.join(', ')}]`);
+    throw new Error(`WALLET MODIFIED THE TRANSACTION (programs now: ${programsOf(tx).length}, built: ${entry.programs.length}); the relayer refuses to co-sign it`);
+  }
+  log(true, `${entry.kind}: wallet returned the exact message we built`, `presigned=${entry.presign}`);
 
-  // 2. The user's signature is present and valid.
+  // 2. The user's signature is present and every signature present is valid.
   const userSig = tx.signatures.find((s) => s.publicKey.equals(user));
   const userSigned = Boolean(userSig?.signature);
   const partialOk = userSigned && tx.verifySignatures(false);
   log(partialOk, `${entry.kind}: user signature valid`, `chain_id_used=${chainUsed}`);
   if (!partialOk) throw new Error('user signature missing or invalid');
 
-  // 3. Relayer co-signs as fee payer and submits through OUR devnet RPC.
-  tx.partialSign(relayer);
+  // 3. Relayer signs (if it did not pre-sign) and submits through OUR devnet RPC.
+  if (!entry.presign) tx.partialSign(relayer);
   if (!tx.verifySignatures(true)) throw new Error('fully signed transaction failed verification');
   const signature = await connection.sendRawTransaction(tx.serialize());
   await connection.confirmTransaction({ signature, blockhash: entry.blockhash, lastValidBlockHeight: entry.lastValidBlockHeight }, 'confirmed');
