@@ -31,4 +31,25 @@ pub enum CodeStreakError {
     InvalidShieldConfig,
     #[msg("Arithmetic overflow")]
     MathOverflow,
+    // ---- Phase 6: join and sponsor ----
+    #[msg("Joining is closed for this challenge")]
+    JoinClosed,
+    #[msg("This challenge is full")]
+    PoolFull,
+    #[msg("This is a private challenge: the group's join authority must co-sign")]
+    JoinAuthorityRequired,
+    #[msg("Wrong join authority for this challenge")]
+    InvalidJoinAuthority,
+    #[msg("Vault does not belong to this challenge")]
+    InvalidVault,
+    #[msg("Token mint does not match this challenge")]
+    InvalidMint,
+    #[msg("Token program does not match this challenge")]
+    InvalidTokenProgram,
+    #[msg("Amount must be greater than zero")]
+    InvalidAmount,
+    #[msg("Sponsorship is closed for this challenge")]
+    SponsorshipClosed,
+    #[msg("Vault did not receive the exact amount (transfer fees are not supported)")]
+    TransferAmountMismatch,
 }

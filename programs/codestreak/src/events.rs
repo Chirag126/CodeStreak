@@ -15,6 +15,27 @@ pub struct ConfigUpdated {
 }
 
 #[event]
+pub struct ParticipantJoined {
+    pub challenge: Pubkey,
+    pub user: Pubkey,
+    pub participant: Pubkey,
+    pub amount: u64,
+    pub participant_count: u16,
+    pub total_stake: u64,
+}
+
+#[event]
+pub struct PoolSponsored {
+    pub challenge: Pubkey,
+    pub sponsor: Pubkey,
+    pub amount: u64,
+    /// Everything this wallet has sponsored to this challenge so far.
+    pub sponsor_total: u64,
+    /// Everything all sponsors have contributed to this challenge so far.
+    pub pool_total_sponsor: u64,
+}
+
+#[event]
 pub struct PoolCreated {
     pub challenge: Pubkey,
     pub creator: Pubkey,

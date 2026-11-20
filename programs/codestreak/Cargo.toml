@@ -22,7 +22,8 @@ custom-panic = []
 anchor-debug = []
 
 [dependencies]
-anchor-lang = "1.1.2"
+# init-if-needed: the sponsor receipt accumulates across contributions (guarded by `contributions == 0`).
+anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
 anchor-spl = "1.1.2"
 
 # In-process Solana VM tests (Anchor 1.x default). Run after `anchor build`:  cargo test -p codestreak

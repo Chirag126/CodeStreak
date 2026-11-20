@@ -174,3 +174,35 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
   - only the admin can update the config (duplicate mints rejected), and a newly allowed mint becomes usable.
 
 **Learned:** Anchor 1.x's `anchor build` also compiles integration tests during its IDL step, so test compile errors surface as "Building IDL failed".
+
+---
+
+## Phase 6: Program: join and sponsor (M)
+
+**Goal:** money can enter a challenge, and only through checked paths. The vault always equals the sum of recorded deposits.
+
+**Added** (`programs/codestreak`)
+- **`Participant` PDA** `["participant", challenge, user]`: deposit, join time, day bitmaps (verified / failed / shielded; filled from Phase 7), Shield counters, status (Active → Survived / Failed / Voided later), finalized/claimed flags. Created with `init`, so **a wallet can join a challenge only once**.
+- **`join_pool`:**
+  - the user signs the token transfer; the relayer (`payer`) pays rent and fees, so users need no SOL;
+  - only while the challenge is **Joining** (before the join deadline), and below `max_participants`;
+  - **private groups:** the challenge's `join_authority` (CodeStreak's relayer, after it has checked the invite ID or link) must co-sign. A missing co-sign, an impostor co-signer, or the right key listed without its signature all fail;
+  - the vault must be the challenge's own vault, the mint and token program must match the challenge, and the source token account must belong to the user;
+  - moves exactly the buy-in with `transfer_checked`, then re-reads the vault and requires it grew by exactly that amount (so fee-on-transfer mints can never break accounting);
+  - updates `participant_count` and `total_stake` with checked math; emits `ParticipantJoined`.
+- **`sponsor_pool`:** anyone adds to the reward pool without participating, from creation until the challenge ends (not during verification or later); amount > 0; private groups need the same co-sign (private sponsor link). Same vault/mint/exact-amount checks. Emits `PoolSponsored`.
+- **`SponsorReceipt` PDA** `["sponsor", challenge, sponsor]`: an on-chain receipt that accumulates the total, the number of contributions and first/last times, plus a `refunded` flag for Phase 8 (refunds if a challenge is cancelled or nobody survives). Uses Anchor's `init_if_needed`, guarded so set-up fields are only written on the first contribution.
+- **New errors** (appended, codes stable): JoinClosed, PoolFull, JoinAuthorityRequired, InvalidJoinAuthority, InvalidVault, InvalidMint, InvalidTokenProgram, InvalidAmount, SponsorshipClosed, TransferAmountMismatch.
+
+**Tests:** 11 new LiteSVM tests (27 in total), each checking **vault = total_stake + total_sponsor** where funds moved:
+- join creates the participant, takes exactly the buy-in, relayer pays;
+- 3 joins + 2 sponsorships: vault = 42.5 USDC = recorded totals;
+- **double join fails** (no second buy-in taken);
+- **late join fails** at the join deadline and after start; one second before still works;
+- **private join without co-sign fails**, with an impostor co-signer fails, unsigned co-signer fails; correct co-sign works;
+- **wrong vault fails** (another challenge's vault, an attacker's token account; join and sponsor), and no funds move;
+- wrong mint fails; paying with someone else's token account fails;
+- user signature required; insufficient balance fails without creating a participant;
+- pool full fails;
+- sponsor receipt accumulates across contributions (also while running); separate receipt per sponsor; sponsors are not participants;
+- zero sponsorship, sponsoring after the end, and private sponsoring without co-sign all fail.

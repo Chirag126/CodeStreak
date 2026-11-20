@@ -1,7 +1,7 @@
 //! CodeStreak: escrow, verification and settlement for coding-streak challenges (Solana devnet).
 //!
-//! Phase 5: global config (admin, default verifier, allowed mints) and challenge pools with a
-//! program-owned token vault. Later phases add join/sponsor, verification records, Shields,
+//! Implemented: global config, challenge pools with a program-owned token vault (Phase 5),
+//! joining and sponsoring (Phase 6). Later phases add verification records, Shields,
 //! settlement and pull-based claims.
 use anchor_lang::prelude::*;
 
@@ -39,5 +39,15 @@ pub mod codestreak {
     /// Creates a challenge pool and its program-owned vault.
     pub fn initialize_pool(ctx: Context<InitializePool>, params: InitializePoolParams) -> Result<()> {
         initialize_pool_handler(ctx, params)
+    }
+
+    /// Deposits the buy-in and creates the user's Participant account (private: join authority co-signs).
+    pub fn join_pool(ctx: Context<JoinPool>) -> Result<()> {
+        join_pool_handler(ctx)
+    }
+
+    /// Adds `amount` to the reward pool and updates the sponsor's on-chain receipt.
+    pub fn sponsor_pool(ctx: Context<SponsorPool>, amount: u64) -> Result<()> {
+        sponsor_pool_handler(ctx, amount)
     }
 }
