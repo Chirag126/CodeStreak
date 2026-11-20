@@ -102,4 +102,6 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - Found by CI and fixed: Anchor 1.x's `#[program]` macro checks the `custom-heap` / `custom-panic` features, so they are now declared in `Cargo.toml` (no more unexpected-cfg warnings).
 - Still to confirm on the user's machine: `pnpm check`, `anchor build`, `anchor keys sync`.
 
+**Windows install fix:** `pnpm install` failed with `ERR_PNPM_EPERM ... symlink` in `C:\dev\CodeStreak` (folder permissions refuse the links pnpm's default layout creates). Added `.npmrc` with `node-linker=hoisted`: a flat npm-style `node_modules`, the same on Windows, WSL and CI.
+
 **Open:** commit `pnpm-lock.yaml` after the first install, then switch CI to `--frozen-lockfile`. Run `anchor keys sync` once and commit the real program ID.
