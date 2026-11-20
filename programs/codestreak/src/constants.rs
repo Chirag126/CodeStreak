@@ -3,6 +3,8 @@
 pub const CONFIG_SEED: &[u8] = b"config";
 pub const CHALLENGE_SEED: &[u8] = b"challenge";
 pub const VAULT_SEED: &[u8] = b"vault";
+pub const PARTICIPANT_SEED: &[u8] = b"participant";
+pub const SPONSOR_SEED: &[u8] = b"sponsor";
 
 /// Maximum number of token mints a challenge may use (devnet USDC, wrapped SOL, spare slots).
 pub const MAX_ALLOWED_MINTS: usize = 4;
