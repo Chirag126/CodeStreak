@@ -4,8 +4,9 @@
   "private": true,
   "description": "CodeStreak: on-chain coding accountability arena on Solana devnet.",
   "type": "module",
+  "packageManager": "pnpm@10.34.7",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || exit 0",
@@ -13,7 +14,20 @@
     "check:setup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/doctor.ps1",
     "check:env": "node scripts/check-env.mjs",
     "check:secrets": "node scripts/check-secrets.mjs --all",
+    "dev:web": "pnpm --filter @codestreak/shared build && pnpm --filter @codestreak/web dev",
+    "dev:worker": "pnpm --filter @codestreak/shared build && pnpm --filter @codestreak/worker dev",
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm --filter @codestreak/shared build && pnpm -r run typecheck",
+    "lint": "eslint . && pnpm --filter @codestreak/web lint",
+    "test": "pnpm test:tooling && pnpm test:spikes && pnpm -r --if-present run test",
     "test:tooling": "node --test \"scripts/*.test.mjs\"",
-    "test:spikes": "node --test \"spikes/lib/*.test.mjs\""
+    "test:spikes": "node --test \"spikes/lib/*.test.mjs\"",
+    "check": "pnpm check:secrets && pnpm typecheck && pnpm lint && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.30.0",
+    "eslint": "^9.30.0",
+    "typescript": "~5.9.2",
+    "typescript-eslint": "^8.40.0"
   }
 }

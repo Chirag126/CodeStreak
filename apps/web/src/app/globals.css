@@ -1,0 +1,20 @@
+@import 'tailwindcss';
+
+/* Minimal brand tokens for the scaffold. Phase 4 replaces this with the full design system. */
+@theme {
+  --color-charcoal-950: #0b0d10;
+  --color-charcoal-900: #111418;
+  --color-charcoal-800: #181c22;
+  --color-charcoal-700: #232831;
+  --color-electric-400: #3ddc84;
+  --color-cobalt-500: #3b6ef6;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-charcoal-950);
+  color: #e6e9ef;
+}
