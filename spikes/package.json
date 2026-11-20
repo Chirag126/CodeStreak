@@ -1,0 +1,19 @@
+{
+  "name": "codestreak-spikes",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Phase 2 throwaway risk spikes. Not part of the app; deleted or archived after Phase 3.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.6"
+  },
+  "scripts": {
+    "cosign": "node --env-file=../.env.local cosign/server.mjs",
+    "github": "node --env-file=../.env.local github/push-diffs.mjs",
+    "leetcode": "node --env-file=../.env.local leetcode/profile.mjs",
+    "test": "node --test \"lib/*.test.mjs\""
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98.0"
+  }
+}
