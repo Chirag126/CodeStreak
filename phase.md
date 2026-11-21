@@ -373,3 +373,29 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 **Follow-up (email link):** on Supabase's free plan, email templates can't be edited without custom SMTP, and the default emails contain a link, not a code. Added `/auth/callback`, which completes sign-in from that link (`?code=` PKCE, or `?token_hash=&type=` for custom templates) and continues to the username step or the requested page; sign-in passes `emailRedirectTo` (APP_URL locally and on Render). Code entry still works once SMTP with a `{{ .Token }}` template is set up.
 
 **Setup in Supabase:** Authentication → URL Configuration → Redirect URLs: add `http://localhost:3000/**` (and the Render URL in the deploy phase).
+
+---
+
+## Phase 13: Wallet binding (M)
+
+**Goal:** a user proves they own a Solana wallet (Phantom, or MetaMask's Solana account) by signing a single-use message, and it's bound to their profile.
+
+**Added**
+- **Wallet Standard picker** (`/dashboard/wallet`): lists every installed wallet that supports Solana, `standard:connect` and `solana:signMessage`, live from the Wallet Standard registry (no wallet-specific code). 0x (Ethereum) accounts are refused with a hint to switch MetaMask to its Solana account.
+- **Signed-nonce binding:**
+  - server issues a random 128-bit nonce for (user, address), stored in `wallet_nonces`, valid **5 minutes**;
+  - the message shows the site domain, the address, the user's public ID, "Solana devnet", the nonce and both times, and says signing is free and moves no funds;
+  - server checks: Solana address (32 bytes), not 0x, same address, unchanged message, not expired, not used, valid ed25519 signature (`node:crypto`, `@codestreak/shared/wallet`);
+  - the nonce is consumed by one conditional update (`used_at is null and not expired`), so a replayed signature finds nothing;
+  - the wallet is inserted with `verified_at`; the first one becomes primary. The database's unique constraint makes **one wallet on two users** impossible, even in a race;
+  - link and unlink are written to the audit log. Writes use the service role on the server only, after identifying the user.
+- **Network badge** ("Devnet ready" when the wallet reports `solana:devnet`; otherwise a warning to use Phantom for staking) and the global Devnet badge in the header.
+- **SOL / USDC balances** (devnet) of the connected or primary wallet, read from the RPC.
+- **Devnet setup checklist**, ticked from what the page sees: wallet installed, devnet mode, linked, has SOL, has USDC (with faucet links).
+- Dashboard's Wallet card opens the page.
+- Migration `wallet_nonces` (RLS on, users read only their own; nonce format, ≤15-minute validity, Solana-only addresses enforced by the database). Applied to Supabase; advisors re-checked.
+- **`render.md`:** what is localhost or a laptop file now and what it must be on Render, updated every phase.
+
+**Tests:**
+- unit (`@codestreak/shared/wallet`, real ed25519 keys): fresh signature accepted; **replayed nonce**, **expired nonce** (at and after expiry), **0x address**, another wallet, edited message and forged signature all rejected; base58 round trip; every checked field appears in the message.
+- SQL (`supabase/tests/wallet_test.sql`): a nonce can be consumed only once; 0x addresses, reused nonces, over-long validity and non-random nonces rejected; **one wallet on two users rejected**; users can't create nonces or link wallets directly and see only their own nonces.
