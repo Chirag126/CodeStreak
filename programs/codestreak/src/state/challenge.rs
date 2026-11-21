@@ -83,6 +83,18 @@ pub struct Challenge {
     pub total_sponsor: u64,
     pub total_shield: u64,
     pub total_paid_out: u64,
+    // Settlement (Phase 8). Written once by `settle_challenge`.
+    pub settled_at: i64,
+    /// True when nobody survived: every participant and sponsor gets everything back.
+    pub full_refund: bool,
+    /// R = forfeited stakes + sponsorships + Shield payments.
+    pub reward_pool: u64,
+    /// floor(R / survivors).
+    pub reward_per_survivor: u64,
+    /// R - share * survivors; paid to the last survivor who claims.
+    pub reward_dust: u64,
+    pub survivors_claimed: u16,
+    pub cancelled_at: i64,
 }
 
 impl Challenge {
@@ -203,6 +215,13 @@ mod tests {
             total_sponsor: 0,
             total_shield: 0,
             total_paid_out: 0,
+            settled_at: 0,
+            full_refund: false,
+            reward_pool: 0,
+            reward_per_survivor: 0,
+            reward_dust: 0,
+            survivors_claimed: 0,
+            cancelled_at: 0,
         }
     }
 

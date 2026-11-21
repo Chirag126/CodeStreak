@@ -1,6 +1,6 @@
 //! Pure rules for recording results and activating Shields (host unit-tested).
 use crate::errors::CodeStreakError;
-use crate::state::{Challenge, DayResult, Participant, PoolState};
+use crate::state::{Challenge, DayResult, Participant, ParticipantStatus, PoolState};
 
 /// One-way rules. Returns `true` when the change is an upgrade of an earlier result.
 /// - nothing recorded -> any result
@@ -68,6 +68,121 @@ pub fn check_shield(c: &Challenge, p: &Participant, day: u16, now: i64) -> Resul
     Ok(())
 }
 
+/// Outcome of one participant once all windows have closed. A Shield covers its day whatever
+/// was recorded. Any uncovered Failed day fails the challenge. Otherwise any uncovered day that is
+/// Indeterminate or was never recorded voids it (stake back, no reward): a system problem never
+/// costs a user their stake. Every day Verified or shielded: Survived.
+pub fn participant_outcome(num_days: u16, p: &Participant) -> ParticipantStatus {
+    let all_days = if num_days >= 64 { u64::MAX } else { (1u64 << num_days) - 1 };
+    let uncovered_failures = p.failed_days & !p.shielded_days & all_days;
+    let covered = (p.verified_days | p.shielded_days) & all_days;
+    if uncovered_failures != 0 {
+        ParticipantStatus::Failed
+    } else if covered == all_days {
+        ParticipantStatus::Survived
+    } else {
+        ParticipantStatus::Voided
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Settlement {
+    pub full_refund: bool,
+    pub reward_pool: u64,
+    pub reward_per_survivor: u64,
+    pub reward_dust: u64,
+}
+
+/// Splits the pool once every participant is finalized.
+/// - nobody survived: full refund for everyone (stakes, Shield payments, sponsorships);
+/// - otherwise R = everything deposited minus the stakes returned to survivors and voided
+///   participants (= forfeited stakes + sponsorships + Shields); each survivor gets their stake
+///   plus floor(R / S); the remainder (dust, < S base units) goes to the last survivor to claim.
+pub fn compute_settlement(c: &Challenge) -> Result<Settlement, CodeStreakError> {
+    let survivors = u64::from(c.survivor_count);
+    if survivors == 0 {
+        return Ok(Settlement { full_refund: true, reward_pool: 0, reward_per_survivor: 0, reward_dust: 0 });
+    }
+    let deposited = c
+        .total_stake
+        .checked_add(c.total_sponsor)
+        .and_then(|v| v.checked_add(c.total_shield))
+        .ok_or(CodeStreakError::MathOverflow)?;
+    let returned_stakes = survivors
+        .checked_add(u64::from(c.voided_count))
+        .and_then(|n| n.checked_mul(c.buy_in))
+        .ok_or(CodeStreakError::MathOverflow)?;
+    let reward_pool = deposited.checked_sub(returned_stakes).ok_or(CodeStreakError::MathOverflow)?;
+    let reward_per_survivor = reward_pool / survivors;
+    let reward_dust = reward_pool - reward_per_survivor * survivors;
+    Ok(Settlement { full_refund: false, reward_pool, reward_per_survivor, reward_dust })
+}
+
+/// Reward for a survivor claiming now (stake + share, + dust if they are the last survivor).
+pub fn reward_amount(c: &Challenge, p: &Participant) -> Result<u64, CodeStreakError> {
+    if c.state != PoolState::Settled {
+        return Err(if c.state == PoolState::Cancelled { CodeStreakError::ChallengeCancelled } else { CodeStreakError::NotSettled });
+    }
+    if p.claimed {
+        return Err(CodeStreakError::AlreadyClaimed);
+    }
+    if c.full_refund || p.status != ParticipantStatus::Survived {
+        return Err(CodeStreakError::NothingToClaim);
+    }
+    let is_last = c.survivors_claimed.checked_add(1) == Some(c.survivor_count);
+    let dust = if is_last { c.reward_dust } else { 0 };
+    p.deposited
+        .checked_add(c.reward_per_survivor)
+        .and_then(|v| v.checked_add(dust))
+        .ok_or(CodeStreakError::MathOverflow)
+}
+
+/// Refund for a participant: everything back if the challenge was cancelled or nobody survived;
+/// the stake if they were voided.
+pub fn participant_refund_amount(c: &Challenge, p: &Participant) -> Result<u64, CodeStreakError> {
+    let everything = || p.deposited.checked_add(p.shield_paid).ok_or(CodeStreakError::MathOverflow);
+    let amount = match c.state {
+        PoolState::Open => return Err(CodeStreakError::NotSettled),
+        PoolState::Cancelled => everything()?,
+        PoolState::Settled if c.full_refund => everything()?,
+        PoolState::Settled if p.status == ParticipantStatus::Voided => p.deposited,
+        PoolState::Settled => return Err(CodeStreakError::NothingToClaim),
+    };
+    if p.claimed {
+        return Err(CodeStreakError::AlreadyClaimed);
+    }
+    Ok(amount)
+}
+
+/// Sponsors get their money back only if the challenge was cancelled or nobody survived;
+/// otherwise it was paid out as rewards.
+pub fn sponsor_refund_allowed(c: &Challenge) -> Result<(), CodeStreakError> {
+    match c.state {
+        PoolState::Open => Err(CodeStreakError::NotSettled),
+        PoolState::Cancelled => Ok(()),
+        PoolState::Settled if c.full_refund => Ok(()),
+        PoolState::Settled => Err(CodeStreakError::NothingToClaim),
+    }
+}
+
+/// Who may cancel, and when:
+/// - the creator, any time before the challenge starts;
+/// - anyone, once joining has closed with fewer than `min_participants`.
+pub fn check_cancel(c: &Challenge, signer_is_creator: bool, now: i64) -> Result<(), CodeStreakError> {
+    match c.state {
+        PoolState::Open => {}
+        PoolState::Cancelled => return Err(CodeStreakError::ChallengeCancelled),
+        PoolState::Settled => return Err(CodeStreakError::AlreadySettled),
+    }
+    let creator_before_start = signer_is_creator && now < c.start_ts;
+    let undersubscribed = now >= c.join_deadline_ts && c.participant_count < c.min_participants;
+    if creator_before_start || undersubscribed {
+        Ok(())
+    } else {
+        Err(CodeStreakError::CannotCancel)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,6 +234,13 @@ mod tests {
             total_sponsor: 0,
             total_shield: 0,
             total_paid_out: 0,
+            settled_at: 0,
+            full_refund: false,
+            reward_pool: 0,
+            reward_per_survivor: 0,
+            reward_dust: 0,
+            survivors_claimed: 0,
+            cancelled_at: 0,
         }
     }
 
@@ -139,6 +261,87 @@ mod tests {
             claimed: false,
             indeterminate_days: 0,
         }
+    }
+
+    #[test]
+    fn outcomes() {
+        use ParticipantStatus::*;
+        let with = |v: u64, f: u64, i: u64, s: u64| {
+            let mut p = participant();
+            (p.verified_days, p.failed_days, p.indeterminate_days, p.shielded_days) = (v, f, i, s);
+            participant_outcome(3, &p)
+        };
+        assert_eq!(with(0b111, 0, 0, 0), Survived);
+        assert_eq!(with(0b101, 0b010, 0, 0b010), Survived, "Shield covers the failed day");
+        assert_eq!(with(0b101, 0b010, 0, 0), Failed);
+        assert_eq!(with(0b001, 0b010, 0b100, 0), Failed, "a failure beats an indeterminate day");
+        assert_eq!(with(0b101, 0, 0b010, 0), Voided);
+        assert_eq!(with(0b011, 0, 0, 0), Voided, "an unrecorded day voids, never fails");
+        assert_eq!(with(0b011, 0, 0, 0b100), Survived, "a shielded unrecorded day is covered");
+        assert_eq!(with(0b1111, 0b1000, 0, 0), Survived, "bits beyond num_days are ignored");
+    }
+
+    #[test]
+    fn settlement_math() {
+        let mut c = challenge();
+        // 5 joined at 10; 2 survived, 1 voided, 2 failed; sponsors 7; Shields 4.
+        (c.total_stake, c.total_sponsor, c.total_shield) = (50, 7, 4);
+        (c.survivor_count, c.voided_count, c.failed_count) = (2, 1, 2);
+        let s = compute_settlement(&c).unwrap();
+        assert_eq!(s, Settlement { full_refund: false, reward_pool: 31, reward_per_survivor: 15, reward_dust: 1 });
+        // Payouts add up exactly to everything deposited.
+        assert_eq!(2 * (10 + 15) + 1 + 10, 50 + 7 + 4);
+
+        c.survivor_count = 0;
+        assert!(compute_settlement(&c).unwrap().full_refund);
+    }
+
+    #[test]
+    fn payouts_and_dust_to_last_claimer() {
+        let mut c = challenge();
+        c.state = PoolState::Settled;
+        (c.survivor_count, c.reward_per_survivor, c.reward_dust) = (2, 15, 1);
+        let mut p = participant();
+        p.status = ParticipantStatus::Survived;
+        assert_eq!(reward_amount(&c, &p).unwrap(), 25);
+        c.survivors_claimed = 1;
+        assert_eq!(reward_amount(&c, &p).unwrap(), 26, "last survivor gets the dust");
+        p.claimed = true;
+        assert_eq!(err(reward_amount(&c, &p)), CodeStreakError::AlreadyClaimed as u32);
+
+        let mut voided = participant();
+        voided.status = ParticipantStatus::Voided;
+        voided.shield_paid = 5;
+        assert_eq!(err(reward_amount(&c, &voided)), CodeStreakError::NothingToClaim as u32);
+        assert_eq!(participant_refund_amount(&c, &voided).unwrap(), 10, "voided: stake only");
+        let mut failed = participant();
+        failed.status = ParticipantStatus::Failed;
+        assert_eq!(err(participant_refund_amount(&c, &failed)), CodeStreakError::NothingToClaim as u32);
+        assert_eq!(err(sponsor_refund_allowed(&c)), CodeStreakError::NothingToClaim as u32);
+
+        c.full_refund = true;
+        assert_eq!(participant_refund_amount(&c, &failed).unwrap(), 10);
+        assert_eq!(participant_refund_amount(&c, &voided).unwrap(), 15, "full refund includes Shields");
+        assert!(sponsor_refund_allowed(&c).is_ok());
+
+        let open = challenge();
+        assert_eq!(err(reward_amount(&open, &p)), CodeStreakError::NotSettled as u32);
+        assert_eq!(err(participant_refund_amount(&open, &voided)), CodeStreakError::NotSettled as u32);
+    }
+
+    #[test]
+    fn cancel_rules() {
+        let mut c = challenge(); // join deadline 900, start 1_000, min 2
+        c.participant_count = 2; // minimum met
+        assert!(check_cancel(&c, true, 999).is_ok(), "creator before start");
+        assert_eq!(err(check_cancel(&c, true, 1_000)), CodeStreakError::CannotCancel as u32);
+        assert_eq!(err(check_cancel(&c, false, 500)), CodeStreakError::CannotCancel as u32);
+        c.participant_count = 1;
+        assert_eq!(err(check_cancel(&c, false, 899)), CodeStreakError::CannotCancel as u32);
+        assert!(check_cancel(&c, false, 900).is_ok(), "anyone, once joining closed under minimum");
+        assert!(check_cancel(&c, false, 5_000).is_ok());
+        c.state = PoolState::Cancelled;
+        assert_eq!(err(check_cancel(&c, true, 0)), CodeStreakError::ChallengeCancelled as u32);
     }
 
     #[test]

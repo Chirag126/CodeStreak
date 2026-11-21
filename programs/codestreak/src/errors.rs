@@ -81,4 +81,23 @@ pub enum CodeStreakError {
     DayAlreadyShielded,
     #[msg("This day is already verified: no Shield needed")]
     DayAlreadyVerified,
+    // ---- Phase 8: settlement and claims ----
+    #[msg("Too early: the verification and dispute windows are still open")]
+    TooEarly,
+    #[msg("Every participant must be finalized before settlement")]
+    NotAllFinalized,
+    #[msg("Challenge is already settled")]
+    AlreadySettled,
+    #[msg("Challenge was cancelled")]
+    ChallengeCancelled,
+    #[msg("Not enough participants: the challenge must be cancelled and refunded")]
+    BelowMinimumParticipants,
+    #[msg("Challenge is not settled or cancelled yet")]
+    NotSettled,
+    #[msg("Nothing to claim")]
+    NothingToClaim,
+    #[msg("Already claimed")]
+    AlreadyClaimed,
+    #[msg("This challenge cannot be cancelled now")]
+    CannotCancel,
 }

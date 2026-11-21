@@ -1,16 +1,24 @@
 pub mod activate_shield;
+pub mod cancel_pool;
+pub mod claims;
+pub mod finalize_participant;
 pub mod initialize_config;
 pub mod initialize_pool;
 pub mod join_pool;
 pub mod record_verification;
+pub mod settle_challenge;
 pub mod shared;
 pub mod sponsor_pool;
 pub mod update_config;
 
 pub use activate_shield::*;
+pub use cancel_pool::*;
+pub use claims::*;
+pub use finalize_participant::*;
 pub use initialize_config::*;
 pub use initialize_pool::*;
 pub use join_pool::*;
 pub use record_verification::*;
+pub use settle_challenge::*;
 pub use sponsor_pool::*;
 pub use update_config::*;
