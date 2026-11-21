@@ -2,6 +2,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{transfer_checked, Mint, TokenAccount, TransferChecked};
 
+use crate::constants::CHALLENGE_SEED;
 use crate::errors::CodeStreakError;
 use crate::state::Challenge;
 
@@ -44,4 +45,36 @@ pub fn deposit_exact<'info>(
     let expected = before.checked_add(amount).ok_or(CodeStreakError::MathOverflow)?;
     require!(vault.amount == expected, CodeStreakError::TransferAmountMismatch);
     Ok(())
+}
+
+/// Pays `amount` from the challenge vault to `to`, signed by the challenge PDA (the vault's
+/// authority). This is the only way funds leave a vault, and only claim/refund instructions call it.
+pub fn pay_from_vault<'info>(
+    challenge: &Account<'info, Challenge>,
+    token_program: Pubkey,
+    vault: &InterfaceAccount<'info, TokenAccount>,
+    mint: &InterfaceAccount<'info, Mint>,
+    to: &InterfaceAccount<'info, TokenAccount>,
+    amount: u64,
+) -> Result<()> {
+    if amount == 0 {
+        return Ok(());
+    }
+    let id = challenge.challenge_id.to_le_bytes();
+    let bump = [challenge.bump];
+    let seeds: &[&[u8]] = &[CHALLENGE_SEED, challenge.creator.as_ref(), &id, &bump];
+    transfer_checked(
+        CpiContext::new_with_signer(
+            token_program,
+            TransferChecked {
+                from: vault.to_account_info(),
+                mint: mint.to_account_info(),
+                to: to.to_account_info(),
+                authority: challenge.to_account_info(),
+            },
+            &[seeds],
+        ),
+        amount,
+        mint.decimals,
+    )
 }

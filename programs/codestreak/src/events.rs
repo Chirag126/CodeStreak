@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::state::DayResult;
+use crate::state::{DayResult, ParticipantStatus};
 
 #[event]
 pub struct ConfigInitialized {
@@ -76,4 +76,49 @@ pub struct ShieldActivated {
     pub price: u64,
     pub shields_used: u8,
     pub total_shield: u64,
+}
+
+#[event]
+pub struct ParticipantFinalized {
+    pub challenge: Pubkey,
+    pub participant: Pubkey,
+    pub user: Pubkey,
+    pub status: ParticipantStatus,
+    pub finalized_count: u16,
+}
+
+#[event]
+pub struct ChallengeSettled {
+    pub challenge: Pubkey,
+    pub survivors: u16,
+    pub failed: u16,
+    pub voided: u16,
+    pub full_refund: bool,
+    pub reward_pool: u64,
+    pub reward_per_survivor: u64,
+    pub reward_dust: u64,
+}
+
+#[event]
+pub struct ChallengeCancelled {
+    pub challenge: Pubkey,
+    pub cancelled_by: Pubkey,
+    pub participant_count: u16,
+}
+
+#[event]
+pub struct PayoutClaimed {
+    pub challenge: Pubkey,
+    /// The wallet that received the funds (participant or sponsor).
+    pub owner: Pubkey,
+    pub kind: PayoutKind,
+    pub amount: u64,
+    pub total_paid_out: u64,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PayoutKind {
+    Reward,
+    ParticipantRefund,
+    SponsorRefund,
 }

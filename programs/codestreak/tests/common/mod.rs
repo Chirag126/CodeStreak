@@ -255,3 +255,72 @@ pub fn joined_user(env: &mut Env, challenge: &Pubkey, balance: u64) -> (Keypair,
     send(&mut env.svm, ix, &[&env.relayer, &user]).unwrap();
     (user, ata)
 }
+
+pub fn finalize_ix(challenge: &Pubkey, user: &Pubkey) -> Instruction {
+    Instruction {
+        program_id: codestreak::ID,
+        accounts: codestreak::accounts::FinalizeParticipant { challenge: *challenge, participant: participant_pda(challenge, user) }
+            .to_account_metas(None),
+        data: codestreak::instruction::FinalizeParticipant {}.data(),
+    }
+}
+
+pub fn settle_ix(challenge: &Pubkey) -> Instruction {
+    Instruction {
+        program_id: codestreak::ID,
+        accounts: codestreak::accounts::SettleChallenge { challenge: *challenge }.to_account_metas(None),
+        data: codestreak::instruction::SettleChallenge {}.data(),
+    }
+}
+
+pub fn cancel_ix(authority: &Pubkey, challenge: &Pubkey) -> Instruction {
+    Instruction {
+        program_id: codestreak::ID,
+        accounts: codestreak::accounts::CancelPool { authority: *authority, challenge: *challenge }.to_account_metas(None),
+        data: codestreak::instruction::CancelPool {}.data(),
+    }
+}
+
+fn claim_participant_metas(challenge: &Pubkey, user: &Pubkey, mint: &Pubkey, destination: &Pubkey) -> Vec<anchor_lang::solana_program::instruction::AccountMeta> {
+    codestreak::accounts::ClaimParticipant {
+        challenge: *challenge,
+        participant: participant_pda(challenge, user),
+        mint: *mint,
+        destination: *destination,
+        vault: vault_pda(challenge),
+        token_program: anchor_spl::token::ID,
+    }
+    .to_account_metas(None)
+}
+
+pub fn claim_reward_ix(challenge: &Pubkey, user: &Pubkey, mint: &Pubkey, destination: &Pubkey) -> Instruction {
+    Instruction {
+        program_id: codestreak::ID,
+        accounts: claim_participant_metas(challenge, user, mint, destination),
+        data: codestreak::instruction::ClaimReward {}.data(),
+    }
+}
+
+pub fn claim_refund_ix(challenge: &Pubkey, user: &Pubkey, mint: &Pubkey, destination: &Pubkey) -> Instruction {
+    Instruction {
+        program_id: codestreak::ID,
+        accounts: claim_participant_metas(challenge, user, mint, destination),
+        data: codestreak::instruction::ClaimRefund {}.data(),
+    }
+}
+
+pub fn claim_sponsor_refund_ix(challenge: &Pubkey, sponsor: &Pubkey, mint: &Pubkey, destination: &Pubkey) -> Instruction {
+    Instruction {
+        program_id: codestreak::ID,
+        accounts: codestreak::accounts::ClaimSponsorRefund {
+            challenge: *challenge,
+            receipt: receipt_pda(challenge, sponsor),
+            mint: *mint,
+            destination: *destination,
+            vault: vault_pda(challenge),
+            token_program: anchor_spl::token::ID,
+        }
+        .to_account_metas(None),
+        data: codestreak::instruction::ClaimSponsorRefund {}.data(),
+    }
+}

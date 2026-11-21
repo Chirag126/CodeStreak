@@ -244,3 +244,39 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - **Shield over the limit fails**, same day twice fails;
 - Shield on a Verified day or with Shields disabled fails;
 - non-participants, missing signatures and someone else's token account all fail.
+
+---
+
+## Phase 8: Program: settlement and claims (L)
+
+**Goal:** every challenge ends with every token accounted for: survivors are paid, refunds go where they are owed, and the vault ends at exactly 0. Nothing here can be triggered early or twice.
+
+**Added** (`programs/codestreak`)
+- **`finalize_participant`** (permissionless, after the dispute window): fixes each participant's outcome from their recorded days.
+  - a Shield covers its day whatever was recorded;
+  - any uncovered **Failed** day → **Failed** (stake forfeited);
+  - otherwise any uncovered **Indeterminate or never-recorded** day → **Voided** (stake back, no reward), so a provider outage or a missed worker run never costs a user money;
+  - every day Verified or shielded → **Survived**.
+- **`settle_challenge`** (permissionless, once everyone is finalized): fixes the split without moving funds.
+  - nobody survived → **full refund** for everyone: stakes, Shield payments and sponsorships;
+  - otherwise **R = forfeited stakes + sponsorships + Shield payments**; each survivor gets **stake + ⌊R / S⌋**; the remainder (dust, fewer than S base units) goes to the **last survivor to claim**.
+  - refuses challenges below `min_participants` (they must be cancelled and refunded instead).
+- **`cancel_pool`:** the creator any time before the start, or anyone once joining has closed with fewer than the minimum participants. After that, joining, sponsoring, verification and Shields are all closed.
+- **Claims** (pull-based, one-time flags, paid only to a token account owned by the right wallet; anyone may send the transaction, so the worker can push payouts later):
+  - `claim_reward`: survivors;
+  - `claim_refund`: participants: stake + Shields if cancelled or nobody survived, stake only if voided;
+  - `claim_sponsor_refund`: sponsors, if cancelled or nobody survived. Split out from `claim_refund` because sponsors are identified by their receipt, not a Participant account.
+- Funds leave a vault only through `pay_from_vault`, signed by the challenge PDA and used only by the three claim instructions. The backend has no way to withdraw.
+- Settlement fields appended to `Challenge` (`full_refund`, `reward_pool`, `reward_per_survivor`, `reward_dust`, `survivors_claimed`, `settled_at`, `cancelled_at`); events `ParticipantFinalized`, `ChallengeSettled`, `ChallengeCancelled`, `PayoutClaimed`.
+- **New errors** (appended): TooEarly, NotAllFinalized, AlreadySettled, ChallengeCancelled, BelowMinimumParticipants, NotSettled, NothingToClaim, AlreadyClaimed, CannotCancel.
+
+**Tests:** 4 new unit tests (outcomes, settlement math, payouts and dust, cancel rules) and 9 LiteSVM tests that play each case end to end with real balances. Every case ends with **vault = 0** and total paid out = everything deposited:
+1. survivors + a shielded survivor + a failure + sponsor: split with 1 base unit of dust to the last claimer;
+2. everyone survives: survivors share the sponsorship;
+3. nobody survives: everyone refunded in full (stakes, Shields, sponsorship);
+4. voided participants (outage and never-recorded day) get their stake back; the failure funds the survivor;
+5. everyone voided: full refund;
+6. undersubscribed challenge cancelled by anyone after joining closes: participants and sponsor refunded.
+- Also: creator can cancel only before the start; a stranger can't cancel a challenge that met its minimum;
+- **early finalize/settle fail**, settle before everyone is finalized fails, **double finalize, double settle and double claim fail**, claims before settlement fail, payouts can't be redirected to another wallet's account, nothing can be recorded/shielded/cancelled after settlement;
+- an undersubscribed challenge that ran anyway can't settle and is cancelled and refunded instead.

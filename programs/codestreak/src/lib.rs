@@ -1,8 +1,8 @@
 //! CodeStreak: escrow, verification and settlement for coding-streak challenges (Solana devnet).
 //!
 //! Implemented: global config, challenge pools with a program-owned token vault (Phase 5),
-//! joining and sponsoring (Phase 6), verification records and Shields (Phase 7). Later phases add
-//! settlement and pull-based claims.
+//! joining and sponsoring (Phase 6), verification records and Shields (Phase 7),
+//! finalization, settlement, cancellation and pull-based claims (Phase 8).
 use anchor_lang::prelude::*;
 
 pub mod constants;
@@ -61,5 +61,35 @@ pub mod codestreak {
     /// Participant pays the Shield price to protect `day` (until the grace period after it ends).
     pub fn activate_shield(ctx: Context<ActivateShield>, day: u16) -> Result<()> {
         activate_shield_handler(ctx, day)
+    }
+
+    /// Permissionless after the dispute window: fixes one participant's outcome from their days.
+    pub fn finalize_participant(ctx: Context<FinalizeParticipant>) -> Result<()> {
+        finalize_participant_handler(ctx)
+    }
+
+    /// Permissionless once everyone is finalized: fixes the payout split (moves no funds).
+    pub fn settle_challenge(ctx: Context<SettleChallenge>) -> Result<()> {
+        settle_challenge_handler(ctx)
+    }
+
+    /// Creator before start, or anyone when joining closed under the minimum.
+    pub fn cancel_pool(ctx: Context<CancelPool>) -> Result<()> {
+        cancel_pool_handler(ctx)
+    }
+
+    /// Survivor payout (stake + share; dust to the last survivor). Paid only to the participant's own account.
+    pub fn claim_reward(ctx: Context<ClaimParticipant>) -> Result<()> {
+        claim_reward_handler(ctx)
+    }
+
+    /// Participant refund (cancelled, nobody survived, or voided).
+    pub fn claim_refund(ctx: Context<ClaimParticipant>) -> Result<()> {
+        claim_refund_handler(ctx)
+    }
+
+    /// Sponsor refund (cancelled or nobody survived).
+    pub fn claim_sponsor_refund(ctx: Context<ClaimSponsorRefund>) -> Result<()> {
+        claim_sponsor_refund_handler(ctx)
     }
 }
