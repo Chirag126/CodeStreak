@@ -303,3 +303,10 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - **Env:** `check-env` now validates for Phase 9: `NEXT_PUBLIC_CODESTREAK_PROGRAM_ID` (prefilled in `.env.example`) and `RELAYER_KEYPAIR_PATH` are required; new optional, local-only `UPGRADE_AUTHORITY_KEYPAIR_PATH` (never on Render).
 
 **Tests:** client unit tests (program ID, every instruction present, Anchor loads and builds a typed program, u64 seed encoding, distinct off-curve PDAs, lifecycle vectors identical to the Rust tests, key-order-independent rules hash with a known SHA-256 vector) and env-checker tests for the Phase 9 rules. Deploy and the seed script run on devnet from your machine (they need your keys).
+
+**Deployed (2026-11-21), confirmed by running the scripts on devnet:**
+- Program `A4ohMziwegRbnV2DFHKW1YkNoVNeeiWuCJS5MjWeJT7J` (upgradeable; authority `4SD3…ZXQR`), ProgramData `7xz9y7tka9m7mLvsMJ9ciUhobNaJYr1m4AQx8cQLELvh`, 507,152 bytes. [Explorer](https://explorer.solana.com/address/A4ohMziwegRbnV2DFHKW1YkNoVNeeiWuCJS5MjWeJT7J?cluster=devnet)
+- On-chain IDL (Program Metadata, seed `idl`): `F8sKuQm4YEkjjTr9fEFN4VsiQQCpJVTs9PyCWvchHugH`.
+- Config initialized (admin, default verifier, devnet USDC + wSOL).
+- Demo challenge `Fm4RMrKKkJsPP4vDeCPkYgE4jiGQjzujStgz17Yhrhv2` created by the seed script and read back: DEMO, 3 × 300 s days, 1 USDC buy-in, verifier `4TYd…u7JT`, rules hash on-chain, phase `joining`, vault `4xaPC1yQVGcKvDUM1wpXr1te5RMi8sN8KCPghhpsnTwn` at 0. [Explorer](https://explorer.solana.com/address/Fm4RMrKKkJsPP4vDeCPkYgE4jiGQjzujStgz17Yhrhv2?cluster=devnet)
+- Note: the npm warning `Unknown project config "node-linker"` during the IDL upload comes from our `.npmrc` (a pnpm setting) being read by `npx`; it is harmless.
