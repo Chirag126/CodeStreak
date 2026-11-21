@@ -1,6 +1,6 @@
 import type { IdlAccounts, IdlTypes, Program, Provider } from '@anchor-lang/core';
-import type { Connection, Keypair, PublicKey } from '@solana/web3.js';
-import { Transaction, VersionedTransaction } from '@solana/web3.js';
+import type { Connection, Keypair, PublicKey, Transaction } from '@solana/web3.js';
+import { VersionedTransaction } from '@solana/web3.js';
 
 import { anchor } from './anchor.js';
 import { CODESTREAK_IDL } from './idl/codestreak.idl.js';
