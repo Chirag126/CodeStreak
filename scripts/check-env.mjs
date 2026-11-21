@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { RULES as SECRET_RULES } from './check-secrets.mjs';
 
-export const CURRENT_PHASE = 1;
+export const CURRENT_PHASE = 9;
 
 // ---------------------------------------------------------------- helpers
 
@@ -187,7 +187,9 @@ export const SPEC = [
   { name: 'NEXT_PUBLIC_CODESTREAK_PROGRAM_ID', phase: 9, validate: pubkey },
   { name: 'WORKER_URL', phase: 14, validate: httpsUrl },
   { name: 'WORKER_JOB_SECRET', phase: 14, validate: longSecret, secret: true },
-  { name: 'RELAYER_KEYPAIR_PATH', phase: 15, validate: keypairPath, secret: true, altName: 'RELAYER_KEYPAIR_JSON' },
+  { name: 'RELAYER_KEYPAIR_PATH', phase: 9, validate: keypairPath, secret: true, altName: 'RELAYER_KEYPAIR_JSON' },
+  // Local only (one-time `pnpm devnet:init-config`); never set on Render.
+  { name: 'UPGRADE_AUTHORITY_KEYPAIR_PATH', phase: 9, validate: keypairPath, secret: true, optional: true },
   { name: 'VERIFIER_KEYPAIR_PATH', phase: 28, validate: keypairPath, secret: true, altName: 'VERIFIER_KEYPAIR_JSON' },
   { name: 'ELEVENLABS_API_KEY', phase: 33, validate: nonEmpty, secret: true },
   { name: 'ELEVENLABS_VOICE_ID', phase: 33, validate: nonEmpty },
@@ -217,7 +219,9 @@ export function validateEnv(env, phase = CURRENT_PHASE) {
     const required = spec.phase <= phase;
 
     if (!value) {
-      if (required) {
+      if (spec.optional) {
+        rows.push({ name: spec.name, status: 'LATER', detail: 'optional (only for one-time local scripts)' });
+      } else if (required) {
         rows.push({ name: spec.name, status: 'MISSING', detail: `required from Phase ${spec.phase}` });
         errors++;
       } else {

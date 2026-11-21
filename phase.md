@@ -280,3 +280,26 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - Also: creator can cancel only before the start; a stranger can't cancel a challenge that met its minimum;
 - **early finalize/settle fail**, settle before everyone is finalized fails, **double finalize, double settle and double claim fail**, claims before settlement fail, payouts can't be redirected to another wallet's account, nothing can be recorded/shielded/cancelled after settlement;
 - an undersubscribed challenge that ran anyway can't settle and is cancelled and refunded instead.
+
+---
+
+## Phase 9: Devnet deploy and client (M)
+
+**Goal:** the program runs on devnet, the app has a typed client generated from the real IDL, and a script proves the round trip by creating and reading a labeled demo challenge.
+
+**Added**
+- **`scripts/wsl/deploy-devnet.sh`** (WSL): checks the RPC's genesis hash is devnet's (not just the URL), restores the program keypair from your key backup if `target/deploy` lost it and checks it matches `A4oh…JT7J`, builds, checks the upgrade authority has enough SOL (~2x the program's rent while deploying; the program is ~507 KB, so ~7.2 SOL), deploys or upgrades with the upgrade-authority key, and uploads the IDL on-chain (Program Metadata) so explorers can decode instructions. An IDL upload failure is reported but does not undo the deploy.
+- `fund-devnet.sh`: upgrade-authority target raised from 5 to 8 SOL.
+- **IDL in `packages/shared`**: `scripts/sync-idl.mjs` copies `anchor build`'s IDL and its TypeScript type into `packages/shared/src/program/idl/` (generated, not hand-edited). CI fails if the committed IDL differs from the program (`--check`), so the client can never drift from the chain. CI also publishes the IDL as an artifact.
+- **Typed client** `@codestreak/shared/program` (`@anchor-lang/core` 1.2 + `@solana/web3.js` 1.x):
+  - `createProgram(connection, wallet?)`: read-only without a wallet; `keypairWallet()` for server keys;
+  - PDA helpers for config, challenge, vault, participant, sponsor receipt, ProgramData;
+  - account/param types from the IDL (`ChallengeAccount`, `InitializePoolParams`, ...);
+  - `assertDevnet()` (genesis-hash check), `fetchChallenge()` with phase from the chain clock, a TypeScript mirror of the program's lifecycle (`challengePhase`, `dayIndex`), `rulesHash()` (SHA-256 of canonical rules JSON), Explorer links;
+  - handles Anchor's CommonJS-in-Node / ESM-in-browser packaging in one place.
+- **`tools/devnet`** workspace package with two scripts (run from Windows):
+  - `pnpm devnet:init-config`: one-time Config (admin, default verifier, devnet USDC + wSOL allowed), signed by the upgrade authority; safe to re-run;
+  - `pnpm devnet:seed-demo`: creates a **DEMO** challenge (5-minute days, 3 days, 1 USDC buy-in, rules labeled "DEMO – compressed time … no real value", rules hash on-chain, `is_demo` set by the program), then reads it back from devnet and prints every field, the phase and Explorer links.
+- **Env:** `check-env` now validates for Phase 9: `NEXT_PUBLIC_CODESTREAK_PROGRAM_ID` (prefilled in `.env.example`) and `RELAYER_KEYPAIR_PATH` are required; new optional, local-only `UPGRADE_AUTHORITY_KEYPAIR_PATH` (never on Render).
+
+**Tests:** client unit tests (program ID, every instruction present, Anchor loads and builds a typed program, u64 seed encoding, distinct off-curve PDAs, lifecycle vectors identical to the Rust tests, key-order-independent rules hash with a known SHA-256 vector) and env-checker tests for the Phase 9 rules. Deploy and the seed script run on devnet from your machine (they need your keys).

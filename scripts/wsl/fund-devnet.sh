@@ -15,7 +15,7 @@ URL="${SOLANA_RPC_URL:-https://api.devnet.solana.com}"
 case "$URL" in *mainnet*) echo "Refusing to run against a mainnet URL." >&2; exit 1 ;; esac
 
 # name:target_SOL
-TARGETS=("upgrade-authority:5" "relayer:2" "verifier:0.5" "admin:0.5")
+TARGETS=("upgrade-authority:8" "relayer:2" "verifier:0.5" "admin:0.5")
 EXTRA_WALLET=""
 EXTRA_TARGET=2
 
