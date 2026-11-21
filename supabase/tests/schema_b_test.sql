@@ -192,7 +192,8 @@ begin
 end $$;
 reset role;
 
--- Anonymous visitors see nothing of the private group either.
+-- Anonymous visitors see nothing of the private group either (an anonymous request has no user id).
+select set_config('request.jwt.claim.sub', '', false);
 set role anon;
 do $$
 begin
