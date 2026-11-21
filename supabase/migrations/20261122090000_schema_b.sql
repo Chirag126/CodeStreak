@@ -234,7 +234,7 @@ create table public.voice_clips (
   kind public.voice_clip_kind not null,
   script text not null check (char_length(script) between 1 and 1500),
   voice_id text not null check (char_length(voice_id) between 1 and 64),
-  storage_path text not null unique check (storage_path ~ '^[A-Za-z0-9/_.-]{1,256}$'),
+  storage_path text not null unique check (storage_path ~ '^[A-Za-z0-9/_.-]{1,255}$'),
   duration_ms integer check (duration_ms > 0),
   created_at timestamptz not null default now(),
   expires_at timestamptz,
