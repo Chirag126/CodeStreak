@@ -62,7 +62,16 @@ jobs:
         run: anchor build
 
       - name: Program artifacts
-        run: ls -la target/deploy target/idl
+        run: ls -la target/deploy target/idl target/types
+
+      # The IDL and its TypeScript type, for the typed client in packages/shared.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: program-idl
+          path: |
+            target/idl/codestreak.json
+            target/types/codestreak.ts
+          if-no-files-found: error
 
       # Unit tests (validation, lifecycle) + LiteSVM integration tests against the built .so.
       - name: Program tests
