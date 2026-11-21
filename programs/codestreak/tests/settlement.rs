@@ -335,7 +335,7 @@ fn early_settle_double_finalize_and_double_claim_fail() {
     expect_anchor_error(send(&mut env.svm, settle_ix(&s.challenge), &[&env.relayer]), "AlreadySettled");
     expect_anchor_error(send(&mut env.svm, finalize_ix(&s.challenge, &alice), &[&env.relayer]), "AlreadySettled");
     let ix = verify_ix(&env.verifier.pubkey(), &s.challenge, &alice, 0, Verified);
-    expect_anchor_error(send(&mut env.svm, ix, &[&env.verifier]), "VerificationClosed");
+    expect_anchor_error(send(&mut env.svm, ix, &[&env.verifier]), "AlreadyFinalized");
     expect_anchor_error(send(&mut env.svm, cancel_ix(&env.creator.pubkey(), &s.challenge), &[&env.creator]), "AlreadySettled");
 
     // Payout can't be redirected to someone else's account.
