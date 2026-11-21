@@ -93,3 +93,12 @@ test('dotenv parsing handles quotes, comments and export', () => {
   const env = parseDotenv('# c\nA=1\nexport B="two words"\nC=three # note\nD=\n');
   assert.deepEqual(env, { A: '1', B: 'two words', C: 'three', D: '' });
 });
+
+test('Phase 9: program ID and relayer keypair are required; the upgrade-authority path is optional', () => {
+  const { rows } = validateEnv(validPhase1(), 9);
+  assert.deepEqual(statusOf(rows, 'NEXT_PUBLIC_CODESTREAK_PROGRAM_ID'), ['MISSING']);
+  assert.deepEqual(statusOf(rows, 'RELAYER_KEYPAIR_PATH'), ['MISSING']);
+  assert.deepEqual(statusOf(rows, 'UPGRADE_AUTHORITY_KEYPAIR_PATH'), ['LATER']);
+  const env = { ...validPhase1(), UPGRADE_AUTHORITY_KEYPAIR_PATH: '/definitely/not/here.json' };
+  assert.deepEqual(statusOf(validateEnv(env, 9).rows, 'UPGRADE_AUTHORITY_KEYPAIR_PATH'), ['INVALID']);
+});

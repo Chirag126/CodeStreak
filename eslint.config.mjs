@@ -14,6 +14,8 @@ export default defineConfig([
     'spikes/**',
     'scripts/**',
     'programs/**',
+    // Generated from `anchor build` by scripts/sync-idl.mjs.
+    'packages/shared/src/program/idl/**',
   ]),
   {
     files: ['**/*.ts'],

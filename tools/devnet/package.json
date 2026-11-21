@@ -1,0 +1,21 @@
+{
+  "name": "@codestreak/devnet-tools",
+  "version": "0.1.0",
+  "private": true,
+  "description": "One-off devnet scripts: initialize the program config and seed a labeled demo challenge.",
+  "type": "module",
+  "scripts": {
+    "init-config": "tsx src/init-config.ts",
+    "seed-demo": "tsx src/seed-demo.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@codestreak/shared": "workspace:*",
+    "@solana/web3.js": "^1.98.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.2"
+  }
+}
