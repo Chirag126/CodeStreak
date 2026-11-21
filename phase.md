@@ -370,4 +370,6 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 
 **Tests:** route guard matrix (signed out / no username / finished × protected / public / auth pages, `next` preserved, open-redirect attempts), username rules (pattern, normalization, reserved names) and the "taken" mapping of the database's unique violation. The database itself rejects duplicate usernames (Phase 10 test).
 
-**Setup needed in Supabase (dashboard):** Authentication → Emails → in the **Magic Link** and **Confirm signup** templates, show the code `{{ .Token }}` (by default they only contain a link).
+**Follow-up (email link):** on Supabase's free plan, email templates can't be edited without custom SMTP, and the default emails contain a link, not a code. Added `/auth/callback`, which completes sign-in from that link (`?code=` PKCE, or `?token_hash=&type=` for custom templates) and continues to the username step or the requested page; sign-in passes `emailRedirectTo` (APP_URL locally and on Render). Code entry still works once SMTP with a `{{ .Token }}` template is set up.
+
+**Setup in Supabase:** Authentication → URL Configuration → Redirect URLs: add `http://localhost:3000/**` (and the Render URL in the deploy phase).

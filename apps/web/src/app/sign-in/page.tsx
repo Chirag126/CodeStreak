@@ -5,17 +5,17 @@ import { SignInForm } from './sign-in-form';
 
 export const metadata: Metadata = { title: 'Sign in' };
 
-export default async function SignInPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
-  const { next } = await searchParams;
+export default async function SignInPage({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
+  const { next, error } = await searchParams;
   return (
     <div className="mx-auto flex max-w-md flex-col px-4 py-16 sm:px-6">
       <Card>
         <CardHeader>
           <CardTitle>Sign in to CodeStreak</CardTitle>
-          <CardDescription>We&apos;ll email you a one-time code.</CardDescription>
+          <CardDescription>We&apos;ll email you a one-time sign-in link.</CardDescription>
         </CardHeader>
         <CardContent>
-          <SignInForm next={safeNext(next)} />
+          <SignInForm next={safeNext(next)} linkError={error === 'link'} />
         </CardContent>
       </Card>
     </div>

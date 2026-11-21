@@ -1,5 +1,6 @@
 'use server';
 
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { HOME_AFTER_SIGN_IN, safeNext, USERNAME_PATH } from '@/lib/auth/routes';
@@ -18,14 +19,28 @@ function friendly(message: string): string {
   return 'Something went wrong. Please try again.';
 }
 
-/** Step 1: email a one-time code (creates the account on first sign-in). */
+/** Absolute URL of the email link's landing route (APP_URL on Render; the request origin locally). */
+async function callbackUrl(next: string): Promise<string> {
+  const origin = process.env.APP_URL?.trim() || (await headers()).get('origin') || 'http://localhost:3000';
+  return `${origin.replace(/\/$/, '')}/auth/callback?next=${encodeURIComponent(next)}`;
+}
+
+/** Step 1: email a sign-in link and code (creates the account on first sign-in). */
 export async function requestCode(_prev: SignInState, form: FormData): Promise<SignInState> {
   const parsed = emailSchema.safeParse(String(form.get('email') ?? '').trim().toLowerCase());
   if (!parsed.success) return { step: 'email', error: parsed.error.issues[0]?.message, email: String(form.get('email') ?? '') };
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signInWithOtp({ email: parsed.data, options: { shouldCreateUser: true } });
+  const next = safeNext(String(form.get('next') ?? ''));
+  const { error } = await supabase.auth.signInWithOtp({
+    email: parsed.data,
+    options: { shouldCreateUser: true, emailRedirectTo: await callbackUrl(next) },
+  });
   if (error) return { step: 'email', error: friendly(error.message), email: parsed.data };
-  return { step: 'code', email: parsed.data, notice: `We sent a code to ${parsed.data}.` };
+  return {
+    step: 'code',
+    email: parsed.data,
+    notice: `Check ${parsed.data}: open the link in this browser, or enter the code if the email shows one.`,
+  };
 }
 
 /** Step 2: verify the code, then continue to the username step (new users) or where they were going. */
