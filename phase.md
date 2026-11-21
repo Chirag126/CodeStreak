@@ -327,3 +327,28 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - **Applied to the Supabase project** (`qyajonqjjtmlkdxvhloe`) as migration `schema_a`.
 
 **Tests:** 30+ rejected statements (floats as numbers and as text, negatives, zero amounts, u64 overflow, every duplicate above, bad addresses, inconsistent rules, writing `is_demo`) plus RLS checks (anon vs member vs outsider, own-profile edits only, no direct challenge inserts, public ID immutable) and positive checks (profile + public ID per sign-up, full u64 stored exactly, timestamptz).
+
+---
+
+## Phase 11: Schema B and RLS (M)
+
+**Goal:** the verification, money-history and social tables, every one behind RLS, with Supabase's advisors clean.
+
+**Added** (`supabase/migrations/20261122090000_schema_b.sql`)
+- **Tables:**
+  - `verification_runs`: each worker pass per challenge-day;
+  - `evidence`: every commit or accepted submission considered, and why it counted or not. A commit or submission is considered once; the same diff re-pushed under a new SHA never counts twice;
+  - `day_results`: mirror of the on-chain result with the program's one-way rules enforced by a trigger (Verified is final; Failed/Indeterminate only upgrade to Verified; member and day can't change);
+  - `receipts`: every confirmed on-chain money movement (join, sponsor, Shield, reward, refunds), integer amounts, one per transaction;
+  - `disputes`: one open dispute per member-day, a real reason (10+ chars), a resolution required to accept/reject;
+  - `audit_log`: append-only (update, delete and truncate blocked);
+  - `voice_clips` (ElevenLabs coach), `badge_types` and `badges` (one award per user, badge and challenge; soulbound mint address once minted).
+- **Leaderboard views** `challenge_standings` and `leaderboard` with `security_invoker`, so the caller's RLS applies and private groups never leak through a view.
+- **RLS on every table**, one SELECT policy each: challenge data for public challenges or members/creator/invitees; receipts, voice clips and audit entries only your own; badges public. All writes go through the server.
+- **Advisor fixes for Phase 10:** the visibility helpers moved to a `private` schema the API doesn't expose (no more callable SECURITY DEFINER functions), function search paths pinned, API execute revoked on Supabase's `rls_auto_enable`, indexes on the two unindexed foreign keys.
+- **Applied to Supabase** as migration `schema_b`. **Advisors: 0 security findings; performance shows only INFO "unused index"** notes, expected while the database is empty.
+
+**Tests** (`supabase/tests/schema_b_test.sql`, CI `database` job):
+- structure: RLS on every table, invoker views, no SECURITY DEFINER function in `public` executable by `anon`;
+- one-way results, duplicate evidence/receipts/disputes/badges, fractions and negatives, append-only audit log;
+- **two-user RLS:** a non-member can't read the private group through challenges, memberships, runs, evidence, results, disputes or the standings view, and can't write results or disputes; a member sees all of it; anonymous visitors see nothing private; the public challenge and leaderboard stay readable.
