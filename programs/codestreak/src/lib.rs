@@ -1,7 +1,7 @@
 //! CodeStreak: escrow, verification and settlement for coding-streak challenges (Solana devnet).
 //!
 //! Implemented: global config, challenge pools with a program-owned token vault (Phase 5),
-//! joining and sponsoring (Phase 6). Later phases add verification records, Shields,
+//! joining and sponsoring (Phase 6), verification records and Shields (Phase 7). Later phases add
 //! settlement and pull-based claims.
 use anchor_lang::prelude::*;
 
@@ -9,10 +9,12 @@ pub mod constants;
 pub mod errors;
 pub mod events;
 pub mod instructions;
+pub mod rules;
 pub mod state;
 pub mod validation;
 
 use instructions::*;
+pub use state::DayResult;
 pub use validation::InitializePoolParams;
 
 declare_id!("A4ohMziwegRbnV2DFHKW1YkNoVNeeiWuCJS5MjWeJT7J");
@@ -49,5 +51,15 @@ pub mod codestreak {
     /// Adds `amount` to the reward pool and updates the sponsor's on-chain receipt.
     pub fn sponsor_pool(ctx: Context<SponsorPool>, amount: u64) -> Result<()> {
         sponsor_pool_handler(ctx, amount)
+    }
+
+    /// Verifier records one participant-day result. One-way: only upgrades to Verified after a first result.
+    pub fn record_verification(ctx: Context<RecordVerification>, day: u16, result: DayResult, evidence_hash: [u8; 32]) -> Result<()> {
+        record_verification_handler(ctx, day, result, evidence_hash)
+    }
+
+    /// Participant pays the Shield price to protect `day` (until the grace period after it ends).
+    pub fn activate_shield(ctx: Context<ActivateShield>, day: u16) -> Result<()> {
+        activate_shield_handler(ctx, day)
     }
 }
