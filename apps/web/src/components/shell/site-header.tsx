@@ -11,6 +11,7 @@ import { Dialog, DialogDescription, DialogTitle, DialogTrigger, SheetContent } f
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { springs } from '@/lib/motion';
 import { cn } from '@/lib/utils';
+import { AuthNav } from '@/components/auth/auth-nav';
 import { Logo } from './logo';
 import { NAV_ITEMS } from './nav-config';
 
@@ -60,6 +61,8 @@ export function SiteHeader() {
             </TooltipTrigger>
             <TooltipContent>Solana devnet: test tokens with no real value.</TooltipContent>
           </Tooltip>
+
+          <AuthNav />
 
           <Dialog open={menuOpen} onOpenChange={setMenuOpen}>
             <DialogTrigger asChild>

@@ -4,3 +4,4 @@ export * from './constants.js';
 export * from './money.js';
 export * from './time.js';
 export * from './env.js';
+export * from './username.js';
