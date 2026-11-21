@@ -332,6 +332,7 @@ mod tests {
     #[test]
     fn cancel_rules() {
         let mut c = challenge(); // join deadline 900, start 1_000, min 2
+        c.participant_count = 2; // minimum met
         assert!(check_cancel(&c, true, 999).is_ok(), "creator before start");
         assert_eq!(err(check_cancel(&c, true, 1_000)), CodeStreakError::CannotCancel as u32);
         assert_eq!(err(check_cancel(&c, false, 500)), CodeStreakError::CannotCancel as u32);
