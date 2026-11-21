@@ -76,8 +76,8 @@ jobs:
       # Same files as base64 in the log, so they can be read without artifact download access.
       - name: IDL (base64)
         run: |
-          echo "IDL_JSON_B64_BEGIN"; base64 -w0 target/idl/codestreak.json; echo; echo "IDL_JSON_B64_END"
-          echo "IDL_TS_B64_BEGIN"; base64 -w0 target/types/codestreak.ts; echo; echo "IDL_TS_B64_END"
+          echo "IDL_JSON_B64_BEGIN"; base64 -w 120 target/idl/codestreak.json; echo; echo "IDL_JSON_B64_END"
+          echo "IDL_TS_B64_BEGIN"; base64 -w 120 target/types/codestreak.ts; echo; echo "IDL_TS_B64_END"
 
       # Unit tests (validation, lifecycle) + LiteSVM integration tests against the built .so.
       - name: Program tests
