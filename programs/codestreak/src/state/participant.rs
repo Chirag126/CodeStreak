@@ -30,4 +30,57 @@ pub struct Participant {
     pub status: ParticipantStatus,
     pub finalized: bool,
     pub claimed: bool,
+    /// Days whose evidence could not be determined (e.g. provider outage). Appended in Phase 7.
+    pub indeterminate_days: u64,
+}
+
+/// What the verifier recorded for one participant-day.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DayResult {
+    Verified,
+    Failed,
+    /// Evidence unavailable (provider outage, rate limit). Never counts as a failure: a challenge
+    /// with an indeterminate day and no failures is voided for that participant (stake refunded).
+    Indeterminate,
+}
+
+impl Participant {
+    fn bit(day: u16) -> u64 {
+        1u64 << day
+    }
+
+    /// Recorded result for `day` (< 64), if any.
+    pub fn day_result(&self, day: u16) -> Option<DayResult> {
+        let b = Self::bit(day);
+        if self.verified_days & b != 0 {
+            Some(DayResult::Verified)
+        } else if self.failed_days & b != 0 {
+            Some(DayResult::Failed)
+        } else if self.indeterminate_days & b != 0 {
+            Some(DayResult::Indeterminate)
+        } else {
+            None
+        }
+    }
+
+    /// Stores `result` for `day`, clearing any previous result so exactly one bit is set.
+    pub fn set_day_result(&mut self, day: u16, result: DayResult) {
+        let b = Self::bit(day);
+        self.verified_days &= !b;
+        self.failed_days &= !b;
+        self.indeterminate_days &= !b;
+        match result {
+            DayResult::Verified => self.verified_days |= b,
+            DayResult::Failed => self.failed_days |= b,
+            DayResult::Indeterminate => self.indeterminate_days |= b,
+        }
+    }
+
+    pub fn is_shielded(&self, day: u16) -> bool {
+        self.shielded_days & Self::bit(day) != 0
+    }
+
+    pub fn set_shielded(&mut self, day: u16) {
+        self.shielded_days |= Self::bit(day);
+    }
 }

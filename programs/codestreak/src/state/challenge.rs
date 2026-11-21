@@ -101,6 +101,23 @@ impl Challenge {
         self.verify_end_ts()?.checked_add(i64::from(self.dispute_window_secs))
     }
 
+    /// Start of challenge day `day` (0-based). None if out of range.
+    pub fn day_start_ts(&self, day: u16) -> Option<i64> {
+        if day >= self.num_days {
+            return None;
+        }
+        self.start_ts.checked_add(i64::from(day).checked_mul(i64::from(self.day_length_secs))?)
+    }
+
+    /// End (exclusive) of challenge day `day`.
+    pub fn day_end_ts(&self, day: u16) -> Option<i64> {
+        self.day_start_ts(day)?.checked_add(i64::from(self.day_length_secs))
+    }
+
+    pub fn shields_enabled(&self) -> bool {
+        self.max_shields_per_participant > 0 && self.shield_price > 0
+    }
+
     pub fn is_private(&self) -> bool {
         self.join_authority.is_some()
     }

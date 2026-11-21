@@ -52,4 +52,33 @@ pub enum CodeStreakError {
     SponsorshipClosed,
     #[msg("Vault did not receive the exact amount (transfer fees are not supported)")]
     TransferAmountMismatch,
+    // ---- Phase 7: verification and Shields ----
+    #[msg("Only this challenge's verifier can record results")]
+    NotVerifier,
+    #[msg("Day is outside this challenge")]
+    InvalidDay,
+    #[msg("This day has not ended yet")]
+    DayNotOver,
+    #[msg("The window for recording this result has closed")]
+    VerificationClosed,
+    #[msg("A verified day is final and cannot be changed")]
+    VerifiedIsFinal,
+    #[msg("Results can only be upgraded to Verified")]
+    InvalidTransition,
+    #[msg("Participant does not belong to this challenge")]
+    ParticipantMismatch,
+    #[msg("Participant is already finalized")]
+    AlreadyFinalized,
+    #[msg("Shields are disabled for this challenge")]
+    ShieldsDisabled,
+    #[msg("Shield limit reached for this challenge")]
+    ShieldLimitReached,
+    #[msg("This day has not started yet")]
+    DayNotStarted,
+    #[msg("The Shield grace period for this day is over")]
+    ShieldWindowClosed,
+    #[msg("This day is already shielded")]
+    DayAlreadyShielded,
+    #[msg("This day is already verified: no Shield needed")]
+    DayAlreadyVerified,
 }

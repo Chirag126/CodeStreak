@@ -1,5 +1,7 @@
 use anchor_lang::prelude::*;
 
+use crate::state::DayResult;
+
 #[event]
 pub struct ConfigInitialized {
     pub admin: Pubkey,
@@ -49,4 +51,29 @@ pub struct PoolCreated {
     pub day_length_secs: u32,
     pub is_private: bool,
     pub is_demo: bool,
+}
+
+#[event]
+pub struct DayRecorded {
+    pub challenge: Pubkey,
+    pub participant: Pubkey,
+    pub user: Pubkey,
+    pub day: u16,
+    pub result: DayResult,
+    pub previous: Option<DayResult>,
+    /// True for Failed/Indeterminate -> Verified.
+    pub upgraded: bool,
+    /// SHA-256 of the off-chain evidence (commit SHAs, submission IDs) kept in Supabase.
+    pub evidence_hash: [u8; 32],
+}
+
+#[event]
+pub struct ShieldActivated {
+    pub challenge: Pubkey,
+    pub participant: Pubkey,
+    pub user: Pubkey,
+    pub day: u16,
+    pub price: u64,
+    pub shields_used: u8,
+    pub total_shield: u64,
 }

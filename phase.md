@@ -206,3 +206,41 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - pool full fails;
 - sponsor receipt accumulates across contributions (also while running); separate receipt per sponsor; sponsors are not participants;
 - zero sponsorship, sponsoring after the end, and private sponsoring without co-sign all fail.
+
+---
+
+## Phase 7: Program: verification and Shield (M)
+
+**Goal:** daily results and Streak Shields are recorded on-chain under strict, one-way rules, so the verifier can help users but never take a streak away.
+
+**Added** (`programs/codestreak`)
+- **`record_verification(day, result, evidence_hash)`:**
+  - only the challenge's **verifier** can sign (the worker's key, copied into each challenge at creation); it pays its own fee and never touches funds;
+  - results: **Verified**, **Failed**, or **Indeterminate** (evidence unavailable, e.g. GitHub/LeetCode outage; never counted as a failure);
+  - stored as day bitmaps on the Participant (`verified_days`, `failed_days`, new `indeterminate_days`), exactly one bit per day;
+  - **one-way rules:** a first result can be anything; Failed or Indeterminate can only be **upgraded to Verified**; a Verified day is final; every other change is rejected;
+  - **timing:** only after the day has ended; first results until the verification window closes; upgrades also during the **dispute window**, and nothing after it closes (settlement can rely on final data);
+  - the participant account must belong to the challenge (seeds + `has_one`);
+  - emits `DayRecorded` with the previous result, whether it was an upgrade, and a SHA-256 `evidence_hash` of the off-chain evidence (commit SHAs, submission IDs) for auditing.
+- **`activate_shield(day)`:**
+  - the participant signs and pays `shield_price` into the vault (relayer pays the fee); counted in `total_shield`, which goes to the reward pool in Phase 8;
+  - allowed from the start of that day until `shield_grace_secs` after it ends, so a day already recorded as Failed can still be rescued within the grace period;
+  - rejected if Shields are disabled for the challenge, the per-participant limit is reached, the day is already shielded, or the day is already Verified;
+  - only for your own Participant account, paid from your own token account (same vault/mint/exact-amount checks as joining);
+  - emits `ShieldActivated`.
+- **`rules.rs`:** the transition, timing and Shield rules as pure functions with host unit tests.
+- **New errors** (appended): NotVerifier, InvalidDay, DayNotOver, VerificationClosed, VerifiedIsFinal, InvalidTransition, ParticipantMismatch, AlreadyFinalized, ShieldsDisabled, ShieldLimitReached, DayNotStarted, ShieldWindowClosed, DayAlreadyShielded, DayAlreadyVerified.
+- **Tests:** shared LiteSVM helpers moved to `tests/common/mod.rs` (used by the Phase 6 and Phase 7 test files).
+
+**Tests:** 4 new unit tests and 11 new LiteSVM tests:
+- results stored correctly per day and per participant; the event is emitted; no funds move;
+- **non-verifier fails** (relayer, creator, the participant themself, verifier listed without signing);
+- **Verified → Failed fails** (and Verified → anything); Failed ↔ Indeterminate and repeats fail; upgrades to Verified work;
+- results only after the day ends and only for days in the challenge;
+- first results close with the verify window; **upgrades are allowed in the dispute window and fail after it**;
+- a participant account from another challenge is rejected;
+- Shield paid into the vault and stored (rescues a Failed day within grace); vault = stakes + sponsors + Shields;
+- **Shield after grace fails**, before the day starts fails;
+- **Shield over the limit fails**, same day twice fails;
+- Shield on a Verified day or with Shields disabled fails;
+- non-participants, missing signatures and someone else's token account all fail.
