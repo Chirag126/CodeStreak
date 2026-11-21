@@ -1,5 +1,6 @@
 //! Shared LiteSVM helpers for the program's integration tests.
-#![allow(dead_code)]
+// Each test binary uses a different subset of these helpers.
+#![allow(dead_code, unused_imports)]
 
 pub use anchor_lang::prelude::{Clock, Pubkey};
 pub use anchor_lang::solana_program::instruction::Instruction;

@@ -211,11 +211,10 @@ fn shield_over_limit_fails() {
 fn shield_on_a_verified_day_or_disabled_pool_fails() {
     let mut env = setup();
     let (challenge, alice, ata) = started(&mut env, 11, 1);
+    let (no_shields, bob, bob_ata) = started(&mut env, 12, 0);
     set_time(&mut env.svm, day_end(0));
     record(&mut env, &challenge, &alice.pubkey(), 0, Verified).unwrap();
     expect_anchor_error(shield(&mut env, &challenge, &alice, &ata, 0), "DayAlreadyVerified");
-
-    let (no_shields, bob, bob_ata) = started(&mut env, 12, 0);
     expect_anchor_error(shield(&mut env, &no_shields, &bob, &bob_ata, 0), "ShieldsDisabled");
 }
 
