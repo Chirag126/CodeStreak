@@ -10,24 +10,23 @@ import { claimUsername, isUsernameAvailable, type UsernameState } from './action
 export function UsernameForm({ next }: { next: string }) {
   const [state, submit, saving] = useActionState(claimUsername, {} as UsernameState);
   const [value, setValue] = useState(state.value ?? '');
-  const [hint, setHint] = useState<{ ok: boolean; message: string } | null>(null);
+  const [checked, setChecked] = useState<{ name: string; ok: boolean; message: string } | null>(null);
 
   // Debounced availability check (best effort; saving re-checks in the database).
+  const name = normalizeUsername(value);
   useEffect(() => {
-    const name = normalizeUsername(value);
-    if (name.length < 3) {
-      setHint(null);
-      return;
-    }
+    if (name.length < 3) return;
     let cancelled = false;
     const t = setTimeout(() => {
-      void isUsernameAvailable(name).then((r) => !cancelled && setHint(r));
+      void isUsernameAvailable(name).then((r) => !cancelled && setChecked({ name, ...r }));
     }, 350);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [value]);
+  }, [name]);
+  // Only show a result that belongs to what is currently typed.
+  const hint = checked && checked.name === name ? checked : null;
 
   const error = state.error;
   return (
