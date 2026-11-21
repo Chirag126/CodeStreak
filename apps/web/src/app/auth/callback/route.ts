@@ -1,0 +1,38 @@
+import type { EmailOtpType } from '@supabase/supabase-js';
+import { NextResponse, type NextRequest } from 'next/server';
+import { safeNext, SIGN_IN_PATH, USERNAME_PATH } from '@/lib/auth/routes';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+
+const OTP_TYPES: ReadonlySet<string> = new Set(['email', 'magiclink', 'signup']);
+
+/**
+ * Where the sign-in email's link lands. Supabase's default templates send a link (not a code) on
+ * the free plan, so this completes sign-in from it:
+ *   - `?code=`                (PKCE, default {{ .ConfirmationURL }} templates)
+ *   - `?token_hash=&type=`    (custom templates, if SMTP is configured later)
+ * then continues to the username step or the page the user was heading to.
+ */
+export async function GET(request: NextRequest) {
+  const url = request.nextUrl;
+  const next = safeNext(url.searchParams.get('next'));
+  const code = url.searchParams.get('code');
+  const tokenHash = url.searchParams.get('token_hash');
+  const type = url.searchParams.get('type');
+
+  const supabase = await createSupabaseServerClient();
+  let error: unknown = 'missing';
+  if (code) {
+    ({ error } = await supabase.auth.exchangeCodeForSession(code));
+  } else if (tokenHash && type && OTP_TYPES.has(type)) {
+    ({ error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: type as EmailOtpType }));
+  }
+  if (error) return NextResponse.redirect(new URL(`${SIGN_IN_PATH}?error=link`, url.origin));
+
+  const { data } = await supabase.auth.getClaims();
+  const userId = data?.claims?.sub;
+  const { data: profile } = userId
+    ? await supabase.from('profiles').select('username').eq('id', userId).maybeSingle()
+    : { data: null };
+  const target = profile?.username ? next : `${USERNAME_PATH}?next=${encodeURIComponent(next)}`;
+  return NextResponse.redirect(new URL(target, url.origin));
+}

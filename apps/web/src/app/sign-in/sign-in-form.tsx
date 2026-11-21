@@ -8,18 +8,23 @@ import { Label } from '@/components/ui/label';
 import { variants } from '@/lib/motion';
 import { requestCode, verifyCode, type SignInState } from './actions';
 
-export function SignInForm({ next }: { next: string }) {
+export function SignInForm({ next, linkError }: { next: string; linkError?: boolean }) {
   const [emailState, sendCode, sending] = useActionState(requestCode, { step: 'email' } as SignInState);
   const [codeState, checkCode, checking] = useActionState(verifyCode, { step: 'email' } as SignInState);
 
   // The code form appears once a code was sent; a failed verification keeps it open with its error.
   const codeEmail = codeState.step === 'code' ? codeState.email : emailState.step === 'code' ? emailState.email : null;
-  const error = codeEmail ? (codeState.step === 'code' ? codeState.error : undefined) : emailState.error;
+  const error = codeEmail
+    ? codeState.step === 'code'
+      ? codeState.error
+      : undefined
+    : (emailState.error ?? (linkError ? 'That sign-in link is invalid or has expired. Request a new one.' : undefined));
 
   return (
     <AnimatePresence mode="wait" initial={false}>
       {!codeEmail ? (
         <motion.form key="email" action={sendCode} className="space-y-4" variants={variants.fadeUp} initial="hidden" animate="show" exit="hidden">
+          <input type="hidden" name="next" value={next} />
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -39,7 +44,7 @@ export function SignInForm({ next }: { next: string }) {
             </p>
           )}
           <Button type="submit" className="w-full" loading={sending}>
-            Email me a code
+            Email me a sign-in link
           </Button>
           <p className="text-xs text-muted-foreground">No password. New here? The code creates your account.</p>
         </motion.form>
@@ -48,7 +53,7 @@ export function SignInForm({ next }: { next: string }) {
           <input type="hidden" name="email" value={codeEmail} />
           <input type="hidden" name="next" value={next} />
           <p className="text-sm text-muted-foreground" role="status">
-            {emailState.step === 'code' ? emailState.notice : `We sent a code to ${codeEmail}.`}
+            {emailState.step === 'code' ? emailState.notice : `Check ${codeEmail} for your sign-in email.`}
           </p>
           <div className="space-y-2">
             <Label htmlFor="code">Code</Label>
