@@ -310,3 +310,20 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - Config initialized (admin, default verifier, devnet USDC + wSOL).
 - Demo challenge `Fm4RMrKKkJsPP4vDeCPkYgE4jiGQjzujStgz17Yhrhv2` created by the seed script and read back: DEMO, 3 × 300 s days, 1 USDC buy-in, verifier `4TYd…u7JT`, rules hash on-chain, phase `joining`, vault `4xaPC1yQVGcKvDUM1wpXr1te5RMi8sN8KCPghhpsnTwn` at 0. [Explorer](https://explorer.solana.com/address/Fm4RMrKKkJsPP4vDeCPkYgE4jiGQjzujStgz17Yhrhv2?cluster=devnet)
 - Note: the npm warning `Unknown project config "node-linker"` during the IDL upload comes from our `.npmrc` (a pnpm setting) being read by `npx`; it is harmless.
+
+---
+
+## Phase 10: Schema A (M)
+
+**Goal:** the app's core tables in Supabase, with the database itself refusing bad money data.
+
+**Added** (`supabase/migrations/20261121180000_schema_a.sql`)
+- **Tables:** `profiles` (auto-created for every sign-up, with a personal public ID like `CS-7KQ2M9XA` for private-group invites), `wallets` (one wallet belongs to one profile; at most one primary), `linked_accounts` (one GitHub and one LeetCode per profile; a provider account can't be shared), `challenges` (rules identical to the program's parameters plus the on-chain mirror: address, ID, vault, totals), `memberships`, `invitations` (by public ID or by shareable link, never both), `sponsorships`, `shields`.
+- **Money rules in the database:** amounts use a `u64` domain: integer base units, never negative, at most 2^64 − 1. Fractions are rejected (a plain `bigint` would silently round 1.5 to 2). Positive where it must be (buy-in, deposits, sponsorships, Shield prices).
+- **Duplicates rejected:** joining twice (by profile or by wallet), counting the same transaction twice (join, sponsorship, Shield, challenge creation), a second Shield for the same day, a wallet or provider account on two profiles, duplicate public IDs/usernames/on-chain challenges, two pending invites to one person.
+- **Other checks:** valid Solana addresses and signatures, join deadline ≤ start, Shield settings consistent, day length 60 s…1 day, 1–60 days; `is_demo` is derived (day < 24 h), not writable. All timestamps are `timestamptz` (UTC).
+- **Row level security on every table:** browsers can read public challenges and their members; private challenges only if they created, joined or were invited; their own wallets/linked accounts/invitations. Users can edit only presentation fields of their own profile (never `id` or `public_id`). Every other write happens on the server (service role) after checking the chain.
+- **CI job** (`database`): applies the migrations to a fresh Postgres 17 (with small stand-ins for Supabase's `auth` schema and API roles) and runs `supabase/tests/schema_a_test.sql`.
+- **Applied to the Supabase project** (`qyajonqjjtmlkdxvhloe`) as migration `schema_a`.
+
+**Tests:** 30+ rejected statements (floats as numbers and as text, negatives, zero amounts, u64 overflow, every duplicate above, bad addresses, inconsistent rules, writing `is_demo`) plus RLS checks (anon vs member vs outsider, own-profile edits only, no direct challenge inserts, public ID immutable) and positive checks (profile + public ID per sign-up, full u64 stored exactly, timestamptz).
