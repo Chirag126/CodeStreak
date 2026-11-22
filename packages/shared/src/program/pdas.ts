@@ -50,3 +50,11 @@ export function sponsorReceiptPda(challenge: PublicKey, sponsor: PublicKey, prog
 export function programDataAddress(programId = PROGRAM_ID): PublicKey {
   return find([programId.toBytes()], BPF_UPGRADEABLE_LOADER_ID);
 }
+
+export const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+
+/** The owner's associated token account for `mint` (same derivation as @solana/spl-token). */
+export function associatedTokenAddress(owner: PublicKey, mint: PublicKey, tokenProgram: PublicKey = TOKEN_PROGRAM_ID): PublicKey {
+  return find([owner.toBytes(), tokenProgram.toBytes(), mint.toBytes()], ASSOCIATED_TOKEN_PROGRAM_ID);
+}

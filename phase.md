@@ -415,3 +415,23 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - **`render.md`:** live URLs, build/start commands, health check paths, free-plan budget (750 instance-hours shared by the workspace; the worker sleeps between wakes), how the wake works, and the secrets still to add.
 
 **Tests:** worker server (401 without the secret on any method or job name, 405 only with it), wake job (writes the audit row with the service role, still wakes without Supabase, fails loudly if the write fails). Live checks after the secrets are set: public URL, a `pg_net` call without the secret gets 401, and `cron.job_run_details` + `audit_log` show the worker woke.
+
+---
+
+## Phase 15: Relayer and co-signer (M)
+
+**Goal:** users join with no SOL: CodeStreak's relayer pays the fees and rent, co-signs private joins after checking the invitation, and refuses to pay for anything else.
+
+**Added**
+- **Relayer policy** (`@codestreak/shared/relayer`, pure): a relayed transaction must have the relayer as fee payer; contain only compute-budget instructions (≤ 200,000 CU, ≤ 100,000 µlamports priority) and **exactly one** allowlisted CodeStreak instruction (join, sponsor, Shield, claims; never admin, verifier or settlement); no other program at all (no token or SOL transfers); the relayer only as fee payer, rent `payer` or `join_authority`; the user's slot filled by their linked wallet; and no signer other than the relayer and that wallet. Instructions are built straight from the IDL (account order, flags, optional-account placeholder, u64 args).
+- **Prepare → sign → submit** (`apps/web/src/lib/relayer/service.ts`):
+  - prepare: checks the challenge on-chain (joining open, not already joined), the buy-in balance, the relayer's SOL; for **private challenges** requires the challenge's join authority to be the relayer **and** an invitation in the database before co-signing; builds the transaction with a server-set compute budget, checks the policy, **simulates**, pre-signs, stores it;
+  - the wallet adds the user's signature (Wallet Standard `solana:signTransaction`);
+  - submit: accepts it only if the message is **byte-for-byte** what the relayer signed (SHA-256), still passes the policy, every signature verifies, the blockhash is still valid and a second **simulation** succeeds; then sends once, confirms, records it and writes the audit log.
+- **Idempotency keys:** one UUID per join attempt (`relayer_requests`, unique per user). A retry returns the same prepared transaction or the confirmed signature; a conditional `prepared → submitting` update means a transaction is sent at most once even with concurrent retries.
+- **Per-user rate limits:** at most 10 relayer requests per 10 minutes and 60 per day; sponsoring pauses if the relayer drops below 0.02 SOL.
+- **Challenge page** `/challenges/[address]`: reads the challenge from devnet (DEMO / private badges, phase, buy-in, dates, vault) with a **Join** button that runs the sponsored flow from the user's linked wallet.
+- `pnpm devnet:seed-demo --start-in-minutes=180` keeps joining open longer for testing; it prints the app page link.
+- Migration `relayer_requests` (RLS, users read only their own). `render.md`: `RELAYER_KEYPAIR_JSON` required on the web service.
+
+**Tests:** policy: sponsored join and private co-signed join accepted; **attacker token transfer added to the transaction rejected**; SOL drain from the relayer, non-relayed and duplicate program instructions, relayer in the user slot, a foreign co-signer, someone else as the user, another fee payer, and over-cap compute/priority all rejected; u64 argument encoding. **Rate limit: over-limit rejected** (per 10 minutes and per day). SQL: one idempotency key per user, single submission under concurrency, signature required to confirm, users can't write requests.

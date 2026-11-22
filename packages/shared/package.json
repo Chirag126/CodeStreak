@@ -20,6 +20,10 @@
     "./wallet": {
       "types": "./dist/wallet/index.d.ts",
       "default": "./dist/wallet/index.js"
+    },
+    "./relayer": {
+      "types": "./dist/relayer/index.d.ts",
+      "default": "./dist/relayer/index.js"
     }
   },
   "files": [
