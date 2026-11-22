@@ -45,6 +45,7 @@ describe('worker server', () => {
   });
 
   it('jobs require the secret', async () => {
+    expect((await post('/jobs/missing')).status).toBe(401); // job names aren't revealed without the secret
     expect((await post('/jobs/noop')).status).toBe(401);
     expect((await post('/jobs/noop', 'nope')).status).toBe(401);
   });
@@ -57,7 +58,8 @@ describe('worker server', () => {
 
   it('unknown job, wrong method, failing job', async () => {
     expect((await post('/jobs/missing', SECRET)).status).toBe(404);
-    expect((await fetch(`${base}/jobs/noop`)).status).toBe(405);
+    expect((await fetch(`${base}/jobs/noop`)).status).toBe(401); // no secret: 401 whatever the method
+    expect((await fetch(`${base}/jobs/noop`, { headers: { Authorization: `Bearer ${SECRET}` } })).status).toBe(405);
     const r = await post('/jobs/boom', SECRET);
     expect(r.status).toBe(500);
     expect(await r.json()).toMatchObject({ ok: false, error: 'kaput' });

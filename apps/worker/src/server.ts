@@ -44,14 +44,15 @@ export function createWorkerServer(options: WorkerServerOptions): http.Server {
 
     const match = JOB_PATH.exec(path);
     if (!match) return send(404, { error: 'not found' });
-    if (req.method !== 'POST') return send(405, { error: 'method not allowed' });
 
+    // The secret is checked first: without it, every request to /jobs/* gets 401 and learns nothing.
     const header = req.headers.authorization ?? '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : undefined;
     if (!secretMatches(token, options.jobSecret)) {
-      log(`rejected unauthorized call to ${path}`);
+      log(`rejected unauthorized ${req.method ?? ''} ${path}`);
       return send(401, { error: 'unauthorized' });
     }
+    if (req.method !== 'POST') return send(405, { error: 'method not allowed' });
 
     const name = match[1] ?? '';
     const job = options.jobs[name];
