@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rulesDocument, toPoolParams, validateChallengeForm, validatePoolParams, type ChallengeFormInput } from './challenge-form.js';
+import { rulesDocument, validateChallengeForm, validatePoolParams, type ChallengeFormInput } from './challenge-form.js';
 
 const NOW = Math.floor(Date.parse('2026-11-22T10:00:00Z') / 1000);
 
