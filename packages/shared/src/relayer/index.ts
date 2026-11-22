@@ -8,7 +8,7 @@ import { PROGRAM_ID } from '../program/pdas.js';
 export const COMPUTE_BUDGET_PROGRAM_ID = new PublicKey('ComputeBudget111111111111111111111111111111');
 
 /** Program instructions the relayer sponsors (user actions only; never admin, verifier or settlement). */
-export const RELAYED_INSTRUCTIONS = ['join_pool', 'sponsor_pool', 'activate_shield', 'claim_reward', 'claim_refund', 'claim_sponsor_refund'] as const;
+export const RELAYED_INSTRUCTIONS = ['initialize_pool', 'join_pool', 'sponsor_pool', 'activate_shield', 'claim_reward', 'claim_refund', 'claim_sponsor_refund'] as const;
 export type RelayedInstruction = (typeof RELAYED_INSTRUCTIONS)[number];
 
 /** Accounts the relayer itself may fill: rent payer and private-group co-signer. */

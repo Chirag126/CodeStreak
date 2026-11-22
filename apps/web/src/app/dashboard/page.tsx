@@ -18,8 +18,8 @@ export default async function DashboardPage() {
   if (!viewer) redirect(SIGN_IN_PATH);
   if (!viewer.username) redirect(USERNAME_PATH);
 
-  const sections: { title: string; body: string; href?: string }[] = [
-    { title: 'Your challenges', body: 'Active and past challenges will appear here.' },
+  const sections: { title: string; body: string; href?: string; cta?: string }[] = [
+    { title: 'Your challenges', body: 'Start a public challenge or a private group with friends.', href: '/challenges/new', cta: 'Create a challenge' },
     { title: 'Accounts', body: 'Link GitHub and LeetCode so your activity can be verified.' },
     { title: 'Wallet', body: 'Link Phantom or MetaMask (Solana) and check your devnet balances.', href: '/dashboard/wallet' },
   ];
@@ -63,7 +63,7 @@ export default async function DashboardPage() {
               <CardContent>
                 {s.href ? (
                   <Button asChild size="sm" variant="secondary">
-                    <Link href={s.href}>Open</Link>
+                    <Link href={s.href}>{s.cta ?? 'Open'}</Link>
                   </Button>
                 ) : (
                   <Badge variant="outline">Coming soon</Badge>
