@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createHash } from 'node:crypto';
-import { formatAmount, POOL_PARAM_MESSAGES, SOL_DECIMALS, USDC_DECIMALS, validatePoolParams, type PoolParams } from '@codestreak/shared';
+import { formatAmount, parseSponsorAmount, POOL_PARAM_MESSAGES, SOL_DECIMALS, USDC_DECIMALS, validatePoolParams, type PoolParams } from '@codestreak/shared';
 import {
   anchor,
   associatedTokenAddress,
@@ -12,6 +12,7 @@ import {
   createProgram,
   participantPda,
   PROGRAM_ID,
+  sponsorReceiptPda,
   TOKEN_PROGRAM_ID,
   vaultPda,
   type ChallengeAccount,
@@ -31,7 +32,7 @@ import {
 } from '@codestreak/shared/relayer';
 import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction, VersionedTransaction, type TransactionInstruction } from '@solana/web3.js';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-import { syncChallenge, syncJoin } from '@/lib/sync/chain';
+import { syncChallenge, syncJoin, syncSponsor } from '@/lib/sync/chain';
 import { relayerKeypair } from './keypair';
 
 /** Failures carry a plain-language message plus a stable code and headline for the UI. */
@@ -92,8 +93,27 @@ async function acceptInvitationOnJoin(profileId: string, challengeAddress: strin
     .eq('status', 'pending');
 }
 
-type RelayKind = 'join' | 'create';
-const KIND_INSTRUCTION: Record<RelayKind, RelayedInstruction> = { join: 'join_pool', create: 'initialize_pool' };
+type RelayKind = 'join' | 'create' | 'sponsor';
+const KIND_INSTRUCTION: Record<RelayKind, RelayedInstruction> = { join: 'join_pool', create: 'initialize_pool', sponsor: 'sponsor_pool' };
+
+export const hashSponsorToken = (token: string) => createHash('sha256').update(token, 'utf8').digest('hex');
+
+/**
+ * Who may sponsor a private group: people who can see it (creator, members, live invitees) or
+ * anyone holding its current sponsor link. Public challenges: anyone signed in.
+ */
+async function maySponsorPrivate(profileId: string, challengeAddress: string, sponsorToken: string | undefined): Promise<boolean> {
+  const admin = createSupabaseAdminClient();
+  const { data: c } = await admin.from('challenges').select('id, creator_id, sponsor_link_hash').eq('onchain_address', challengeAddress).maybeSingle();
+  if (!c) return false;
+  if (sponsorToken && c.sponsor_link_hash && hashSponsorToken(sponsorToken) === c.sponsor_link_hash) return true;
+  if (c.creator_id === profileId) return true;
+  const [{ count: member }, { count: invited }] = await Promise.all([
+    admin.from('memberships').select('id', { count: 'exact', head: true }).eq('challenge_id', c.id).eq('profile_id', profileId),
+    admin.from('invitations').select('id', { count: 'exact', head: true }).eq('challenge_id', c.id).eq('invitee_id', profileId).in('status', ['pending', 'accepted']),
+  ]);
+  return Boolean(member || invited);
+}
 
 /** Looks up an existing request for this idempotency key (retries) or applies the rate limit (new requests). */
 interface Prior {
@@ -289,6 +309,114 @@ export async function prepareJoin(input: {
   return prepareRelayed({ ...common, instructions, wrap: { account: userToken, maxLamports: buyIn } });
 }
 
+/**
+ * Sponsored sponsorship: the sponsor adds `amount` to the reward pool without joining; the relayer
+ * pays the fees and (first time) the SponsorReceipt rent. Private pools need the relayer's
+ * co-signature, given only to people who may see the group or hold its sponsor link.
+ */
+export async function prepareSponsor(input: {
+  profileId: string;
+  wallet: string;
+  challengeAddress: string;
+  idempotencyKey: string;
+  amount: string;
+  message: string | null;
+  sponsorToken?: string;
+}): Promise<RelayResult<{ transaction: string } | { signature: string }>> {
+  const prior = await existingOrRateLimit(input);
+  if (prior.done) return prior.done;
+
+  const connection = serverConnection();
+  const relayer = relayerKeypair();
+  const sponsor = new PublicKey(input.wallet);
+  const challengeKey = new PublicKey(input.challengeAddress);
+  let challenge: ChallengeAccount;
+  try {
+    challenge = await createProgram(connection).account.challenge.fetch(challengeKey);
+  } catch {
+    return { ok: false, error: 'Challenge not found on devnet.' };
+  }
+  const phase = challengePhase(challengeTimes(challenge), await chainNow(connection));
+  if (phase !== 'joining' && phase !== 'starting' && phase !== 'active') {
+    return { ok: false, error: 'Sponsorship closes when the challenge ends.', code: 'program.SponsorshipClosed', title: 'Sponsorship closed' };
+  }
+
+  const isSol = challenge.mint.equals(WSOL_MINT_KEY);
+  const token = isSol ? 'sol' : 'usdc';
+  const parsed = parseSponsorAmount(input.amount, token);
+  if (!parsed.ok) return { ok: false, error: parsed.error, code: 'sponsor.amount', title: 'Check the amount' };
+  const amount = parsed.amount;
+
+  let joinAuthority: PublicKey | null = null;
+  if (challenge.joinAuthority) {
+    if (!challenge.joinAuthority.equals(relayer.publicKey)) return { ok: false, error: 'This private challenge is not managed by CodeStreak.' };
+    if (!(await maySponsorPrivate(input.profileId, input.challengeAddress, input.sponsorToken))) {
+      return { ok: false, error: "This is a private group. Sponsor it through the group's sponsor link.", code: 'program.JoinAuthorityRequired', title: 'Sponsor link needed' };
+    }
+    joinAuthority = relayer.publicKey; // co-sign only after the check above
+  }
+
+  const sponsorToken = associatedTokenAddress(sponsor, challenge.mint, challenge.tokenProgram);
+  const receipt = sponsorReceiptPda(challengeKey, sponsor);
+  const sponsorIx = buildCodestreakInstruction('sponsor_pool', {
+    payer: relayer.publicKey,
+    sponsor,
+    join_authority: joinAuthority,
+    challenge: challengeKey,
+    receipt,
+    mint: challenge.mint,
+    sponsor_token: sponsorToken,
+    vault: vaultPda(challengeKey),
+    token_program: challenge.tokenProgram,
+    system_program: SystemProgram.programId,
+  }, { amount });
+  const common = {
+    ...input,
+    kind: 'sponsor' as const,
+    existingId: prior.existing?.id,
+    existingStatus: prior.existing?.status,
+    payload: { amount: amount.toString(), message: input.message, receipt: receipt.toBase58() },
+  };
+
+  if (!isSol) {
+    const balance = await connection.getTokenAccountBalance(sponsorToken).catch(() => null);
+    const have = balance ? BigInt(balance.value.amount) : 0n;
+    if (have < amount) {
+      return {
+        ok: false,
+        code: 'token.insufficient_funds',
+        title: 'Not enough USDC',
+        error: `You are sponsoring ${formatAmount(amount, USDC_DECIMALS)} USDC and your wallet has ${formatAmount(have, USDC_DECIMALS)}. Get devnet USDC from faucet.circle.com (Solana Devnet).`,
+      };
+    }
+    return prepareRelayed({ ...common, instructions: [sponsorIx] });
+  }
+
+  const existing = await connection.getAccountInfo(sponsorToken);
+  const plan = planSolWrap({
+    buyIn: amount,
+    accountExists: Boolean(existing),
+    wrappedBalance: existing ? BigInt((await connection.getTokenAccountBalance(sponsorToken)).value.amount) : 0n,
+    accountRent: existing ? 0n : BigInt(await connection.getMinimumBalanceForRentExemption(165)),
+    solBalance: BigInt(await connection.getBalance(sponsor)),
+  });
+  if (!plan.enough) {
+    return {
+      ok: false,
+      code: 'sol.insufficient',
+      title: 'Not enough SOL',
+      error: `You need ${formatAmount(plan.required, SOL_DECIMALS)} SOL (the ${formatAmount(amount, SOL_DECIMALS)} SOL sponsorship${plan.createAccount ? ' plus a small deposit you get back' : ''}). Get devnet SOL from faucet.solana.com.`,
+    };
+  }
+  const instructions = [
+    ...(plan.createAccount ? [createWrappedSolAccountInstruction(sponsor, sponsorToken)] : []),
+    ...(plan.toWrap > 0n ? wrapSolInstructions(sponsor, sponsorToken, plan.toWrap) : []),
+    sponsorIx,
+    ...(plan.createAccount ? [closeWrappedSolAccountInstruction(sponsor, sponsorToken)] : []),
+  ];
+  return prepareRelayed({ ...common, instructions, wrap: { account: sponsorToken, maxLamports: amount } });
+}
+
 /** Details stored with a create request and written to the challenges row once it confirms. */
 export interface ChallengeDetails {
   title: string;
@@ -440,10 +568,21 @@ export async function submitRelayed(input: { profileId: string; idempotencyKey: 
 
   // Mirror the result into the app tables. The chain is already final, so a sync failure is logged
   // and retried on the next sync, never reported as a failed join.
+  const sponsorPayload = row.payload as { amount?: string; message?: string | null; receipt?: string } | null;
   const mirror =
     kind === 'join'
       ? syncJoin(connection, { challengeAddress: row.challenge_address as string, wallet: row.wallet as string, profileId: input.profileId, signature })
-      : syncChallenge(connection, row.challenge_address as string, { ...(row.payload as ChallengeDetails), creatorId: input.profileId, createTx: signature });
+      : kind === 'sponsor'
+        ? syncSponsor(connection, {
+            challengeAddress: row.challenge_address as string,
+            wallet: row.wallet as string,
+            profileId: input.profileId,
+            signature,
+            amount: sponsorPayload?.amount ?? '0',
+            message: sponsorPayload?.message ?? null,
+            receipt: sponsorPayload?.receipt ?? null,
+          })
+        : syncChallenge(connection, row.challenge_address as string, { ...(row.payload as ChallengeDetails), creatorId: input.profileId, createTx: signature });
   await Promise.resolve(mirror).catch((e: unknown) => console.error(`[sync] ${kind} mirror failed:`, e instanceof Error ? e.message : e));
   if (kind === 'join') await acceptInvitationOnJoin(input.profileId, row.challenge_address as string);
 

@@ -14,6 +14,10 @@ import { createSupabaseServerClient, getViewer } from '@/lib/supabase/server';
 import { syncMembers } from '@/lib/sync/chain';
 import { GroupBoard } from '@/components/board/group-board';
 import { InvitePanel } from '@/components/groups/invite-panel';
+import { SponsorDialog } from '@/components/sponsor/sponsor-dialog';
+import { SponsorLeaderboard } from '@/components/sponsor/sponsor-leaderboard';
+import { SponsorLinkPanel } from '@/components/sponsor/sponsor-link-panel';
+import { listSponsors } from '@/lib/sponsor/load';
 import { loadBoard } from '@/lib/board/load';
 import { listGroupInvites } from '@/lib/groups/invites';
 import { JoinButton } from './join-button';
@@ -94,6 +98,14 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
   const invites = isCreator && row?.visibility === 'private' ? await listGroupInvites(viewer!.userId, row.id as string) : null;
   const short = Math.max(0, account.minParticipants - account.participantCount);
   const board = row ? await loadBoard(address) : null;
+  const sponsors = row ? await listSponsors(row.id as string) : [];
+  const sponsorOpen = phase === 'joining' || phase === 'starting' || phase === 'active';
+  let sponsorLinkActive = false;
+  if (isCreator && row?.visibility === 'private') {
+    const { data } = await supabase.from('challenges').select('sponsor_link_created_at').eq('id', row.id as string).maybeSingle();
+    sponsorLinkActive = Boolean(data?.sponsor_link_created_at);
+  }
+  const title = (row?.title as string | undefined) ?? `Challenge ${address.slice(0, 4)}…${address.slice(-4)}`;
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-12 sm:px-6">
@@ -196,6 +208,25 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
           </CardContent>
         </Card>
       </div>
+
+      <SponsorLeaderboard
+        sponsors={sponsors}
+        decimals={decimals}
+        symbol={symbol}
+        totalSponsor={account.totalSponsor.toString()}
+        action={
+          !sponsorOpen ? (
+            <span className="text-xs text-muted-foreground">Sponsorship closed</span>
+          ) : viewer ? (
+            <SponsorDialog challenge={address} token={token} linkedWallets={linkedWallets} title={title} />
+          ) : (
+            <a className="text-sm underline" href={`/sign-in?next=${encodeURIComponent(`/challenges/${address}`)}`}>
+              Sign in to sponsor
+            </a>
+          )
+        }
+      />
+      {isCreator && row?.visibility === 'private' && sponsorOpen && <SponsorLinkPanel challengeId={row.id as string} hasLink={sponsorLinkActive} />}
 
       {board ? (
         <GroupBoard address={address} initial={board} initialNow={now} decimals={decimals} symbol={symbol} />

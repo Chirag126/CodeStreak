@@ -22,13 +22,16 @@ export type TxFlowAction =
   | { type: 'start' }
   | { type: 'step'; step: TxStepId }
   | { type: 'succeed'; signature: string }
-  | { type: 'fail'; error: FriendlyError };
+  | { type: 'fail'; error: FriendlyError }
+  /** Back to idle (a new attempt with different inputs). Ignored while running. */
+  | { type: 'reset' };
 
 const allPending = (): Record<TxStepId, TxStepStatus> => ({ build: 'pending', sign: 'pending', confirm: 'pending' });
 
 export const initialTxFlow: TxFlowState = { status: 'idle', steps: allPending() };
 
 export function txFlowReducer(state: TxFlowState, action: TxFlowAction): TxFlowState {
+  if (action.type === 'reset') return state.status === 'running' ? state : initialTxFlow;
   switch (action.type) {
     case 'start':
       return { status: 'running', steps: { ...allPending(), build: 'active' } };
@@ -75,7 +78,8 @@ export function useTxFlow() {
       return { ok: false, error };
     }
   }, []);
-  return { state, run };
+  const reset = useCallback(() => dispatch({ type: 'reset' }), []);
+  return { state, run, reset };
 }
 
 /** Throw one of these from a flow when the server already produced a friendly error. */
