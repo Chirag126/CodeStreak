@@ -71,7 +71,7 @@ export function JoinButton({ challenge, linkedWallets, buyInLabel, isSol = false
         <div className="flex flex-wrap gap-2">
           {wallets.map((w) => (
             <Button key={w.name} onClick={() => void join(w)} loading={busy} disabled={state.status === 'success'}>
-              {state.status === 'error' ? 'Try again' : `Join with ${w.name}`} · {buyInLabel}
+              {state.status === 'error' ? `Try again with ${w.name}` : `Join with ${w.name}`} · {buyInLabel}
             </Button>
           ))}
         </div>

@@ -64,10 +64,12 @@ async function userCounts(profileId: string) {
 }
 
 /** Can this user join this private challenge? Requires a pending/accepted invitation in the database. */
-async function hasInvitation(profileId: string, challengeAddress: string): Promise<boolean> {
+/** Who may join a private group: its creator, or someone with a live (pending or accepted) invitation. */
+async function mayJoinPrivate(profileId: string, challengeAddress: string): Promise<boolean> {
   const admin = createSupabaseAdminClient();
-  const { data: challenge } = await admin.from('challenges').select('id').eq('onchain_address', challengeAddress).maybeSingle();
+  const { data: challenge } = await admin.from('challenges').select('id, creator_id').eq('onchain_address', challengeAddress).maybeSingle();
   if (!challenge) return false;
+  if (challenge.creator_id === profileId) return true;
   const { count } = await admin
     .from('invitations')
     .select('id', { count: 'exact', head: true })
@@ -220,7 +222,7 @@ export async function prepareJoin(input: {
   let joinAuthority: PublicKey | null = null;
   if (challenge.joinAuthority) {
     if (!challenge.joinAuthority.equals(relayer.publicKey)) return { ok: false, error: 'This private challenge is not managed by CodeStreak.' };
-    if (!(await hasInvitation(input.profileId, input.challengeAddress))) {
+    if (!(await mayJoinPrivate(input.profileId, input.challengeAddress))) {
       return { ok: false, error: 'This is a private group. You need an invitation to join.', code: 'program.JoinAuthorityRequired', title: 'Invitation needed' };
     }
     joinAuthority = relayer.publicKey; // co-sign only after the invitation check above
