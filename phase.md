@@ -564,3 +564,7 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - Group board on the challenge page: status, live indicator, countdown to the next milestone (joining closes / starts / day N ends / final checks / disputes), pool, players, still in, survived · out, done today; member grid with one cell per day (verified, missed, Shield, couldn't check, today, waiting, upcoming) with tooltips, member state badges, "You"/"Creator"; motion: rows re-order with a spring, changed cells pop, out members fade. Owner and member settings under the board.
 
 **Tests:** board building (cells from results, Shields and time; out after an unshielded miss, still in with a Shield or an outage day; counts, sort order, done today; countdown per phase; formatting); connection state machine (live, offline → online → re-fetch, no retry storm while offline, backoff and reset). SQL: joins, results, Shields and both settings bump the version; the table is published to Realtime; an outsider can't see a private group's activity; users can't bump it or change board visibility directly; deleting a challenge cleans up through the cascading triggers.
+
+### Phase 21 fix: creator joins their own private group
+
+The relayer only co-signed private joins for invited people, so a group's creator (who has no invitation to their own group) got "Invitation needed". Creators may now join their own private groups. Join buttons after an error now name the wallet ("Try again with Phantom") instead of showing identical "Try again" buttons.
