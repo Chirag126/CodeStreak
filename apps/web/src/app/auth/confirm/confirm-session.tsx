@@ -15,12 +15,18 @@ export function ConfirmSession({ next }: { next: string }) {
   useEffect(() => {
     const fragment = parseAuthFragment(window.location.hash);
     window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    const supabase = createSupabaseBrowserClient();
+    // A link opened a second time is "expired" (links work once), but if this browser is already
+    // signed in, that is not a problem: just continue.
+    const alreadySignedIn = () => supabase.auth.getSession().then(({ data }) => Boolean(data.session));
     const outcome: Promise<string | null> =
       fragment.kind === 'session'
-        ? createSupabaseBrowserClient()
-            .auth.setSession({ access_token: fragment.accessToken, refresh_token: fragment.refreshToken })
+        ? supabase.auth
+            .setSession({ access_token: fragment.accessToken, refresh_token: fragment.refreshToken })
             .then(({ error: e }) => (e ? authErrorMessage('invalid') : null))
-        : Promise.resolve(fragment.kind === 'error' ? authErrorMessage(fragment.code) : 'This page needs the link from your sign-in email. Request a new one.');
+        : alreadySignedIn().then((signedIn) =>
+            signedIn ? null : fragment.kind === 'error' ? authErrorMessage(fragment.code) : 'This page needs the link from your sign-in email. Request a new one.',
+          );
     void outcome.then((message) => {
       if (message) setError(message);
       else window.location.replace(`/sign-in?next=${encodeURIComponent(next)}`);

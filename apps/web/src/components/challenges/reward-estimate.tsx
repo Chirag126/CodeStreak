@@ -38,7 +38,7 @@ export function RewardEstimate(props: { token: Token; buyIn: string; participant
           aria-valuetext={`${rate} percent`}
         />
         <p className="text-xs text-muted-foreground">
-          {e.participants} players{props.includeViewer ? ' (including you)' : ''}: {e.survivors} survive, {e.failed} miss a day.
+          {e.participants} {e.participants === 1 ? 'player' : 'players'}{props.includeViewer ? ' (including you)' : ''}: {e.survivors} survive, {e.failed} miss a day.
         </p>
       </div>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
