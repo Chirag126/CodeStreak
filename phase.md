@@ -545,3 +545,22 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - **3 tries per email, then a countdown.** Each address may request 3 sign-in emails and enter 3 wrong codes per 15 minutes; after that the button shows "Try again in m:ss" and stays off until the oldest try expires. Attempts are kept server-side in `sign_in_attempts` with only a SHA-256 of the email (RLS on, no policies: invisible to users), pruned after a day. If the lookup fails, sign-in still works (fails open).
 - **Supabase's own limits get the same timer** instead of a vague "too many attempts": the per-address resend interval uses its exact seconds; the project-wide email allowance (`over_email_send_rate_limit`, the real cause seen in the auth logs) shows a 15-minute wait.
 - **Known limit (free plan):** Supabase's built-in email sender allows only 2 emails per hour for the whole project. A free custom SMTP provider removes this (dashboard setting; also makes the email templates editable, so the email can carry a code).
+
+---
+
+## Phase 21: Group dashboard (M)
+
+**Goal:** a live board for every challenge: who is in, today's status, the pool and the next deadline, updating in every open browser without a refresh, and recovering by itself after going offline.
+
+**Design**
+- **Realtime carries a signal, not data.** A one-row-per-challenge `challenge_activity` table has a version that triggers bump whenever members, day results, Shields, checks or the challenge change. Browsers subscribe to their challenge's row with Supabase Realtime, which applies the same RLS as reads, so an outsider never receives a private group's signal. On a change, the browser re-fetches `/api/challenges/<address>/board` (debounced), which applies the visibility rules server-side. Member data never travels over the socket, and there is one access-control path.
+- **Reconnects:** a pure state machine (`lib/board/live.ts`): live → reconnecting (backoff 1s, 2s, 4s … 30s) → live; offline pauses retries until the browser is online again. Any disconnect marks "missed changes", so the board is re-fetched as soon as it is live again; it is also re-fetched when the tab becomes visible. The header shows Live / Reconnecting / Offline.
+- **Time moves on the client:** the server sends the board input; the browser rebuilds the board every second (`buildBoard`), so "today", the countdown and pending days advance without requests. The first render uses the server's time, so hydration matches.
+- **Visibility:** the owner chooses who sees the member board (everyone who can see the challenge, or players only). Each member chooses whether their check details (counted/considered, providers) are shown. Day results are always shown: they decide payouts and are public on-chain.
+
+**Added**
+- Migration `group_board`: `board_visibility` (challenges), `share_checks` (memberships), `challenge_activity` with RLS, bump triggers, Realtime publication. CI bootstrap creates the `supabase_realtime` publication.
+- `@codestreak/shared` `board.ts`: `buildBoard`, `cellState`, `memberState`, `countdownFor`, `formatCountdown`, phase labels.
+- Group board on the challenge page: status, live indicator, countdown to the next milestone (joining closes / starts / day N ends / final checks / disputes), pool, players, still in, survived · out, done today; member grid with one cell per day (verified, missed, Shield, couldn't check, today, waiting, upcoming) with tooltips, member state badges, "You"/"Creator"; motion: rows re-order with a spring, changed cells pop, out members fade. Owner and member settings under the board.
+
+**Tests:** board building (cells from results, Shields and time; out after an unshielded miss, still in with a Shield or an outage day; counts, sort order, done today; countdown per phase; formatting); connection state machine (live, offline → online → re-fetch, no retry storm while offline, backoff and reset). SQL: joins, results, Shields and both settings bump the version; the table is published to Realtime; an outsider can't see a private group's activity; users can't bump it or change board visibility directly; deleting a challenge cleans up through the cascading triggers.
