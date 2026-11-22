@@ -2,11 +2,13 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { CopyButton } from '@/components/auth/copy-button';
+import { MyInvites } from '@/components/groups/my-invites';
 import { Reveal } from '@/components/motion/primitives';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { SIGN_IN_PATH, USERNAME_PATH } from '@/lib/auth/routes';
+import { listMyInvites } from '@/lib/groups/invites';
 import { getViewer } from '@/lib/supabase/server';
 import { signOut } from '../sign-in/actions';
 
@@ -17,6 +19,8 @@ export default async function DashboardPage() {
   const viewer = await getViewer();
   if (!viewer) redirect(SIGN_IN_PATH);
   if (!viewer.username) redirect(USERNAME_PATH);
+
+  const invites = await listMyInvites(viewer.userId);
 
   const sections: { title: string; body: string; href?: string; cta?: string }[] = [
     { title: 'Your challenges', body: 'Start a public challenge or a private group with friends.', href: '/challenges/new', cta: 'Create a challenge' },
@@ -51,6 +55,12 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       </Reveal>
+
+      {invites.length > 0 && (
+        <Reveal trigger="mount" delay={0.08}>
+          <MyInvites invites={invites} />
+        </Reveal>
+      )}
 
       <div className="grid gap-4 md:grid-cols-3">
         {sections.map((s, i) => (

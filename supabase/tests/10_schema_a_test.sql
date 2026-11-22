@@ -56,8 +56,8 @@ insert into public.linked_accounts (profile_id, provider, provider_user_id, prov
   ('00000000-0000-0000-0000-00000000000a', 'github', '123', 'chirag');
 insert into public.invitations (challenge_id, invited_by, invitee_id) values
   ('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-00000000000b');
-insert into public.invitations (challenge_id, invited_by, code, max_uses) values
-  ('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-00000000000a', 'link_ABCDEFGHIJKLMNOP', 5);
+insert into public.invitations (challenge_id, invited_by, code_hash, max_uses, expires_at) values
+  ('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-00000000000a', repeat('ab', 32), 5, now() + interval '7 days');
 
 do $$
 begin
@@ -134,7 +134,7 @@ select pg_temp.expect_fail('duplicate public ID', $q$
 select pg_temp.expect_fail('duplicate on-chain challenge', $q$
   update public.challenges set onchain_address = 'Fm4RMrKKkJsPP4vDeCPkYgE4jiGQjzujStgz17Yhrhv2', onchain_challenge_id = 1
   where id = '10000000-0000-0000-0000-000000000002' $q$);
-select pg_temp.expect_fail('two pending invites to one person', $q$
+select pg_temp.expect_fail('two live invites to one person', $q$
   insert into public.invitations (challenge_id, invited_by, invitee_id)
   values ('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-00000000000b') $q$);
 update public.profiles set username = 'chirag' where id = '00000000-0000-0000-0000-00000000000a';
@@ -149,9 +149,9 @@ select pg_temp.expect_fail('join deadline after start', $q$
 select pg_temp.expect_fail('shield price without shields', $q$
   update public.challenges set max_shields = 0 where id = '10000000-0000-0000-0000-000000000001' $q$);
 select pg_temp.expect_fail('invite with both person and link', $q$
-  insert into public.invitations (challenge_id, invited_by, invitee_id, code)
+  insert into public.invitations (challenge_id, invited_by, invitee_id, code_hash)
   values ('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-00000000000a',
-          '00000000-0000-0000-0000-00000000000c', 'link_QRSTUVWXYZ012345') $q$);
+          '00000000-0000-0000-0000-00000000000c', repeat('cd', 32)) $q$);
 select pg_temp.expect_fail('inviting yourself', $q$
   insert into public.invitations (challenge_id, invited_by, invitee_id)
   values ('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-00000000000a') $q$);

@@ -28,7 +28,7 @@ Render → Service → Environment.
 
 | Variable / setting | Local value now | On Render | Service | Since |
 |---|---|---|---|---|
-| `APP_URL` | `http://localhost:3000` | `https://codestreak-k0uv.onrender.com` (**set**) | web | 1 (used from 12) |
+| `APP_URL` | `http://localhost:3000` | `https://codestreak-k0uv.onrender.com` (**set**) | web | 1 (used from 12; invite links from 20) |
 | Supabase → Auth → URL Configuration → **Site URL** | `http://localhost:3000` | `https://codestreak-k0uv.onrender.com` | Supabase dashboard | 12 |
 | Supabase → Auth → URL Configuration → **Redirect URLs** | `http://localhost:3000/**` | add `https://codestreak-k0uv.onrender.com/**` (keep localhost for development) | Supabase dashboard | 12 |
 | `RELAYER_KEYPAIR_PATH` | `\\wsl$\Ubuntu\home\chirag_126\.config\codestreak\keys\relayer.json` | **don't set**; set **`RELAYER_KEYPAIR_JSON`** instead: the file's whole contents (a JSON array of 64 numbers). **Required from Phase 15** (sponsored joins). Get it in WSL with `cat ~/.config/codestreak/keys/relayer.json` | web | 9 / 15 |
@@ -71,3 +71,4 @@ new deploy (not just a restart).
 | 13 | Web server now uses `SUPABASE_SERVICE_ROLE_KEY` (wallet linking). `APP_URL` is also the domain shown in the wallet's signing message. |
 | 15 | Web needs **`RELAYER_KEYPAIR_JSON`** (secret) for sponsored joins. Keep the relayer funded: it pays fees and Participant rent (~0.002 SOL per join) and stops sponsoring below 0.02 SOL. |
 | 14 | Services created (`codestreak`, `codestreak-worker`, free, Singapore) with every non-secret value set. Secrets to add by hand: `SUPABASE_SERVICE_ROLE_KEY` (both), `WORKER_JOB_SECRET` (worker, from Vault). pg_cron wake job every 30 minutes. |
+| 20 | No new variables. Invite links are built from **`APP_URL`** (`<APP_URL>/invite/<token>`), so it must be the public Render URL there, or links point at localhost. Migration `private_groups` applied to Supabase. |
