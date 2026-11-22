@@ -76,3 +76,4 @@ new deploy (not just a restart).
 | 20 fix 2 | Migration `sign_in_attempts` applied. No new variables. Optional: custom SMTP in Supabase (Authentication → Emails → SMTP) lifts the built-in 2-emails-per-hour project cap. |
 | 21 | No new variables. Live updates use **Supabase Realtime** (included in the free plan); migration `group_board` adds `challenge_activity` to the `supabase_realtime` publication. Render's free web service is fine: browsers connect to Supabase directly, not to Render. |
 | 22 | No new variables. Sponsor links are built from **`APP_URL`** (`<APP_URL>/sponsor/<token>`). Migration `sponsorship` applied. Each first-time sponsor wallet costs the relayer ~0.0016 SOL of receipt rent: keep it funded. |
+| Wallet sign-in | No new variables. The sign-in message names the site from **`APP_URL`** (host and origin), so on Render it must be the public URL. Migration `wallet_login` applied. |

@@ -150,7 +150,7 @@ export function WalletPanel({ linked }: { linked: LinkedWallet[] }) {
         <Card>
           <CardHeader>
             <CardTitle>Linked wallets</CardTitle>
-            <CardDescription>Stakes and payouts use your linked wallets only.</CardDescription>
+            <CardDescription>Stakes and payouts use your linked wallets only. A linked wallet can also sign you in (no email needed); unlinking it turns that off.</CardDescription>
           </CardHeader>
           <CardContent>
             {linked.length === 0 ? (
