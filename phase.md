@@ -572,3 +572,23 @@ The relayer only co-signed private joins for invited people, so a group's creato
 ### Phase 21 fix: links inside CodeStreak open in the same tab
 
 Notification links always opened a new tab (meant for Solana Explorer), so "Open group" after accepting an invitation opened the group in a new tab. CodeStreak pages now open in the same tab (and close the notification); only outside sites open a new tab, marked ↗.
+
+---
+
+## Phase 22: Sponsorship (M)
+
+**Goal:** anyone can add to a challenge's reward pool without playing, with an on-chain receipt and a public sponsor leaderboard; private groups can be sponsored only through their private link.
+
+**Design**
+- **Amounts:** the program only requires more than zero, so the app owns the limits: 0.1–10,000 USDC or 0.001–100 SOL per sponsorship (typo and dust guard), at most 6/9 decimals. One shared rule (`parseSponsorAmount`) runs live in the modal and again on the server, which also checks the wallet balance.
+- **Receipt:** the program's `SponsorReceipt` account (one per wallet per challenge) accumulates each sponsor's total on-chain. The app mirrors every sponsorship transaction (`sponsorships`, unique per transaction) and the leaderboard links the receipt account and the latest transaction on Explorer.
+- **Private sponsor link:** one per group, like invite links: 256 random bits, shown once, only the SHA-256 stored; making a new link kills the old one; the creator can turn it off. The link page shows title, pool, players count and sponsors, never members. Private pools need the relayer's co-signature for `sponsor_pool`, given only to the creator, members, live invitees, or holders of the current link: without it the program rejects the transaction.
+- **Same rails as joins:** relayer pays fees and the receipt's rent, idempotency key per attempt, rate limits, policy allowlist, simulation, SOL wrapped in the same transaction.
+
+**Added**
+- Migration `sponsorship`: `sponsor_link_hash` (+ time) on challenges, `receipt_address` on sponsorships, `sponsor_leaderboard` view (RLS of sponsorships), sponsorships bump the live group board.
+- `@codestreak/shared`: `SPONSOR_LIMITS`, `parseSponsorAmount`, `cleanSponsorMessage`.
+- Relayer `prepareSponsor` (kind `sponsor`), `syncSponsor` mirror (sponsorship + receipt). Transaction kit: `reset`.
+- Sponsor modal (presets + custom amount, live validation, optional message, wallet, stepper); Sponsors card with leaderboard on the challenge page; creator's private sponsor link panel; `/sponsor/[token]` page.
+
+**Tests:** amounts (zero, blank, negative, non-numeric, too many decimals, below minimum, above maximum incl. u64-sized input); message cleaning; transaction-kit reset. SQL: raw token instead of hash, link without time, zero/negative/over-u64 amounts and a double-counted transaction rejected; leaderboard sums per wallet with latest tx, message and receipt; sponsorships bump the live board; an outsider can't read a private group's sponsors or link hash; users can't record sponsorships directly.

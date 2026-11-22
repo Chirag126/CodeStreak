@@ -34,4 +34,11 @@ describe('transaction flow', () => {
     const done = play({ type: 'start' }, { type: 'succeed', signature: 's' });
     expect(txFlowReducer(done, { type: 'step', step: 'sign' })).toBe(done);
   });
+
+  it('resets to idle after a result, but never mid-flight', () => {
+    const done = play({ type: 'start' }, { type: 'succeed', signature: 's' });
+    expect(txFlowReducer(done, { type: 'reset' })).toEqual(initialTxFlow);
+    const running = play({ type: 'start' }, { type: 'step', step: 'sign' });
+    expect(txFlowReducer(running, { type: 'reset' })).toBe(running);
+  });
 });

@@ -161,3 +161,35 @@ export async function syncMembers(connection: Connection, challengeAddress: stri
   if (error) throw new Error(`member sync failed: ${error.message}`);
   return rows.length;
 }
+
+/**
+ * Mirrors a confirmed sponsorship: totals from the chain (syncChallenge), then one sponsorships row
+ * per transaction (the amount comes from the prepared transaction, which submit verified
+ * byte-for-byte) and a receipt for the sponsor's history.
+ */
+export async function syncSponsor(
+  connection: Connection,
+  input: { challengeAddress: string; wallet: string; profileId: string; signature: string; amount: string; message: string | null; receipt: string | null },
+): Promise<void> {
+  const challengeId = await syncChallenge(connection, input.challengeAddress);
+  if (!challengeId) throw new Error('challenge not found on chain');
+  const admin = createSupabaseAdminClient();
+  const { error } = await admin.from('sponsorships').upsert(
+    {
+      challenge_id: challengeId,
+      sponsor_id: input.profileId,
+      sponsor_wallet: input.wallet,
+      amount: input.amount,
+      message: input.message,
+      tx_signature: input.signature,
+      receipt_address: input.receipt,
+    },
+    { onConflict: 'tx_signature', ignoreDuplicates: true },
+  );
+  if (error) throw new Error(`sponsorship sync failed: ${error.message}`);
+  const { error: receiptError } = await admin.from('receipts').upsert(
+    { challenge_id: challengeId, profile_id: input.profileId, wallet: input.wallet, kind: 'sponsor', amount: input.amount, tx_signature: input.signature },
+    { onConflict: 'tx_signature', ignoreDuplicates: true },
+  );
+  if (receiptError) throw new Error(`receipt sync failed: ${receiptError.message}`);
+}
