@@ -510,3 +510,26 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - **`pnpm devnet:close-challenges [--dry-run]`:** cancels every challenge the program allows (relayer-created before start; anyone's once joining closed under the minimum), refunds every participant and sponsor of cancelled challenges to their own token accounts (creating them if needed), marks them cancelled in the app, and reports challenges that cannot be cancelled (started with enough players: they must finish and settle).
 
 **Tests:** SOL join with create → wrap → sync → join → close accepted; wrap instructions without a SOL stake, SOL to anyone but the wSOL account, more than the buy-in, the relayer funding or paying, closing to an attacker, wrapping after the join or closing before it, and an attacker token transfer all rejected; the wrap plan (new account needs stake + rent; existing wSOL is used first; insufficient balance detected).
+
+---
+
+## Phase 20: Private groups (M)
+
+**Goal:** invite friends by public ID or by link, let them accept or decline, and keep private groups visible and joinable only by members and invited people.
+
+**Design**
+- **Links are hashed and short-lived.** A link carries 256 random bits, shown once to the creator; the database keeps only their SHA-256, so a database leak yields no working links. Every link expires (default 3 days, at most 30 and never after joining closes) and has a use limit (single-use by default, up to 20).
+- **Opening a link consumes nothing.** `/invite/<token>` only previews the group; a use is spent by the "Accept invitation" button (a POST), so chat-app link previews and crawlers can't burn single-use links. The page is `noindex`.
+- **Atomic redemption:** a conditional update that succeeds only if the link is still pending, unexpired and the use count is unchanged (retried on a race), then an accepted invitation is recorded with `via_link`. Someone already invited or the creator doesn't spend a use.
+- **By public ID:** the creator types a friend's ID (forgiving input: `cs-7kq2 m9xa` works); the friend gets a pending invitation on their dashboard to accept or decline. **Declining hides the group again** (RLS only counts pending and accepted invitations).
+- **Visibility** stays enforced by RLS (`private.can_view_challenge`). Outsiders opening a private group's page see only "This group is invite-only": no title, rules or players. The on-chain account is public by nature; the app just doesn't surface it.
+- **Joining:** the program requires the join-authority co-signature for private pools and the relayer gives it only to people with a live invitation, so an uninvited wallet can't join even by calling the program directly. A confirmed join marks the invitation accepted.
+- **Start when the minimum is reached:** the page shows "x of min needed, starts once n more join by the deadline; otherwise everyone is refunded" (the program cancels under-minimum pools after the deadline; `devnet:close-challenges` refunds them).
+
+**Added**
+- Migration `private_groups`: `declined` status; `code` replaced by `code_hash` (64 hex, unique); links must have expiry and use limit; lifetime ≤ 30 days; `via_link`; one live (pending or accepted) invitation per person per group. Applied to Supabase.
+- `@codestreak/shared`: `normalizePublicId`, `inviteLinkProblem`, `invitationAllowsJoin`, `INVITE_LINK_LIMITS`.
+- `lib/groups/invites.ts` (server only): invite by ID, create/revoke links, accept/decline, preview, redeem, lists. All creator actions check the viewer created the private group and joining is still open; every action is audit-logged.
+- Creator's **Invite friends** panel on the group page (by ID, link with uses/expiry and copy, invitation list with status and revoke); dashboard **Invitations** card with Accept/Decline; `/invite/[token]` page.
+
+**Tests:** SQL: a raw token instead of a hash, links without expiry or use limit, links living over 30 days, a duplicate hash, a reused link (uses beyond the limit), a second live invitation and `via_link` on a link row are all rejected; an outsider sees neither the group, its overview nor its invitations; the friend invited by ID and the person who redeemed a link see it; declining hides it again; re-inviting after a decline works. Unit: expired (at and after expiry), used-up and revoked links; only pending/accepted invitations allow joining; public ID normalization.

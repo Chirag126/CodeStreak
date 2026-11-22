@@ -12,6 +12,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { serverConnection } from '@/lib/relayer/service';
 import { createSupabaseServerClient, getViewer } from '@/lib/supabase/server';
 import { syncMembers } from '@/lib/sync/chain';
+import { InvitePanel } from '@/components/groups/invite-panel';
+import { listGroupInvites } from '@/lib/groups/invites';
 import { JoinButton } from './join-button';
 
 export const metadata: Metadata = { title: 'Challenge' };
@@ -60,6 +62,10 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
   const supabase = await createSupabaseServerClient();
   // RLS: rows are visible only if the viewer may see this challenge.
   const { data: row } = await supabase.from('challenge_overview').select('*').eq('onchain_address', address).maybeSingle();
+  // Private group the viewer may not see (RLS hid the row): show only that it exists. The account
+  // itself is public on-chain, but the app never lists its details, players or rules to outsiders.
+  if (account.joinAuthority && !row) return <PrivateNotice address={address} signedIn={Boolean(viewer)} />;
+
   const { data: standings } = row
     ? await supabase
         .from('challenge_standings')
@@ -82,6 +88,9 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
   const rulesText = describeRules((row?.rules ?? {}) as Rules);
   const shieldsOn = account.maxShieldsPerParticipant > 0;
   const viewerJoined = Boolean(viewer && (standings ?? []).some((m) => m.public_id === viewer.publicId));
+  const isCreator = Boolean(viewer && row && row.creator_id === viewer.userId);
+  const invites = isCreator && row?.visibility === 'private' ? await listGroupInvites(viewer!.userId, row.id as string) : null;
+  const short = Math.max(0, account.minParticipants - account.participantCount);
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-12 sm:px-6">
@@ -112,6 +121,13 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
             <div><dt className="text-muted-foreground">Starts</dt><dd>{when(times.startTs)}</dd></div>
             <div><dt className="text-muted-foreground">Sponsored</dt><dd className="font-mono">{fmt(account.totalSponsor)}</dd></div>
           </dl>
+          {phase === 'joining' && (
+            <p className="text-sm text-muted-foreground">
+              {short > 0
+                ? `${account.participantCount} of ${account.minParticipants} needed. It starts once ${short} more ${short === 1 ? 'player joins' : 'players join'} by ${when(times.joinDeadlineTs)}; otherwise everyone is refunded.`
+                : `Minimum of ${account.minParticipants} reached: it starts ${when(times.startTs)}.`}
+            </p>
+          )}
           {phase !== 'joining' ? (
             <p className="text-sm text-muted-foreground">Joining is closed.</p>
           ) : viewerJoined ? (
@@ -125,6 +141,8 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
           )}
         </CardContent>
       </Card>
+
+      {invites && phase === 'joining' && <InvitePanel address={address} invites={invites} />}
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
@@ -199,6 +217,27 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
                 </li>
               ))}
             </ul>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function PrivateNotice({ address, signedIn }: { address: string; signedIn: boolean }) {
+  return (
+    <div className="mx-auto flex max-w-xl flex-col gap-6 px-4 py-16 sm:px-6">
+      <Card>
+        <CardHeader>
+          <Badge variant="accent">Private group</Badge>
+          <CardTitle className="text-2xl">This group is invite-only</CardTitle>
+          <CardDescription>Only its members and invited friends can see it. Ask the creator for an invitation or an invite link.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!signedIn && (
+            <a className="text-sm underline" href={`/sign-in?next=${encodeURIComponent(`/challenges/${address}`)}`}>
+              Sign in if you were invited
+            </a>
           )}
         </CardContent>
       </Card>

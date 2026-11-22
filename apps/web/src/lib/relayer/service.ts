@@ -77,6 +77,19 @@ async function hasInvitation(profileId: string, challengeAddress: string): Promi
   return Boolean(count);
 }
 
+/** Joining a private group answers its pending invitation. */
+async function acceptInvitationOnJoin(profileId: string, challengeAddress: string) {
+  const admin = createSupabaseAdminClient();
+  const { data: challenge } = await admin.from('challenges').select('id').eq('onchain_address', challengeAddress).maybeSingle();
+  if (!challenge) return;
+  await admin
+    .from('invitations')
+    .update({ status: 'accepted', responded_at: new Date().toISOString() })
+    .eq('challenge_id', challenge.id)
+    .eq('invitee_id', profileId)
+    .eq('status', 'pending');
+}
+
 type RelayKind = 'join' | 'create';
 const KIND_INSTRUCTION: Record<RelayKind, RelayedInstruction> = { join: 'join_pool', create: 'initialize_pool' };
 
@@ -430,6 +443,7 @@ export async function submitRelayed(input: { profileId: string; idempotencyKey: 
       ? syncJoin(connection, { challengeAddress: row.challenge_address as string, wallet: row.wallet as string, profileId: input.profileId, signature })
       : syncChallenge(connection, row.challenge_address as string, { ...(row.payload as ChallengeDetails), creatorId: input.profileId, createTx: signature });
   await Promise.resolve(mirror).catch((e: unknown) => console.error(`[sync] ${kind} mirror failed:`, e instanceof Error ? e.message : e));
+  if (kind === 'join') await acceptInvitationOnJoin(input.profileId, row.challenge_address as string);
 
   await admin.from('audit_log').insert({
     actor_kind: 'relayer',
