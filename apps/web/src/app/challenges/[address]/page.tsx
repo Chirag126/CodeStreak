@@ -12,7 +12,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { serverConnection } from '@/lib/relayer/service';
 import { createSupabaseServerClient, getViewer } from '@/lib/supabase/server';
 import { syncMembers } from '@/lib/sync/chain';
+import { GroupBoard } from '@/components/board/group-board';
 import { InvitePanel } from '@/components/groups/invite-panel';
+import { loadBoard } from '@/lib/board/load';
 import { listGroupInvites } from '@/lib/groups/invites';
 import { JoinButton } from './join-button';
 
@@ -91,6 +93,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
   const isCreator = Boolean(viewer && row && row.creator_id === viewer.userId);
   const invites = isCreator && row?.visibility === 'private' ? await listGroupInvites(viewer!.userId, row.id as string) : null;
   const short = Math.max(0, account.minParticipants - account.participantCount);
+  const board = row ? await loadBoard(address) : null;
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-12 sm:px-6">
@@ -194,32 +197,16 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Players</CardTitle>
-          <CardDescription>
-            {account.participantCount} joined on-chain
-            {row && Number(row.members) < account.participantCount ? ' · some joined outside the app and are not listed yet' : ''}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {!standings?.length ? (
-            <p className="text-sm text-muted-foreground">No players yet.</p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {standings.map((m) => (
-                <li key={m.membership_id as string} className="flex flex-wrap items-center gap-3 py-2 text-sm">
-                  <span className="font-medium">{(m.display_name as string | null) ?? (m.public_id as string)}</span>
-                  <span className="font-mono text-xs text-muted-foreground">{m.public_id as string}</span>
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {Number(m.verified_days)} verified · {Number(m.failed_days)} missed · {Number(m.shields_used)} Shields
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+      {board ? (
+        <GroupBoard address={address} initial={board} initialNow={now} decimals={decimals} symbol={symbol} />
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Group board</CardTitle>
+            <CardDescription>{account.participantCount} joined on-chain · the board appears once this challenge is synced to the app.</CardDescription>
+          </CardHeader>
+        </Card>
+      )}
     </div>
   );
 }
