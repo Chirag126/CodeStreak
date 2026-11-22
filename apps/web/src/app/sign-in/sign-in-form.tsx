@@ -18,7 +18,7 @@ export function SignInForm({ next, linkError }: { next: string; linkError?: bool
     ? codeState.step === 'code'
       ? codeState.error
       : undefined
-    : (emailState.error ?? (linkError ? 'That sign-in link is invalid or has expired. Request a new one.' : undefined));
+    : (emailState.error ?? (linkError ? 'That sign-in link did not work. Request a new one: it opens in any browser now.' : undefined));
 
   return (
     <AnimatePresence mode="wait" initial={false}>
@@ -46,7 +46,7 @@ export function SignInForm({ next, linkError }: { next: string; linkError?: bool
           <Button type="submit" className="w-full" loading={sending}>
             Email me a sign-in link
           </Button>
-          <p className="text-xs text-muted-foreground">No password. New here? The code creates your account.</p>
+          <p className="text-xs text-muted-foreground">No password. New here? The link creates your account.</p>
         </motion.form>
       ) : (
         <motion.form key="code" action={checkCode} className="space-y-4" variants={variants.fadeUp} initial="hidden" animate="show" exit="hidden">
@@ -56,7 +56,7 @@ export function SignInForm({ next, linkError }: { next: string; linkError?: bool
             {emailState.step === 'code' ? emailState.notice : `Check ${codeEmail} for your sign-in email.`}
           </p>
           <div className="space-y-2">
-            <Label htmlFor="code">Code</Label>
+            <Label htmlFor="code">Code (only if your email shows one)</Label>
             <Input
               id="code"
               name="code"

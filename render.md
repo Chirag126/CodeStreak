@@ -72,3 +72,4 @@ new deploy (not just a restart).
 | 15 | Web needs **`RELAYER_KEYPAIR_JSON`** (secret) for sponsored joins. Keep the relayer funded: it pays fees and Participant rent (~0.002 SOL per join) and stops sponsoring below 0.02 SOL. |
 | 14 | Services created (`codestreak`, `codestreak-worker`, free, Singapore) with every non-secret value set. Secrets to add by hand: `SUPABASE_SERVICE_ROLE_KEY` (both), `WORKER_JOB_SECRET` (worker, from Vault). pg_cron wake job every 30 minutes. |
 | 20 | No new variables. Invite links are built from **`APP_URL`** (`<APP_URL>/invite/<token>`), so it must be the public Render URL there, or links point at localhost. Migration `private_groups` applied to Supabase. |
+| 20 fix | Sign-in links now land on **`/auth/confirm`**. It is covered by the existing Redirect URL `https://codestreak-k0uv.onrender.com/**`; keep that entry (and the Site URL as the Render URL). No new variables. |
