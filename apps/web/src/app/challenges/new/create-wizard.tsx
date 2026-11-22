@@ -102,6 +102,9 @@ function Choice<T extends string | number>({ value, options, onChange, label }: 
   );
 }
 
+/** Current unix time; read in event handlers only (never during render). */
+const nowSecs = () => Math.floor(Date.now() / 1000);
+
 const num = (v: string) => (v.trim() === '' ? Number.NaN : Number(v));
 
 export function CreateWizard({ linkedWallets }: { linkedWallets: string[] }) {
@@ -119,7 +122,7 @@ export function CreateWizard({ linkedWallets }: { linkedWallets: string[] }) {
 
   /** Client-side validation with the same rules the server and program use. */
   function errorsFor(fields: readonly string[]): Record<string, string> {
-    const r = validateChallengeForm(form, Math.floor(Date.now() / 1000));
+    const r = validateChallengeForm(form, nowSecs());
     if (r.ok) return {};
     return Object.fromEntries(Object.entries(r.errors).filter(([k]) => fields.length === 0 || fields.includes(k)));
   }
