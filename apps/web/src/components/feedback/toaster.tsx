@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { CheckCircle2, CircleAlert, Info, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -70,11 +71,17 @@ export function Toaster({ children }: { children: ReactNode }) {
                 <div className="min-w-0 flex-1 space-y-1">
                   <p className="text-sm font-medium">{t.title}</p>
                   {t.message && <p className="text-sm text-muted-foreground">{t.message}</p>}
-                  {t.href && (
-                    <a className="text-sm underline underline-offset-4" href={t.href} target="_blank" rel="noreferrer">
-                      {t.hrefLabel ?? 'Open'}
-                    </a>
-                  )}
+                  {t.href &&
+                    // CodeStreak pages open in the same tab; only outside sites (Explorer) get a new one.
+                    (t.href.startsWith('/') ? (
+                      <Link className="text-sm underline underline-offset-4" href={t.href} onClick={() => dismiss(t.id)}>
+                        {t.hrefLabel ?? 'Open'}
+                      </Link>
+                    ) : (
+                      <a className="text-sm underline underline-offset-4" href={t.href} target="_blank" rel="noreferrer">
+                        {t.hrefLabel ?? 'Open'} ↗
+                      </a>
+                    ))}
                 </div>
                 <button type="button" onClick={() => dismiss(t.id)} className="text-muted-foreground hover:text-foreground" aria-label="Dismiss">
                   <X className="size-4" />
