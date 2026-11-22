@@ -490,3 +490,23 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - Migration `challenge_overview` (view + indexes on join deadline and pool state). Applied to Supabase.
 
 **Tests:** the settlement mirror against the program's own fixtures (`rules.rs` settlement_math: R 31, share 15, dust 1; `settlement.rs` cases 1–5 including the 13.000001 pool split 6.5 + 1 base unit of dust, full refunds and voided stakes), the estimate (10 players, 70% → 4.285714 USDC per survivor, 2 units of dust; sponsorship-only pools; rate clamping), survival rate and status rules. SQL: pool size, end time, players still in (a shielded failure stays in), and RLS through the view (a non-member doesn't see the private challenge; the creator does).
+
+---
+
+## Phase 19: Join flow (M)
+
+**Goal:** join with devnet USDC or SOL from the app, with balances, closed challenges and full pools handled before anything is signed, and memberships kept in sync.
+
+**Design**
+- **SOL join = one transaction:** the program only takes token accounts, so the stake is wrapped in the same transaction: [create the user's wSOL account] → move the stake into it → sync → join → [close the account again, returning its rent]. Already-wrapped wSOL is used first; only the rest is wrapped. The user pays only the stake; the relayer still pays the fees.
+- **The relayer policy widened narrowly:** these four instruction shapes are accepted only for SOL joins (`wrap` context, decided by the server and stored with the request so submit applies the same rule), only for the user's own wSOL account, SOL only from the user's wallet into it and at most the buy-in, never paid or signed by the relayer, and in order (wrap before the join, close after). Everything else (a transfer anywhere else, the relayer paying the account, closing to someone else) is still refused.
+- **Membership sync:** after a confirmed join (Phase 16) and now also when a challenge page is refreshed: every on-chain Participant whose wallet is linked to a profile is mirrored, so joins made outside the app show up.
+
+**Added**
+- `@codestreak/shared/relayer`: wSOL instruction builders, wrap-aware policy, `planSolWrap()` (what to wrap and how much SOL is needed).
+- Join (`lib/relayer/service.ts`): USDC and SOL paths. Handled cleanly before signing, with plain messages: **not enough USDC** ("buy-in is 5 USDC and your wallet has 2", faucet link), **not enough SOL** (stake + refundable deposit), **joining closed**, **challenge full**, already joined, private without invitation. Race conditions still end in the friendly program errors from Phase 16.
+- Join button explains SOL wrapping in one line.
+- `pnpm devnet:seed-demo --token=sol` (0.05 SOL demo challenge).
+- **`pnpm devnet:close-challenges [--dry-run]`:** cancels every challenge the program allows (relayer-created before start; anyone's once joining closed under the minimum), refunds every participant and sponsor of cancelled challenges to their own token accounts (creating them if needed), marks them cancelled in the app, and reports challenges that cannot be cancelled (started with enough players: they must finish and settle).
+
+**Tests:** SOL join with create → wrap → sync → join → close accepted; wrap instructions without a SOL stake, SOL to anyone but the wSOL account, more than the buy-in, the relayer funding or paying, closing to an attacker, wrapping after the join or closing before it, and an attacker token transfer all rejected; the wrap plan (new account needs stake + rent; existing wSOL is used first; insufficient balance detected).

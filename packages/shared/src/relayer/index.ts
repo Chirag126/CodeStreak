@@ -1,9 +1,9 @@
 // Relayer rules (pure): what the CodeStreak relayer will pay fees for and co-sign. Used by the web
 // server before it pre-signs and again before it submits. Import from "@codestreak/shared/relayer".
-import { PublicKey, TransactionInstruction, type Transaction } from '@solana/web3.js';
+import { PublicKey, SystemProgram, TransactionInstruction, type Transaction } from '@solana/web3.js';
 
 import { CODESTREAK_IDL_JSON } from '../program/idl/codestreak.idl.js';
-import { PROGRAM_ID } from '../program/pdas.js';
+import { ASSOCIATED_TOKEN_PROGRAM_ID, PROGRAM_ID, TOKEN_PROGRAM_ID } from '../program/pdas.js';
 
 export const COMPUTE_BUDGET_PROGRAM_ID = new PublicKey('ComputeBudget111111111111111111111111111111');
 
@@ -85,12 +85,93 @@ function checkComputeBudget(data: Uint8Array, seen: Set<number>, errors: string[
   }
 }
 
+export const WSOL_MINT_KEY = new PublicKey('So11111111111111111111111111111111111111112');
+
+// ---------------------------------------------------------------- SOL staking: wrap around the join
+// The program takes token accounts only, so a SOL stake is wrapped in the same transaction:
+//   [create user's wSOL account] → transfer SOL into it → sync_native → join → [close it]
+// These four shapes are the only extra instructions the relayer ever accepts, and only for the
+// user's own wSOL account, with the user (never the relayer) paying and signing.
+
+/** Create the user's wSOL associated token account if it doesn't exist (paid by the user). */
+export function createWrappedSolAccountInstruction(user: PublicKey, account: PublicKey): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: ASSOCIATED_TOKEN_PROGRAM_ID,
+    keys: [
+      { pubkey: user, isSigner: true, isWritable: true },
+      { pubkey: account, isSigner: false, isWritable: true },
+      { pubkey: user, isSigner: false, isWritable: false },
+      { pubkey: WSOL_MINT_KEY, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from([1]), // CreateIdempotent
+  });
+}
+
+/** SOL → wSOL: move lamports into the wSOL account, then let the token program count them. */
+export function wrapSolInstructions(user: PublicKey, account: PublicKey, lamports: bigint): TransactionInstruction[] {
+  return [
+    SystemProgram.transfer({ fromPubkey: user, toPubkey: account, lamports }),
+    new TransactionInstruction({ programId: TOKEN_PROGRAM_ID, keys: [{ pubkey: account, isSigner: false, isWritable: true }], data: Buffer.from([17]) }), // SyncNative
+  ];
+}
+
+/** Close the (now empty) wSOL account, returning its rent to the user. */
+export function closeWrappedSolAccountInstruction(user: PublicKey, account: PublicKey): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: TOKEN_PROGRAM_ID,
+    keys: [
+      { pubkey: account, isSigner: false, isWritable: true },
+      { pubkey: user, isSigner: false, isWritable: true },
+      { pubkey: user, isSigner: true, isWritable: false },
+    ],
+    data: Buffer.from([9]), // CloseAccount
+  });
+}
+
+export interface WrapContext {
+  /** The user's wSOL associated token account. */
+  account: PublicKey;
+  /** At most this many lamports may be wrapped (the buy-in). */
+  maxLamports: bigint;
+}
+
+/** Checks one wrap-related instruction; `afterJoin` says whether the CodeStreak instruction came already. */
+function checkWrapInstruction(ix: TransactionInstruction, ctx: PolicyContext & { wrap: WrapContext }, afterJoin: boolean, errors: string[]): void {
+  const { wrap, user, relayer } = ctx;
+  const keys = ix.keys.map((k) => k.pubkey);
+  if (keys.some((k) => k.equals(relayer))) {
+    errors.push('the relayer cannot take part in wrapping SOL');
+    return;
+  }
+  const kind = ix.data[0];
+  if (ix.programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)) {
+    const ok = !afterJoin && kind === 1 && ix.data.length === 1 && keys.length === 6 && keys[0]!.equals(user) && keys[1]!.equals(wrap.account) && keys[2]!.equals(user) && keys[3]!.equals(WSOL_MINT_KEY);
+    if (!ok) errors.push('only creating your own wSOL account, before joining, is allowed');
+  } else if (ix.programId.equals(SystemProgram.programId)) {
+    const view = new DataView(ix.data.buffer, ix.data.byteOffset, ix.data.byteLength);
+    const isTransfer = ix.data.length === 12 && view.getUint32(0, true) === 2;
+    const lamports = isTransfer ? view.getBigUint64(4, true) : -1n;
+    const ok = !afterJoin && isTransfer && keys.length === 2 && keys[0]!.equals(user) && keys[1]!.equals(wrap.account) && lamports > 0n && lamports <= wrap.maxLamports;
+    if (!ok) errors.push('SOL may only move from your wallet into your wSOL account, up to the buy-in, before joining');
+  } else if (ix.programId.equals(TOKEN_PROGRAM_ID)) {
+    const sync = !afterJoin && kind === 17 && ix.data.length === 1 && keys.length === 1 && keys[0]!.equals(wrap.account);
+    const close = afterJoin && kind === 9 && ix.data.length === 1 && keys.length === 3 && keys[0]!.equals(wrap.account) && keys[1]!.equals(user) && keys[2]!.equals(user);
+    if (!sync && !close) errors.push('token instruction not allowed (only syncing or closing your own wSOL account)');
+  } else {
+    errors.push(`program ${ix.programId.toBase58()} is not allowed`);
+  }
+}
+
 export interface PolicyContext {
   relayer: PublicKey;
   /** The user's linked wallet: the only other key allowed to sign. */
   user: PublicKey;
   programId?: PublicKey;
   allowed?: readonly RelayedInstruction[];
+  /** SOL stakes only: allow wrapping into (and closing) the user's own wSOL account. */
+  wrap?: WrapContext;
 }
 
 export type PolicyResult = { ok: true; instruction: RelayedInstruction } | { ok: false; errors: string[] };
@@ -119,6 +200,8 @@ export function checkRelayedTransaction(tx: Transaction, ctx: PolicyContext): Po
       if (found) errors.push('only one CodeStreak instruction per transaction');
       else if (!name || !allowed.has(name)) errors.push(`CodeStreak instruction ${name ?? 'unknown'} is not relayed`);
       else found = { name, ix };
+    } else if (ctx.wrap) {
+      checkWrapInstruction(ix, { ...ctx, wrap: ctx.wrap }, found !== null, errors);
     } else {
       errors.push(`program ${ix.programId.toBase58()} is not allowed`);
     }
@@ -160,4 +243,21 @@ export function rateLimitDecision(counts: { lastTenMinutes: number; lastDay: num
   if (counts.lastTenMinutes >= RATE_LIMITS.perTenMinutes) return { ok: false, message: 'Too many requests. Try again in a few minutes.' };
   if (counts.lastDay >= RATE_LIMITS.perDay) return { ok: false, message: 'Daily limit reached. Try again tomorrow.' };
   return { ok: true };
+}
+
+export interface SolWrapPlan {
+  /** Create the wSOL account first (and close it after the join, returning its rent). */
+  createAccount: boolean;
+  /** Lamports to move into it (only what's missing for the buy-in). */
+  toWrap: bigint;
+  /** SOL the user needs right now: the stake still to wrap + the account's refundable rent. */
+  required: bigint;
+  enough: boolean;
+}
+
+/** What a SOL join must wrap, given the user's existing wSOL account and SOL balance. */
+export function planSolWrap(i: { buyIn: bigint; accountExists: boolean; wrappedBalance: bigint; accountRent: bigint; solBalance: bigint }): SolWrapPlan {
+  const toWrap = i.buyIn > i.wrappedBalance ? i.buyIn - i.wrappedBalance : 0n;
+  const required = toWrap + (i.accountExists ? 0n : i.accountRent);
+  return { createAccount: !i.accountExists, toWrap, required, enough: i.solBalance >= required };
 }

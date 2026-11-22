@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createHash } from 'node:crypto';
-import { POOL_PARAM_MESSAGES, validatePoolParams, type PoolParams } from '@codestreak/shared';
+import { formatAmount, POOL_PARAM_MESSAGES, SOL_DECIMALS, USDC_DECIMALS, validatePoolParams, type PoolParams } from '@codestreak/shared';
 import {
   anchor,
   associatedTokenAddress,
@@ -17,7 +17,18 @@ import {
   type ChallengeAccount,
 } from '@codestreak/shared/program';
 import { friendlyTxError } from '@codestreak/shared/errors';
-import { buildCodestreakInstruction, checkRelayedTransaction, rateLimitDecision, type RelayedInstruction } from '@codestreak/shared/relayer';
+import {
+  buildCodestreakInstruction,
+  checkRelayedTransaction,
+  closeWrappedSolAccountInstruction,
+  createWrappedSolAccountInstruction,
+  planSolWrap,
+  rateLimitDecision,
+  wrapSolInstructions,
+  WSOL_MINT_KEY,
+  type RelayedInstruction,
+  type WrapContext,
+} from '@codestreak/shared/relayer';
 import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction, VersionedTransaction, type TransactionInstruction } from '@solana/web3.js';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { syncChallenge, syncJoin } from '@/lib/sync/chain';
@@ -27,6 +38,7 @@ import { relayerKeypair } from './keypair';
 export type RelayResult<T> = ({ ok: true } & T) | { ok: false; error: string; code?: string; title?: string };
 
 const COMPUTE_UNITS = 150_000;
+const COMPUTE_UNITS_WITH_WRAP = 200_000;
 const PRIORITY_MICRO_LAMPORTS = 1_000;
 const MIN_RELAYER_LAMPORTS = 20_000_000; // 0.02 SOL: stop sponsoring before the relayer runs dry
 
@@ -112,7 +124,9 @@ async function prepareRelayed(input: {
   challengeAddress: string;
   idempotencyKey: string;
   kind: RelayKind;
-  instruction: TransactionInstruction;
+  instructions: TransactionInstruction[];
+  /** SOL stakes: the wrap instructions allowed around the join. */
+  wrap?: WrapContext;
   payload?: Record<string, unknown>;
   existingId?: string;
   existingStatus?: string;
@@ -127,12 +141,12 @@ async function prepareRelayed(input: {
   }
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
   const tx = new Transaction({ feePayer: relayer.publicKey, blockhash, lastValidBlockHeight }).add(
-    ComputeBudgetProgram.setComputeUnitLimit({ units: COMPUTE_UNITS }),
+    ComputeBudgetProgram.setComputeUnitLimit({ units: input.wrap ? COMPUTE_UNITS_WITH_WRAP : COMPUTE_UNITS }),
     ComputeBudgetProgram.setComputeUnitPrice({ microLamports: PRIORITY_MICRO_LAMPORTS }),
-    input.instruction,
+    ...input.instructions,
   );
 
-  const policy = checkRelayedTransaction(tx, { relayer: relayer.publicKey, user, programId: PROGRAM_ID, allowed: [KIND_INSTRUCTION[input.kind]] });
+  const policy = checkRelayedTransaction(tx, { relayer: relayer.publicKey, user, programId: PROGRAM_ID, allowed: [KIND_INSTRUCTION[input.kind]], wrap: input.wrap });
   if (!policy.ok) return { ok: false, error: `Refused: ${policy.errors.join('; ')}`, code: 'relayer.policy', title: 'Refused by the relayer' };
 
   const sim = await connection.simulateTransaction(new VersionedTransaction(tx.compileMessage()), { sigVerify: false });
@@ -149,7 +163,8 @@ async function prepareRelayed(input: {
     last_valid_block_height: lastValidBlockHeight,
     status: 'prepared' as const,
     error: null,
-    payload: input.payload ?? {},
+    // The wrap context is the server's own decision; kept so submit applies the same policy.
+    payload: { ...(input.payload ?? {}), ...(input.wrap ? { wrap: { account: input.wrap.account.toBase58(), maxLamports: input.wrap.maxLamports.toString() } } : {}) },
   };
   const { error } = input.existingId
     ? await admin.from('relayer_requests').update(row).eq('id', input.existingId).eq('status', input.existingStatus ?? 'prepared')
@@ -198,29 +213,65 @@ export async function prepareJoin(input: {
     joinAuthority = relayer.publicKey; // co-sign only after the invitation check above
   }
 
-  const userToken = associatedTokenAddress(user, challenge.mint, challenge.tokenProgram);
-  const balance = await connection.getTokenAccountBalance(userToken).catch(() => null);
-  if (!balance || BigInt(balance.value.amount) < BigInt(challenge.buyIn.toString())) {
-    return { ok: false, error: 'Your wallet does not have enough tokens for the buy-in. Get devnet USDC from the faucet and try again.', code: 'token.insufficient_funds', title: 'Not enough tokens' };
+  if (challenge.participantCount >= challenge.maxParticipants) {
+    return { ok: false, error: 'This challenge is full.', code: 'program.PoolFull', title: 'Challenge full' };
   }
 
-  return prepareRelayed({
-    ...input,
-    kind: 'join',
-    existingId: prior.existing?.id,
-    existingStatus: prior.existing?.status,
-    instruction: buildCodestreakInstruction('join_pool', {
-      payer: relayer.publicKey,
-      user,
-      join_authority: joinAuthority,
-      challenge: challengeKey,
-      participant,
-      mint: challenge.mint,
-      user_token: userToken,
-      vault: vaultPda(challengeKey),
-      token_program: challenge.tokenProgram,
-    }),
+  const buyIn = BigInt(challenge.buyIn.toString());
+  const userToken = associatedTokenAddress(user, challenge.mint, challenge.tokenProgram);
+  const joinIx = buildCodestreakInstruction('join_pool', {
+    payer: relayer.publicKey,
+    user,
+    join_authority: joinAuthority,
+    challenge: challengeKey,
+    participant,
+    mint: challenge.mint,
+    user_token: userToken,
+    vault: vaultPda(challengeKey),
+    token_program: challenge.tokenProgram,
   });
+  const common = { ...input, kind: 'join' as const, existingId: prior.existing?.id, existingStatus: prior.existing?.status };
+
+  if (!challenge.mint.equals(WSOL_MINT_KEY)) {
+    // Token stake (USDC): the user's token account must hold the buy-in.
+    const balance = await connection.getTokenAccountBalance(userToken).catch(() => null);
+    const have = balance ? BigInt(balance.value.amount) : 0n;
+    if (have < buyIn) {
+      return {
+        ok: false,
+        code: 'token.insufficient_funds',
+        title: 'Not enough USDC',
+        error: `The buy-in is ${formatAmount(buyIn, USDC_DECIMALS)} USDC and your wallet has ${formatAmount(have, USDC_DECIMALS)}. Get devnet USDC from faucet.circle.com (Solana Devnet) and try again.`,
+      };
+    }
+    return prepareRelayed({ ...common, instructions: [joinIx] });
+  }
+
+  // SOL stake: wrap exactly what's missing in the same transaction, then close the wSOL account
+  // again if we created it (its rent goes back to the user). The user pays only the stake.
+  const existing = await connection.getAccountInfo(userToken);
+  const plan = planSolWrap({
+    buyIn,
+    accountExists: Boolean(existing),
+    wrappedBalance: existing ? BigInt((await connection.getTokenAccountBalance(userToken)).value.amount) : 0n,
+    accountRent: existing ? 0n : BigInt(await connection.getMinimumBalanceForRentExemption(165)),
+    solBalance: BigInt(await connection.getBalance(user)),
+  });
+  if (!plan.enough) {
+    return {
+      ok: false,
+      code: 'sol.insufficient',
+      title: 'Not enough SOL',
+      error: `You need ${formatAmount(plan.required, SOL_DECIMALS)} SOL (the ${formatAmount(buyIn, SOL_DECIMALS)} SOL stake${plan.createAccount ? ' plus a small deposit you get back' : ''}). Get devnet SOL from faucet.solana.com and try again.`,
+    };
+  }
+  const instructions = [
+    ...(plan.createAccount ? [createWrappedSolAccountInstruction(user, userToken)] : []),
+    ...(plan.toWrap > 0n ? wrapSolInstructions(user, userToken, plan.toWrap) : []),
+    joinIx,
+    ...(plan.createAccount ? [closeWrappedSolAccountInstruction(user, userToken)] : []),
+  ];
+  return prepareRelayed({ ...common, instructions, wrap: { account: userToken, maxLamports: buyIn } });
 }
 
 /** Details stored with a create request and written to the challenges row once it confirms. */
@@ -297,7 +348,7 @@ export async function prepareCreate(input: {
     challengeAddress,
     idempotencyKey: input.idempotencyKey,
     kind: 'create',
-    instruction,
+    instructions: [instruction],
     payload: { ...input.details },
     existingId: prior.existing?.id,
     existingStatus: prior.existing?.status,
@@ -335,7 +386,9 @@ export async function submitRelayed(input: { profileId: string; idempotencyKey: 
   const user = new PublicKey(row.wallet as string);
   const kind = row.kind as RelayKind;
   if (!(kind in KIND_INSTRUCTION)) return { ok: false, error: 'Unsupported request.' };
-  const policy = checkRelayedTransaction(tx, { relayer: relayer.publicKey, user, programId: PROGRAM_ID, allowed: [KIND_INSTRUCTION[kind]] });
+  const storedWrap = (row.payload as { wrap?: { account: string; maxLamports: string } } | null)?.wrap;
+  const wrap = storedWrap ? { account: new PublicKey(storedWrap.account), maxLamports: BigInt(storedWrap.maxLamports) } : undefined;
+  const policy = checkRelayedTransaction(tx, { relayer: relayer.publicKey, user, programId: PROGRAM_ID, allowed: [KIND_INSTRUCTION[kind]], wrap });
   if (!policy.ok) return { ok: false, error: `Refused: ${policy.errors.join('; ')}`, code: 'relayer.policy', title: 'Refused by the relayer' };
   if (!tx.verifySignatures(true)) return { ok: false, error: 'Missing or invalid signature.' };
   if ((await connection.getBlockHeight('confirmed')) >= Number(row.last_valid_block_height)) {

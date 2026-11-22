@@ -121,3 +121,69 @@ describe('rate limits', () => {
     expect(rateLimitDecision({ lastTenMinutes: 0, lastDay: RATE_LIMITS.perDay })).toMatchObject({ ok: false });
   });
 });
+
+describe('SOL join: wrap in the same transaction', () => {
+  // Imported lazily to keep the earlier tests' imports unchanged.
+  const load = () => import('./index.js');
+  const wsolAccount = Keypair.generate().publicKey;
+  const BUY_IN = 100_000_000n; // 0.1 SOL
+  const wrap = { account: wsolAccount, maxLamports: BUY_IN };
+  const solJoin = () => joinIx({ user_token: wsolAccount });
+
+  it('accepts create → transfer → sync → join → close for the user own wSOL account', async () => {
+    const m = await load();
+    const t = tx(
+      m.createWrappedSolAccountInstruction(user, wsolAccount),
+      ...m.wrapSolInstructions(user, wsolAccount, BUY_IN),
+      solJoin(),
+      m.closeWrappedSolAccountInstruction(user, wsolAccount),
+    );
+    expect(checkRelayedTransaction(t, { ...ctx, wrap })).toEqual({ ok: true, instruction: 'join_pool' });
+  });
+
+  it('rejects wrap instructions when no SOL stake is involved', async () => {
+    const m = await load();
+    expect(checkRelayedTransaction(tx(...m.wrapSolInstructions(user, wsolAccount, BUY_IN), solJoin()), ctx).ok).toBe(false);
+  });
+
+  it('rejects SOL sent anywhere but the wSOL account, or more than the buy-in', async () => {
+    const m = await load();
+    expect(checkRelayedTransaction(tx(SystemProgram.transfer({ fromPubkey: user, toPubkey: attacker, lamports: 1n }), solJoin()), { ...ctx, wrap }).ok).toBe(false);
+    expect(checkRelayedTransaction(tx(...m.wrapSolInstructions(user, wsolAccount, BUY_IN + 1n), solJoin()), { ...ctx, wrap }).ok).toBe(false);
+    expect(checkRelayedTransaction(tx(SystemProgram.transfer({ fromPubkey: relayer, toPubkey: wsolAccount, lamports: BUY_IN }), solJoin()), { ...ctx, wrap }).ok).toBe(false);
+  });
+
+  it('rejects the relayer paying for the wSOL account, closing to an attacker, and wrong order', async () => {
+    const m = await load();
+    expect(checkRelayedTransaction(tx(m.createWrappedSolAccountInstruction(relayer, wsolAccount), solJoin()), { ...ctx, wrap }).ok).toBe(false);
+    const steal = m.closeWrappedSolAccountInstruction(user, wsolAccount);
+    steal.keys[1] = { pubkey: attacker, isSigner: false, isWritable: true };
+    expect(checkRelayedTransaction(tx(...m.wrapSolInstructions(user, wsolAccount, BUY_IN), solJoin(), steal), { ...ctx, wrap }).ok).toBe(false);
+    // Wrapping after the join, or closing before it, is refused.
+    expect(checkRelayedTransaction(tx(solJoin(), ...m.wrapSolInstructions(user, wsolAccount, BUY_IN)), { ...ctx, wrap }).ok).toBe(false);
+    expect(checkRelayedTransaction(tx(m.closeWrappedSolAccountInstruction(user, wsolAccount), solJoin()), { ...ctx, wrap }).ok).toBe(false);
+  });
+
+  it('still rejects an attacker token transfer in a SOL join', () => {
+    expect(checkRelayedTransaction(tx(solJoin(), tokenTransfer(wsolAccount, attacker, user)), { ...ctx, wrap }).ok).toBe(false);
+  });
+});
+
+describe('SOL wrap plan (insufficient balance handled before anything is signed)', () => {
+  it('wraps the whole stake into a new account, and needs its refundable rent too', async () => {
+    const { planSolWrap } = await import('./index.js');
+    expect(planSolWrap({ buyIn: 100n, accountExists: false, wrappedBalance: 0n, accountRent: 20n, solBalance: 120n })).toEqual({
+      createAccount: true,
+      toWrap: 100n,
+      required: 120n,
+      enough: true,
+    });
+    expect(planSolWrap({ buyIn: 100n, accountExists: false, wrappedBalance: 0n, accountRent: 20n, solBalance: 119n }).enough).toBe(false);
+  });
+
+  it('uses wSOL the user already has and wraps only the rest', async () => {
+    const { planSolWrap } = await import('./index.js');
+    expect(planSolWrap({ buyIn: 100n, accountExists: true, wrappedBalance: 70n, accountRent: 20n, solBalance: 30n })).toMatchObject({ toWrap: 30n, required: 30n, enough: true });
+    expect(planSolWrap({ buyIn: 100n, accountExists: true, wrappedBalance: 150n, accountRent: 20n, solBalance: 0n })).toMatchObject({ toWrap: 0n, enough: true, createAccount: false });
+  });
+});

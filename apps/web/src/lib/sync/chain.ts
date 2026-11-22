@@ -127,3 +127,37 @@ export async function syncJoin(connection: Connection, input: { challengeAddress
   );
   if (receiptError) throw new Error(`receipt sync failed: ${receiptError.message}`);
 }
+
+/**
+ * Mirrors every on-chain Participant of a challenge whose wallet is linked to a CodeStreak profile
+ * (joins can happen outside the app). Existing rows keep their join transaction. Returns the count.
+ */
+export async function syncMembers(connection: Connection, challengeAddress: string): Promise<number> {
+  const challengeId = await syncChallenge(connection, challengeAddress);
+  if (!challengeId) return 0;
+  const program = createProgram(connection);
+  // Participant layout: 8-byte discriminator, then the challenge pubkey.
+  const participants = await program.account.participant.all([{ memcmp: { offset: 8, bytes: challengeAddress } }]);
+  if (!participants.length) return 0;
+
+  const admin = createSupabaseAdminClient();
+  const wallets = participants.map((p) => p.account.user.toBase58());
+  const { data: linked } = await admin.from('wallets').select('address, profile_id').in('address', wallets);
+  const profileOf = new Map((linked ?? []).map((w) => [w.address as string, w.profile_id as string]));
+
+  const rows = participants
+    .filter((p) => profileOf.has(p.account.user.toBase58()))
+    .map((p) => ({
+      challenge_id: challengeId,
+      profile_id: profileOf.get(p.account.user.toBase58())!,
+      wallet_address: p.account.user.toBase58(),
+      participant_address: p.publicKey.toBase58(),
+      deposited: p.account.deposited.toString(),
+      status: enumVariant<'active' | 'survived' | 'failed' | 'voided'>(p.account.status),
+      joined_at: iso(p.account.joinedAt.toNumber()),
+    }));
+  if (!rows.length) return 0;
+  const { error } = await admin.from('memberships').upsert(rows, { onConflict: 'challenge_id,profile_id' });
+  if (error) throw new Error(`member sync failed: ${error.message}`);
+  return rows.length;
+}
