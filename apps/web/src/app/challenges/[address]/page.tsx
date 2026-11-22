@@ -36,9 +36,11 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
   const buyIn = `${formatAmount(BigInt(account.buyIn.toString()), isSol ? SOL_DECIMALS : USDC_DECIMALS)} ${isSol ? 'SOL' : 'USDC'}`;
 
   const viewer = await getViewer();
+  const supabase = await createSupabaseServerClient();
+  // App details (RLS: visible only if the viewer may see this challenge).
+  const { data: row } = await supabase.from('challenges').select('title, description').eq('onchain_address', address).maybeSingle();
   let linkedWallets: string[] = [];
   if (viewer) {
-    const supabase = await createSupabaseServerClient();
     const { data } = await supabase.from('wallets').select('address').not('verified_at', 'is', null);
     linkedWallets = (data ?? []).map((w) => w.address as string);
   }
@@ -52,7 +54,8 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
             {account.joinAuthority && <Badge variant="accent">Private group</Badge>}
             <Badge variant="primary">{phase}</Badge>
           </div>
-          <CardTitle className="text-2xl">Challenge {address.slice(0, 4)}…{address.slice(-4)}</CardTitle>
+          <CardTitle className="text-2xl">{(row?.title as string | undefined) ?? `Challenge ${address.slice(0, 4)}…${address.slice(-4)}`}</CardTitle>
+          {row?.description && <p className="text-sm text-muted-foreground">{row.description as string}</p>}
           <CardDescription>
             <a className="underline" href={explorerAddressUrl(address)} target="_blank" rel="noreferrer">
               View on Solana Explorer (devnet)

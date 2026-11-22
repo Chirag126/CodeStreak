@@ -10,6 +10,8 @@ describe('route guard', () => {
     expect(routeDecision('/dashboard', '', out)).toBe('/sign-in?next=%2Fdashboard');
     expect(routeDecision('/dashboard/settings', '?tab=1', out)).toBe('/sign-in?next=%2Fdashboard%2Fsettings%3Ftab%3D1');
     expect(routeDecision('/onboarding/username', '', out)).toBe('/sign-in?next=%2Fonboarding%2Fusername');
+    expect(routeDecision('/challenges/new', '', out)).toBe('/sign-in?next=%2Fchallenges%2Fnew');
+    expect(routeDecision('/challenges/Fm4RMrKKkJsPP4vDeCPkYgE4jiGQjzujStgz17Yhrhv2', '', out)).toBeNull(); // viewing is public
   });
 
   it('lets everyone through public routes', () => {

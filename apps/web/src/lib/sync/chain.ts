@@ -42,16 +42,36 @@ function challengeRow(address: string, c: ChallengeAccount) {
  * Mirrors a challenge into `challenges` (insert on first sight, then refresh the mirrored fields).
  * Returns the row id, or null if the account doesn't exist.
  */
-export async function syncChallenge(connection: Connection, address: string): Promise<string | null> {
+/** What only the app knows: set by the create wizard once the creation confirms. */
+export interface ChallengeAppDetails {
+  title: string;
+  description: string;
+  visibility: 'public' | 'private';
+  rules: Record<string, unknown>;
+  creatorId: string;
+  createTx: string;
+}
+
+export async function syncChallenge(connection: Connection, address: string, details?: ChallengeAppDetails): Promise<string | null> {
   const program = createProgram(connection);
   const account = await program.account.challenge.fetchNullable(new PublicKey(address));
   if (!account) return null;
   const admin = createSupabaseAdminClient();
   const mirror = challengeRow(address, account);
 
+  const appFields = details
+    ? {
+        title: details.title,
+        description: details.description || null,
+        rules: details.rules,
+        creator_id: details.creatorId,
+        create_tx: details.createTx,
+      }
+    : null;
+
   const { data: existing } = await admin.from('challenges').select('id').eq('onchain_address', address).maybeSingle();
   if (existing) {
-    const { error } = await admin.from('challenges').update(mirror).eq('id', existing.id);
+    const { error } = await admin.from('challenges').update({ ...mirror, ...appFields }).eq('id', existing.id);
     if (error) throw new Error(`challenge sync failed: ${error.message}`);
     return existing.id as string;
   }
@@ -60,12 +80,16 @@ export async function syncChallenge(connection: Connection, address: string): Pr
   const { data: creatorWallet } = await admin.from('wallets').select('profile_id').eq('address', account.creator.toBase58()).maybeSingle();
   const { data: inserted, error } = await admin
     .from('challenges')
-    .insert({
-      ...mirror,
-      creator_id: (creatorWallet?.profile_id as string | undefined) ?? null,
-      title: `${account.isDemo ? 'Demo challenge' : 'Challenge'} ${address.slice(0, 4)}`,
-      rules: { source: 'chain', note: 'Created outside the app; the on-chain rules hash is authoritative.' },
-    })
+    .insert(
+      appFields
+        ? { ...mirror, ...appFields }
+        : {
+            ...mirror,
+            creator_id: (creatorWallet?.profile_id as string | undefined) ?? null,
+            title: `${account.isDemo ? 'Demo challenge' : 'Challenge'} ${address.slice(0, 4)}`,
+            rules: { source: 'chain', note: 'Created outside the app; the on-chain rules hash is authoritative.' },
+          },
+    )
     .select('id')
     .single();
   if (error) throw new Error(`challenge sync failed: ${error.message}`);

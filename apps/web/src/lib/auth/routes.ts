@@ -5,7 +5,7 @@ export const USERNAME_PATH = '/onboarding/username';
 export const HOME_AFTER_SIGN_IN = '/dashboard';
 
 /** Pages that need a signed-in user. */
-const PROTECTED_PREFIXES = ['/dashboard', '/onboarding'];
+const PROTECTED_PREFIXES = ['/dashboard', '/onboarding', '/challenges/new'];
 
 export type ViewerState = { signedIn: false } | { signedIn: true; hasUsername: boolean };
 
