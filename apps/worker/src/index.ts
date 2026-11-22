@@ -1,5 +1,6 @@
 import { EnvError, parseEnv, workerEnvSchema, type WorkerEnv } from '@codestreak/shared';
 import { loadLocalEnv } from './load-env.js';
+import { createWakeJob } from './jobs/wake.js';
 import { createWorkerServer, type Job } from './server.js';
 
 const VERSION = '0.1.0';
@@ -19,6 +20,7 @@ const env = loadEnv();
 // Jobs are added in later phases: verify (28), crank (29), voice (33).
 const jobs: Record<string, Job> = {
   noop: async () => ({ message: 'worker is alive' }),
+  wake: createWakeJob({ supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL, serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY, version: VERSION }),
 };
 
 const server = createWorkerServer({ jobSecret: env.WORKER_JOB_SECRET, jobs, version: VERSION });
