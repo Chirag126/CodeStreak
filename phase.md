@@ -568,3 +568,7 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 ### Phase 21 fix: creator joins their own private group
 
 The relayer only co-signed private joins for invited people, so a group's creator (who has no invitation to their own group) got "Invitation needed". Creators may now join their own private groups. Join buttons after an error now name the wallet ("Try again with Phantom") instead of showing identical "Try again" buttons.
+
+### Phase 21 fix: links inside CodeStreak open in the same tab
+
+Notification links always opened a new tab (meant for Solana Explorer), so "Open group" after accepting an invitation opened the group in a new tab. CodeStreak pages now open in the same tab (and close the notification); only outside sites open a new tab, marked ↗.
