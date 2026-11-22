@@ -1,5 +1,6 @@
 'use client';
 
+import { formatWait } from '@codestreak/shared';
 import { AnimatePresence, motion } from 'motion/react';
 import { useActionState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -7,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { variants } from '@/lib/motion';
 import { requestCode, verifyCode, type SignInState } from './actions';
+import { useCountdown } from './use-countdown';
 
 export function SignInForm({ next, linkError }: { next: string; linkError?: boolean }) {
   const [emailState, sendCode, sending] = useActionState(requestCode, { step: 'email' } as SignInState);
@@ -19,6 +21,12 @@ export function SignInForm({ next, linkError }: { next: string; linkError?: bool
       ? codeState.error
       : undefined
     : (emailState.error ?? (linkError ? 'That sign-in link did not work. Request a new one: it opens in any browser now.' : undefined));
+
+  // "3 tries, then wait": the server sends `retryAt`; the button stays off with a countdown.
+  const sendWait = useCountdown(emailState.retryAt);
+  const codeWait = useCountdown(codeState.step === 'code' ? codeState.retryAt : undefined);
+  const waiting = codeEmail ? codeWait : sendWait;
+  const shownError = waiting > 0 || !(codeEmail ? codeState.retryAt : emailState.retryAt) ? error : undefined;
 
   return (
     <AnimatePresence mode="wait" initial={false}>
@@ -38,13 +46,13 @@ export function SignInForm({ next, linkError }: { next: string; linkError?: bool
               aria-describedby={error ? 'sign-in-error' : undefined}
             />
           </div>
-          {error && (
+          {shownError && (
             <p id="sign-in-error" role="alert" className="text-sm text-destructive-text">
-              {error}
+              {shownError}
             </p>
           )}
-          <Button type="submit" className="w-full" loading={sending}>
-            Email me a sign-in link
+          <Button type="submit" className="w-full" loading={sending} disabled={sendWait > 0}>
+            {sendWait > 0 ? `Try again in ${formatWait(sendWait)}` : 'Email me a sign-in link'}
           </Button>
           <p className="text-xs text-muted-foreground">No password. New here? The link creates your account.</p>
         </motion.form>
@@ -71,13 +79,13 @@ export function SignInForm({ next, linkError }: { next: string; linkError?: bool
               aria-describedby={error ? 'code-error' : undefined}
             />
           </div>
-          {error && (
+          {shownError && (
             <p id="code-error" role="alert" className="text-sm text-destructive-text">
-              {error}
+              {shownError}
             </p>
           )}
-          <Button type="submit" className="w-full" loading={checking}>
-            Verify and continue
+          <Button type="submit" className="w-full" loading={checking} disabled={codeWait > 0}>
+            {codeWait > 0 ? `Try again in ${formatWait(codeWait)}` : 'Verify and continue'}
           </Button>
           <Button type="button" variant="ghost" className="w-full" onClick={() => window.location.reload()}>
             Use a different email

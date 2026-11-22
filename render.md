@@ -73,3 +73,4 @@ new deploy (not just a restart).
 | 14 | Services created (`codestreak`, `codestreak-worker`, free, Singapore) with every non-secret value set. Secrets to add by hand: `SUPABASE_SERVICE_ROLE_KEY` (both), `WORKER_JOB_SECRET` (worker, from Vault). pg_cron wake job every 30 minutes. |
 | 20 | No new variables. Invite links are built from **`APP_URL`** (`<APP_URL>/invite/<token>`), so it must be the public Render URL there, or links point at localhost. Migration `private_groups` applied to Supabase. |
 | 20 fix | Sign-in links now land on **`/auth/confirm`**. It is covered by the existing Redirect URL `https://codestreak-k0uv.onrender.com/**`; keep that entry (and the Site URL as the Render URL). No new variables. |
+| 20 fix 2 | Migration `sign_in_attempts` applied. No new variables. Optional: custom SMTP in Supabase (Authentication → Emails → SMTP) lifts the built-in 2-emails-per-hour project cap. |
