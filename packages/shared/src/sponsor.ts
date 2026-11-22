@@ -35,10 +35,11 @@ export function parseSponsorAmount(raw: string, token: SponsorToken): SponsorAmo
 
 /** Trims, collapses whitespace and drops control characters; null when empty. Rejects over-long text. */
 export function cleanSponsorMessage(raw: string | null | undefined): { ok: true; message: string | null } | { ok: false; error: string } {
-  const m = (raw ?? '')
-    .replace(/[\u0000-\u001f\u007f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const visible = Array.from(raw ?? '', (ch) => {
+    const code = ch.codePointAt(0)!;
+    return code < 0x20 || code === 0x7f ? ' ' : ch; // control characters
+  }).join('');
+  const m = visible.replace(/\s+/g, ' ').trim();
   if (m.length > SPONSOR_MESSAGE_MAX) return { ok: false, error: `Keep the message under ${SPONSOR_MESSAGE_MAX} characters.` };
   return { ok: true, message: m || null };
 }
