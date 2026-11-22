@@ -639,3 +639,7 @@ Notification links always opened a new tab (meant for Solana Explorer), so "Open
 **Added:** migration `github_linking` (numeric ID check, `refreshed_at`, `linked_account_releases`, lock and cooldown trigger); `@codestreak/shared` `githubAccountFromIdentity`, `missingProviders`; `lib/accounts/github.ts` (sync, unlink, lock); `/dashboard/settings` with the GitHub card; dashboard "Accounts" links there; join requirement in the relayer; callback routes linking errors back to Settings.
 
 **Tests:** identity parsing (numeric IDs, malformed and non-GitHub identities); provider requirements (all / any / none). SQL: username as ID, leading zero, same GitHub on a second account, two GitHubs on one account, direct user insert, unlink and swap during an open challenge (rename allowed), 30-day cooldown for another account (same account allowed; allowed after 30 days), profile deletion still cascades.
+
+### Phase 23 fix: GitHub link returned to localhost
+
+Linking succeeded (auth log: `identity_linked`), but Supabase sent the browser back to its Site URL (localhost) because the return address (with `?linked=github` in `next`) didn't match the allowed Redirect URLs. The return path is now plain `/dashboard/settings`. Set the Supabase **Site URL** to the Render URL so any fallback lands on the live site.
