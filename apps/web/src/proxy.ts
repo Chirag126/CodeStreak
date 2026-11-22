@@ -12,6 +12,15 @@ export async function proxy(request: NextRequest) {
     return isProtected(request.nextUrl.pathname) ? NextResponse.redirect(new URL('/', request.url)) : NextResponse.next();
   }
 
+  // Safety net for old PKCE links that fell back to the Site URL: finish them on the callback.
+  const stray = request.nextUrl.searchParams.get('code');
+  if (stray && request.nextUrl.pathname !== '/auth/callback') {
+    const to = new URL('/auth/callback', request.url);
+    to.searchParams.set('code', stray);
+    to.searchParams.set('next', request.nextUrl.pathname === '/' ? '/dashboard' : request.nextUrl.pathname);
+    return NextResponse.redirect(to);
+  }
+
   let response = NextResponse.next({ request });
   const supabase = createServerClient(url, key, {
     cookies: {

@@ -533,3 +533,9 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - Creator's **Invite friends** panel on the group page (by ID, link with uses/expiry and copy, invitation list with status and revoke); dashboard **Invitations** card with Accept/Decline; `/invite/[token]` page.
 
 **Tests:** SQL: a raw token instead of a hash, links without expiry or use limit, links living over 30 days, a duplicate hash, a reused link (uses beyond the limit), a second live invitation and `via_link` on a link row are all rejected; an outsider sees neither the group, its overview nor its invitations; the friend invited by ID and the person who redeemed a link see it; declining hides it again; re-inviting after a decline works. Unit: expired (at and after expiry), used-up and revoked links; only pending/accepted invitations allow joining; public ID normalization.
+
+### Phase 20 fix: sign-in link works in any browser
+
+**Problem:** a friend opening the sign-in email on another device or in the email app's browser came back to the sign-in page every time (auth logs: the link verified, then the session exchange failed). Supabase's default PKCE flow needs a verifier cookie that exists only in the browser that requested the email. The free-plan email has no code to fall back on, so they could never sign in.
+
+**Fix:** the email is now sent with the implicit flow and lands on `/auth/confirm`. The session arrives in the URL fragment, which is never sent to a server, and is stored as the usual cookie, so the link works in any browser. The fragment is wiped from history at once, and the route guard continues to the username step or the invite page. Safety nets: tokens or errors landing on any other page are forwarded to `/auth/confirm`, and an old `?code=` link landing anywhere is forwarded to `/auth/callback`. Expired or already-used links say "only the newest link works". The code box stays for emails that show a code.

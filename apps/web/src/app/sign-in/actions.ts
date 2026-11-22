@@ -1,5 +1,6 @@
 'use server';
 
+import { createClient } from '@supabase/supabase-js';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
@@ -19,27 +20,38 @@ function friendly(message: string): string {
   return 'Something went wrong. Please try again.';
 }
 
-/** Absolute URL of the email link's landing route (APP_URL on Render; the request origin locally). */
-async function callbackUrl(next: string): Promise<string> {
+/** Absolute URL of the email link's landing page (APP_URL on Render; the request origin locally). */
+async function confirmUrl(next: string): Promise<string> {
   const origin = process.env.APP_URL?.trim() || (await headers()).get('origin') || 'http://localhost:3000';
-  return `${origin.replace(/\/$/, '')}/auth/callback?next=${encodeURIComponent(next)}`;
+  return `${origin.replace(/\/$/, '')}/auth/confirm?next=${encodeURIComponent(next)}`;
 }
 
-/** Step 1: email a sign-in link and code (creates the account on first sign-in). */
+/**
+ * Sends the sign-in email with the implicit flow, so the link works in ANY browser or device (the
+ * email app's browser, a phone). The default PKCE flow only works in the browser that asked for
+ * the email, because it needs a verifier cookie stored there; opened anywhere else it fails and the
+ * user is sent back to sign in, forever. This client only sends the email and keeps no session.
+ */
+function emailClient() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
+    auth: { flowType: 'implicit', persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+}
+
+/** Step 1: email a sign-in link (creates the account on first sign-in). */
 export async function requestCode(_prev: SignInState, form: FormData): Promise<SignInState> {
   const parsed = emailSchema.safeParse(String(form.get('email') ?? '').trim().toLowerCase());
   if (!parsed.success) return { step: 'email', error: parsed.error.issues[0]?.message, email: String(form.get('email') ?? '') };
-  const supabase = await createSupabaseServerClient();
   const next = safeNext(String(form.get('next') ?? ''));
-  const { error } = await supabase.auth.signInWithOtp({
+  const { error } = await emailClient().auth.signInWithOtp({
     email: parsed.data,
-    options: { shouldCreateUser: true, emailRedirectTo: await callbackUrl(next) },
+    options: { shouldCreateUser: true, emailRedirectTo: await confirmUrl(next) },
   });
   if (error) return { step: 'email', error: friendly(error.message), email: parsed.data };
   return {
     step: 'code',
     email: parsed.data,
-    notice: `Check ${parsed.data}: open the link in this browser, or enter the code if the email shows one.`,
+    notice: `We emailed ${parsed.data} a sign-in link. Open it on any device; only the newest link works. If the email shows a code instead, enter it below.`,
   };
 }
 
