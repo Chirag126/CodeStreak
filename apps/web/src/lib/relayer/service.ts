@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createHash } from 'node:crypto';
-import { formatAmount, parseSponsorAmount, POOL_PARAM_MESSAGES, SOL_DECIMALS, USDC_DECIMALS, validatePoolParams, type PoolParams } from '@codestreak/shared';
+import { formatAmount, missingProviders, PROVIDER_LABELS, parseSponsorAmount, POOL_PARAM_MESSAGES, SOL_DECIMALS, USDC_DECIMALS, validatePoolParams, type PoolParams } from '@codestreak/shared';
 import {
   anchor,
   associatedTokenAddress,
@@ -32,6 +32,7 @@ import {
 } from '@codestreak/shared/relayer';
 import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction, VersionedTransaction, type TransactionInstruction } from '@solana/web3.js';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { linkedProviders } from '@/lib/accounts/github';
 import { syncChallenge, syncJoin, syncSponsor } from '@/lib/sync/chain';
 import { relayerKeypair } from './keypair';
 
@@ -78,6 +79,21 @@ async function mayJoinPrivate(profileId: string, challengeAddress: string): Prom
     .eq('invitee_id', profileId)
     .in('status', ['pending', 'accepted']);
   return Boolean(count);
+}
+
+/** Providers that can be linked today; the others are not required yet (LeetCode linking comes later). */
+const LINKABLE = new Set(['github']);
+
+/** A message if the challenge's rules need accounts the profile hasn't linked, else null. */
+async function joinRequirement(profileId: string, challengeAddress: string): Promise<string | null> {
+  const { data } = await createSupabaseAdminClient().from('challenges').select('rules').eq('onchain_address', challengeAddress).maybeSingle();
+  const rules = (data?.rules ?? null) as { providers?: ('github' | 'leetcode')[]; providerRule?: 'any' | 'all' } | null;
+  const linked = await linkedProviders(profileId);
+  const notYetLinkable = (rules?.providers ?? []).filter((p) => !LINKABLE.has(p));
+  const check = missingProviders(rules, [...linked, ...notYetLinkable]);
+  if (check.ok) return null;
+  const names = check.need.map((p) => PROVIDER_LABELS[p]).join(check.rule === 'all' ? ' and ' : ' or ');
+  return `This challenge counts ${names} activity. Link ${names} first (Dashboard → Settings).`;
 }
 
 /** Joining a private group answers its pending invitation. */
@@ -251,6 +267,10 @@ export async function prepareJoin(input: {
   if (challenge.participantCount >= challenge.maxParticipants) {
     return { ok: false, error: 'This challenge is full.', code: 'program.PoolFull', title: 'Challenge full' };
   }
+
+  // The rules' providers must be linked before joining (otherwise days could never be verified).
+  const requirement = await joinRequirement(input.profileId, input.challengeAddress);
+  if (requirement) return { ok: false, error: requirement, code: 'account.not_linked', title: 'Link your accounts first' };
 
   const buyIn = BigInt(challenge.buyIn.toString());
   const userToken = associatedTokenAddress(user, challenge.mint, challenge.tokenProgram);

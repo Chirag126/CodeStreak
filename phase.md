@@ -614,3 +614,28 @@ Notification links always opened a new tab (meant for Solana Explorer), so "Open
 - *Side effect (by design):* a wallet sign-in invalidates any sign-in email still unopened for that account.
 
 **Tests:** shared login check (valid, replayed, expired, other browser, wrong wallet, altered message, linking signature reused for login); SQL: duplicate nonce, over-10-minute challenge, EVM address, raw cookie stored, users/guests can't read, forge or reset challenges.
+
+---
+
+## Phase 23: GitHub linking (S)
+
+**Goal:** link a GitHub account through Supabase identity linking, store its numeric ID, show it in Settings, and make sure a GitHub account can't be shared or swapped to cheat.
+
+**Flow:** Settings → **Link GitHub** → `linkIdentity({ provider: 'github' })` (GitHub OAuth, public profile only) → `/auth/callback` (PKCE) → Settings, where the server reads the identity from the **Supabase admin API** (never from the browser) and records the numeric ID in `linked_accounts`. Unlink: the server first (may refuse), then the Supabase identity.
+
+**Loopholes studied and closed**
+- *One GitHub on two accounts:* Supabase refuses linking an identity owned by another user, and `linked_accounts` is unique on (provider, provider user ID). Both layers tested.
+- *Username reuse:* GitHub usernames can be renamed and re-registered by someone else, so the numeric ID (validated `^[1-9][0-9]{0,19}$`) is the key; the username is display-only and refreshed on each visit.
+- *Swapping mid-challenge* (switching to a friend's busier account, or passing yours around): unlinking or changing the GitHub account is refused by a database trigger while the user is in an open (not settled/cancelled) challenge. Renames are still fine.
+- *Account hopping:* every unlink is recorded; a released GitHub account can't be linked to a **different** CodeStreak account for 30 days (database trigger). The same person can re-link immediately.
+- *Going around the app* (calling Supabase's `unlinkIdentity`/`linkIdentity` directly): CodeStreak's record is authoritative and only the server changes it; while locked, a removed or different Supabase identity is ignored. A failed admin lookup is never treated as "unlinked".
+- *Forged records:* users can't insert/update/delete `linked_accounts` (RLS); releases are server-only.
+- *Joining without the accounts the rules need:* the relayer refuses to prepare the join ("This challenge counts GitHub activity. Link GitHub first"). LeetCode requirements are waived until LeetCode linking exists.
+- *Least privilege:* CodeStreak never stores GitHub tokens; verification will use public data by numeric ID.
+- *Error pages:* GitHub/Supabase refusals (already linked elsewhere, cancelled, linking disabled) come back to Settings as a short whitelisted code, never echoing provider text.
+
+**Note:** enabling the GitHub provider also lets people sign in with GitHub (Supabase can't enable linking without sign-in). That is safe: it only reaches accounts owning that GitHub identity, and the rules above still apply.
+
+**Added:** migration `github_linking` (numeric ID check, `refreshed_at`, `linked_account_releases`, lock and cooldown trigger); `@codestreak/shared` `githubAccountFromIdentity`, `missingProviders`; `lib/accounts/github.ts` (sync, unlink, lock); `/dashboard/settings` with the GitHub card; dashboard "Accounts" links there; join requirement in the relayer; callback routes linking errors back to Settings.
+
+**Tests:** identity parsing (numeric IDs, malformed and non-GitHub identities); provider requirements (all / any / none). SQL: username as ID, leading zero, same GitHub on a second account, two GitHubs on one account, direct user insert, unlink and swap during an open challenge (rename allowed), 30-day cooldown for another account (same account allowed; allowed after 30 days), profile deletion still cascades.
