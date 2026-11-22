@@ -20,6 +20,17 @@ export async function GET(request: NextRequest) {
   const type = url.searchParams.get('type');
 
   const supabase = await createSupabaseServerClient();
+
+  // Identity linking (e.g. GitHub) that GitHub or Supabase refused: back to the page that started
+  // it with a short code, while the user stays signed in. Only CodeStreak codes are passed on.
+  const oauthError = url.searchParams.get('error_code') ?? url.searchParams.get('error');
+  if (oauthError && next.startsWith('/dashboard/settings')) {
+    const codeSafe = /^[a-z_]{1,64}$/.test(oauthError) ? oauthError : 'unknown';
+    const target = new URL('/dashboard/settings', url.origin);
+    target.searchParams.set('link_error', codeSafe);
+    return NextResponse.redirect(target);
+  }
+
   let error: unknown = 'missing';
   if (code) {
     ({ error } = await supabase.auth.exchangeCodeForSession(code));
