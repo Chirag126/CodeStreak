@@ -29,7 +29,9 @@ export function GithubCard({ account, locked, notice }: { account: GithubView | 
   function link() {
     setError(null);
     start(async () => {
-      const next = '/dashboard/settings?linked=github';
+      // A plain return path (no query) so it matches Supabase's allowed Redirect URLs exactly;
+      // Settings re-reads the link from Supabase on every visit anyway.
+      const next = '/dashboard/settings';
       const { error: e } = await createSupabaseBrowserClient().auth.linkIdentity({
         provider: 'github',
         options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
