@@ -1,0 +1,123 @@
+import { ComputeBudgetProgram, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
+import { describe, expect, it } from 'vitest';
+
+import { challengePda, participantPda, PROGRAM_ID, vaultPda } from '../program/pdas.js';
+import { buildCodestreakInstruction, checkRelayedTransaction, decodeInstructionName, rateLimitDecision, RATE_LIMITS } from './index.js';
+
+const TOKEN_PROGRAM = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+const relayer = Keypair.generate().publicKey;
+const user = Keypair.generate().publicKey;
+const attacker = Keypair.generate().publicKey;
+const challenge = challengePda(Keypair.generate().publicKey, 1n);
+const mint = Keypair.generate().publicKey;
+const userToken = Keypair.generate().publicKey;
+
+function joinIx(overrides: Record<string, PublicKey | null> = {}) {
+  return buildCodestreakInstruction('join_pool', {
+    payer: relayer,
+    user,
+    join_authority: null,
+    challenge,
+    participant: participantPda(challenge, user),
+    mint,
+    user_token: userToken,
+    vault: vaultPda(challenge),
+    token_program: TOKEN_PROGRAM,
+    ...overrides,
+  });
+}
+
+function tx(...ixs: TransactionInstruction[]) {
+  const t = new Transaction({ feePayer: relayer, recentBlockhash: '11111111111111111111111111111111' });
+  t.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 120_000 }), ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000 }), ...ixs);
+  return t;
+}
+
+/** SPL Token `Transfer` (instruction 3): move tokens from the user's account to an attacker. */
+function tokenTransfer(from: PublicKey, to: PublicKey, owner: PublicKey) {
+  const data = Buffer.alloc(9);
+  data[0] = 3;
+  data.writeBigUInt64LE(1_000_000n, 1);
+  return new TransactionInstruction({
+    programId: TOKEN_PROGRAM,
+    keys: [
+      { pubkey: from, isSigner: false, isWritable: true },
+      { pubkey: to, isSigner: false, isWritable: true },
+      { pubkey: owner, isSigner: true, isWritable: false },
+    ],
+    data,
+  });
+}
+
+const ctx = { relayer, user };
+
+describe('relayer policy', () => {
+  it('accepts a sponsored join', () => {
+    expect(checkRelayedTransaction(tx(joinIx()), ctx)).toEqual({ ok: true, instruction: 'join_pool' });
+    expect(decodeInstructionName(joinIx().data)).toBe('join_pool');
+  });
+
+  it('accepts a private join co-signed by the relayer', () => {
+    expect(checkRelayedTransaction(tx(joinIx({ join_authority: relayer })), ctx)).toMatchObject({ ok: true });
+  });
+
+  it('rejects an attacker token transfer added to the transaction', () => {
+    const r = checkRelayedTransaction(tx(joinIx(), tokenTransfer(userToken, attacker, user)), ctx);
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.errors.join()).toMatch(/TokenkegQ.* is not allowed/);
+  });
+
+  it('rejects draining the relayer with a SOL transfer', () => {
+    const r = checkRelayedTransaction(tx(joinIx(), SystemProgram.transfer({ fromPubkey: relayer, toPubkey: attacker, lamports: 1_000_000_000 })), ctx);
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects instructions the relayer does not sponsor, and two program instructions', () => {
+    const adminLike = new TransactionInstruction({ programId: PROGRAM_ID, keys: [], data: Buffer.from([1, 2, 3, 4, 5, 6, 7, 8]) });
+    expect(checkRelayedTransaction(tx(adminLike), ctx).ok).toBe(false);
+    expect(checkRelayedTransaction(tx(joinIx(), joinIx()), ctx).ok).toBe(false);
+    expect(checkRelayedTransaction(tx(), ctx).ok).toBe(false);
+  });
+
+  it('rejects the relayer in a user slot, a foreign co-signer, someone else as the user, or another fee payer', () => {
+    expect(checkRelayedTransaction(tx(joinIx({ user: relayer })), ctx).ok).toBe(false);
+    expect(checkRelayedTransaction(tx(joinIx({ join_authority: attacker })), ctx).ok).toBe(false);
+    expect(checkRelayedTransaction(tx(joinIx({ user: attacker })), ctx).ok).toBe(false);
+    const t = tx(joinIx());
+    t.feePayer = user;
+    expect(checkRelayedTransaction(t, ctx).ok).toBe(false);
+  });
+
+  it('caps compute budget and priority fees', () => {
+    const t = new Transaction({ feePayer: relayer, recentBlockhash: '11111111111111111111111111111111' });
+    t.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 10_000_000 }), joinIx());
+    expect(checkRelayedTransaction(t, ctx)).toMatchObject({ ok: false, errors: ['priority fee above the relayer cap'] });
+    const t2 = new Transaction({ feePayer: relayer, recentBlockhash: '11111111111111111111111111111111' });
+    t2.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }), joinIx());
+    expect(checkRelayedTransaction(t2, ctx).ok).toBe(false);
+  });
+
+  it('encodes u64 arguments from the IDL', () => {
+    const ix = buildCodestreakInstruction('sponsor_pool', {
+      payer: relayer,
+      sponsor: user,
+      challenge,
+      receipt: Keypair.generate().publicKey,
+      mint,
+      sponsor_token: userToken,
+      vault: vaultPda(challenge),
+      token_program: TOKEN_PROGRAM,
+    }, { amount: 2_500_000n });
+    expect(ix.data.length).toBe(16);
+    expect(ix.data.readBigUInt64LE(8)).toBe(2_500_000n);
+  });
+});
+
+describe('rate limits', () => {
+  it('rejects requests over the per-user limits', () => {
+    expect(rateLimitDecision({ lastTenMinutes: 0, lastDay: 0 })).toEqual({ ok: true });
+    expect(rateLimitDecision({ lastTenMinutes: RATE_LIMITS.perTenMinutes - 1, lastDay: 5 })).toEqual({ ok: true });
+    expect(rateLimitDecision({ lastTenMinutes: RATE_LIMITS.perTenMinutes, lastDay: 10 })).toMatchObject({ ok: false });
+    expect(rateLimitDecision({ lastTenMinutes: 0, lastDay: RATE_LIMITS.perDay })).toMatchObject({ ok: false });
+  });
+});

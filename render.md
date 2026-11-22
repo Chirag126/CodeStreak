@@ -31,7 +31,7 @@ Render → Service → Environment.
 | `APP_URL` | `http://localhost:3000` | `https://codestreak-k0uv.onrender.com` (**set**) | web | 1 (used from 12) |
 | Supabase → Auth → URL Configuration → **Site URL** | `http://localhost:3000` | `https://codestreak-k0uv.onrender.com` | Supabase dashboard | 12 |
 | Supabase → Auth → URL Configuration → **Redirect URLs** | `http://localhost:3000/**` | add `https://codestreak-k0uv.onrender.com/**` (keep localhost for development) | Supabase dashboard | 12 |
-| `RELAYER_KEYPAIR_PATH` | `\\wsl$\Ubuntu\home\chirag_126\.config\codestreak\keys\relayer.json` | **don't set**; set `RELAYER_KEYPAIR_JSON` instead (the file's contents, a JSON array of 64 numbers) | web | 9 |
+| `RELAYER_KEYPAIR_PATH` | `\\wsl$\Ubuntu\home\chirag_126\.config\codestreak\keys\relayer.json` | **don't set**; set **`RELAYER_KEYPAIR_JSON`** instead: the file's whole contents (a JSON array of 64 numbers). **Required from Phase 15** (sponsored joins). Get it in WSL with `cat ~/.config/codestreak/keys/relayer.json` | web | 9 / 15 |
 | `UPGRADE_AUTHORITY_KEYPAIR_PATH` | path to `upgrade-authority.json` | **never set on Render** (local, one-time scripts only) | - | 9 |
 | `VERIFIER_KEYPAIR_PATH` | (not used yet) | **don't set**; set `VERIFIER_KEYPAIR_JSON` instead | worker | 28 |
 | `WORKER_URL` | `http://localhost:10000` (local worker) | `https://codestreak-worker.onrender.com` (Supabase Vault `worker_url` is **set**) | web | 14 |
@@ -69,4 +69,5 @@ new deploy (not just a restart).
 | 9 | Program deployed to devnet from WSL (not from Render). `RELAYER_KEYPAIR_JSON` on Render instead of the WSL path. |
 | 12 | `APP_URL`, Supabase Site URL and Redirect URLs for the sign-in email link. |
 | 13 | Web server now uses `SUPABASE_SERVICE_ROLE_KEY` (wallet linking). `APP_URL` is also the domain shown in the wallet's signing message. |
+| 15 | Web needs **`RELAYER_KEYPAIR_JSON`** (secret) for sponsored joins. Keep the relayer funded: it pays fees and Participant rent (~0.002 SOL per join) and stops sponsoring below 0.02 SOL. |
 | 14 | Services created (`codestreak`, `codestreak-worker`, free, Singapore) with every non-secret value set. Secrets to add by hand: `SUPABASE_SERVICE_ROLE_KEY` (both), `WORKER_JOB_SECRET` (worker, from Vault). pg_cron wake job every 30 minutes. |

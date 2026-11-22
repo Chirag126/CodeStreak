@@ -1,7 +1,8 @@
 // Creates a clearly labeled DEMO challenge on devnet (compressed time: 5-minute "days"), then reads
 // it back from the chain. The relayer key pays and acts as the demo creator; no tokens are needed.
 //
-//   pnpm devnet:seed-demo
+//   pnpm devnet:seed-demo                          (joining open ~14 minutes)
+//   pnpm devnet:seed-demo --start-in-minutes=180   (joining open ~3 hours, for testing joins)
 import { DEVNET_USDC_MINT, USDC_DECIMALS } from '@codestreak/shared';
 import {
   anchor,
@@ -44,7 +45,12 @@ await main(async () => {
   const hash = await rulesHash(rules);
 
   const now = Math.floor(Date.now() / 1000);
-  const start = now + 15 * 60; // joining stays open for ~14 minutes
+  const arg = process.argv.find((a) => a.startsWith('--start-in-minutes='));
+  const startInMinutes = arg ? Number(arg.split('=')[1]) : 15;
+  if (!Number.isInteger(startInMinutes) || startInMinutes < 5 || startInMinutes > 7 * 24 * 60) {
+    throw new Error('--start-in-minutes must be a whole number between 5 and 10080');
+  }
+  const start = now + startInMinutes * 60; // joining closes one minute before the start
   const challengeId = BigInt(Date.now());
   const params: InitializePoolParams = {
     challengeId: new anchor.BN(challengeId.toString()),
@@ -102,4 +108,5 @@ await main(async () => {
   console.log(`  vault           ${vault.toBase58()} balance ${vaultBalance.value.uiAmountString} USDC`);
   if (!c.isDemo || !Buffer.from(c.rulesHash).equals(Buffer.from(hash))) throw new Error('read-back mismatch');
   console.log(`\n  ${explorerAddressUrl(challenge)}`);
+  console.log(`  App page: ${process.env.APP_URL ?? 'http://localhost:3000'}/challenges/${challenge.toBase58()}`);
 });
