@@ -18,6 +18,8 @@ export function useLiveBoard(address: string, challengeId: string, initial: Boar
   const [live, dispatch] = useReducer(liveReducer, initialLive);
   const [generation, setGeneration] = useState(0);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Set on any disconnect; the next successful subscribe re-fetches what was missed meanwhile.
+  const missed = useRef(false);
 
   const refetch = useCallback(async () => {
     try {
@@ -48,7 +50,14 @@ export function useLiveBoard(address: string, challengeId: string, initial: Boar
         .channel(`board:${challengeId}:${generation}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'challenge_activity', filter: `challenge_id=eq.${challengeId}` }, () => scheduleRefetch())
         .subscribe((status) => {
-          if (!disposed && STATUS_EVENTS.has(status)) dispatch({ type: status } as LiveEvent);
+          if (disposed || !STATUS_EVENTS.has(status)) return;
+          dispatch({ type: status } as LiveEvent);
+          if (status !== 'SUBSCRIBED') {
+            missed.current = true;
+          } else if (missed.current) {
+            missed.current = false;
+            void refetch().then((ok) => ok && dispatch({ type: 'CAUGHT_UP' }));
+          }
         });
     })();
 
@@ -56,7 +65,7 @@ export function useLiveBoard(address: string, challengeId: string, initial: Boar
       disposed = true;
       if (channel) void supabase.removeChannel(channel);
     };
-  }, [challengeId, generation, scheduleRefetch]);
+  }, [challengeId, generation, scheduleRefetch, refetch]);
 
   // Resubscribe with backoff while reconnecting.
   useEffect(() => {
@@ -65,15 +74,12 @@ export function useLiveBoard(address: string, challengeId: string, initial: Boar
     return () => clearTimeout(t);
   }, [live.status, live.attempt]);
 
-  // Back after a disconnect: fetch whatever changed meanwhile.
-  useEffect(() => {
-    if (live.status !== 'live' || !live.missedChanges) return;
-    void refetch().then((ok) => ok && dispatch({ type: 'CAUGHT_UP' }));
-  }, [live.status, live.missedChanges, refetch]);
-
   // Browser connectivity and tab visibility.
   useEffect(() => {
-    const offline = () => dispatch({ type: 'OFFLINE' });
+    const offline = () => {
+      missed.current = true;
+      dispatch({ type: 'OFFLINE' });
+    };
     const online = () => dispatch({ type: 'ONLINE' });
     const visible = () => document.visibilityState === 'visible' && scheduleRefetch();
     window.addEventListener('offline', offline);
