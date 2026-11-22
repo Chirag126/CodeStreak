@@ -643,3 +643,31 @@ Notification links always opened a new tab (meant for Solana Explorer), so "Open
 ### Phase 23 fix: GitHub link returned to localhost
 
 Linking succeeded (auth log: `identity_linked`), but Supabase sent the browser back to its Site URL (localhost) because the return address (with `?linked=github` in `next`) didn't match the allowed Redirect URLs. The return path is now plain `/dashboard/settings`. Set the Supabase **Site URL** to the Render URL so any fallback lands on the live site.
+
+---
+
+## Phase 24: GitHub provider (L)
+
+**Goal:** turn a user's GitHub activity for one day into a day result (verified / failed / indeterminate), from real data, with anti-cheat filters and creator options.
+
+**Pipeline** (`@codestreak/shared/verification`):
+1. `GET /user/{id}`: numeric ID → current login (survives renames).
+2. `GET /users/{login}/events/public`: PushEvents in the day window. **Since October 2025 push events carry no commit list**, only `before`/`head`, so:
+3. `GET /repos/{repo}` (fork? owner?, cached) → `GET /repos/{repo}/compare/{before}...{head}` for the pushed commits (new branch or rewritten history: the newest commits on `head`).
+4. `GET /repos/{repo}/commits/{sha}`: files and patches, **only** for commits that can count (merges and other authors are skipped without the call). At most 80 detail calls a day.
+5. Filters → meaningful-line count → duplicate hashes → day result.
+
+**Rules** (all from push time on GitHub's clock; dates and files are user-controlled, so every rule is a filter, never a source of credit):
+- Never counted: merge commits, commits by others, repos the user doesn't own, the same commit twice, the same change under a new SHA (rebase, cherry-pick, copy to another repo), **whitespace-only/re-indented changes and moved lines** (an added line matching a removed line in the same file), blank, brace-only and comment-only lines.
+- Not counted unless the creator allows, each with a limit: **README/docs** (≤ 50% of the daily goal), **lockfiles, build output, minified and generated files** (≤ 25%), **own commits in own forks**, **backdated commits** (made up to N ≤ 72 hours before the day starts).
+- Whitespace-only changes and re-pushed duplicates have no option on purpose: counting them would let anyone farm lines.
+- **File filter:** extensions (`.ts`, `py`) and/or exact names (`main.py`, `Makefile`); empty = all source files (30 common languages).
+- **Day result:** verified at the goal; below it, **failed only if GitHub was read completely**. Rate limits, errors, too many commits or diffs GitHub omitted make it **indeterminate** (never forfeits a stake).
+
+**Real data (CodeStreak repo, 22 Nov):** 20 commits read with 14 API calls; 12 authored by the assistant's git identity (author mismatch) and 8 PR merges (merge commits) → 0 lines → failed, which is correct: none were the user's own commits. A real one-line test edit counted exactly 1 meaningful line.
+
+**Creator options:** wizard step "Rules" → "GitHub options (strict by default)"; stored in the hashed rules document (`fileFilter`, `allow`); the challenge page lists them. Older challenges stay strict.
+
+**Check any account and day:** `pnpm verify:github -- --login <github-login> --date YYYY-MM-DD [--min 15] [--files ".ts main.py"] [--allow docs,generated,forks] [--backdate 4]`.
+
+**Tests:** fixtures for whitespace-only, moved lines, lockfiles, README, minified (by name and by long lines), forks, backdated, rebase duplicate; each option on with its cap (docs alone can never complete a day); options that stay excluded with everything on; file filter by extension and name; rules document → engine rules (strict defaults, caps enforced); day outcome; pipeline with a fake GitHub (normal push, merges and other authors skipped without detail calls, new branch, rewritten history, rate limit, network error, commit cap, deleted account); wizard file-type parsing.

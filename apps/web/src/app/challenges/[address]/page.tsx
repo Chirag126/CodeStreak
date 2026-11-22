@@ -1,4 +1,4 @@
-import { formatAmount, SOL_DECIMALS, survivalRate, USDC_DECIMALS, WSOL_MINT } from '@codestreak/shared';
+import { formatAmount, GITHUB_OPTION_LIMITS, SOL_DECIMALS, survivalRate, USDC_DECIMALS, WSOL_MINT } from '@codestreak/shared';
 import { challengePhase, challengeTimes, createProgram, explorerAddressUrl } from '@codestreak/shared/program';
 import { isSolanaAddress } from '@codestreak/shared/wallet';
 import { PublicKey } from '@solana/web3.js';
@@ -32,7 +32,29 @@ async function chainNow(connection: ReturnType<typeof serverConnection>): Promis
 
 const when = (ts: number) => new Date(ts * 1000).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }) + ' UTC';
 
-type Rules = { providers?: string[]; providerRule?: 'any' | 'all'; github?: { minMeaningfulLines?: number } | null };
+type GithubRulesDoc = {
+  minMeaningfulLines?: number;
+  fileFilter?: { extensions?: string[]; filenames?: string[] } | null;
+  allow?: { docs?: boolean; generated?: boolean; forks?: boolean; backdateHours?: number } | null;
+};
+type Rules = { providers?: string[]; providerRule?: 'any' | 'all'; github?: GithubRulesDoc | null };
+
+/** The creator's GitHub options in plain words (older challenges have none: strict). */
+function githubOptionLines(g: GithubRulesDoc | null | undefined): string[] {
+  if (!g) return [];
+  const min = g.minMeaningfulLines ?? 15;
+  const filter = [...(g.fileFilter?.extensions ?? []), ...(g.fileFilter?.filenames ?? [])];
+  const lines = [
+    filter.length ? `Only these files count: ${filter.join(', ')}.` : 'Any source file counts (not docs, lockfiles, minified or generated files).',
+    'Whitespace-only changes, moved lines and re-pushed changes never count. Merges and commits by others never count.',
+  ];
+  if (g.allow?.docs) lines.push(`README/docs count, up to ${Math.floor(min * GITHUB_OPTION_LIMITS.docsCapShare)} lines a day.`);
+  if (g.allow?.generated) lines.push(`Lockfiles, minified and generated files count, up to ${Math.floor(min * GITHUB_OPTION_LIMITS.generatedCapShare)} lines a day.`);
+  lines.push(g.allow?.forks ? 'Your own commits in your forks count.' : 'Forks don’t count.');
+  lines.push(g.allow?.backdateHours ? `Commits made up to ${g.allow.backdateHours}h before a day starts still count for it.` : 'Commits must be made during the day they are pushed.');
+  lines.push('Only public repositories you own can be checked.');
+  return lines;
+}
 
 function describeRules(rules: Rules): string {
   return (rules.providers ?? [])
@@ -92,6 +114,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
 
   const rate = row ? survivalRate({ members: Number(row.members), stillIn: Number(row.still_in), survived: Number(row.survived), finalized: Number(row.finalized) }) : null;
   const rulesText = describeRules((row?.rules ?? {}) as Rules);
+  const githubLines = githubOptionLines(((row?.rules ?? {}) as Rules).github);
   const shieldsOn = account.maxShieldsPerParticipant > 0;
   const viewerJoined = Boolean(viewer && (standings ?? []).some((m) => m.public_id === viewer.publicId));
   const isCreator = Boolean(viewer && row && row.creator_id === viewer.userId);
@@ -170,6 +193,13 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
               <span className="text-muted-foreground">A day counts if you make </span>
               {rulesText || 'a verified coding contribution'}.
             </p>
+            {githubLines.length > 0 && (
+              <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                {githubLines.map((l) => (
+                  <li key={l}>{l}</li>
+                ))}
+              </ul>
+            )}
             <p>
               <span className="text-muted-foreground">Shields: </span>
               {shieldsOn

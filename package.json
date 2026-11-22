@@ -26,7 +26,8 @@
     "test": "pnpm test:tooling && pnpm test:spikes && pnpm -r --if-present run test",
     "test:tooling": "node --test \"scripts/*.test.mjs\"",
     "test:spikes": "node --test \"spikes/lib/*.test.mjs\"",
-    "check": "pnpm check:secrets && pnpm typecheck && pnpm lint && pnpm test && pnpm build"
+    "check": "pnpm check:secrets && pnpm typecheck && pnpm lint && pnpm test && pnpm build",
+    "verify:github": "pnpm --filter @codestreak/shared build && pnpm --filter @codestreak/worker verify:github"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.0",
