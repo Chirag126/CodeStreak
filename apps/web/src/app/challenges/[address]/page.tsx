@@ -12,6 +12,12 @@ import { JoinButton } from './join-button';
 
 export const metadata: Metadata = { title: 'Challenge' };
 
+/** The cluster's clock (falls back to this server's clock if the RPC has no block time). */
+async function chainNow(connection: ReturnType<typeof serverConnection>): Promise<number> {
+  const slot = await connection.getSlot('confirmed');
+  return (await connection.getBlockTime(slot)) ?? Math.floor(Date.now() / 1000);
+}
+
 const when = (ts: number) => new Date(ts * 1000).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }) + ' UTC';
 
 // Reads the challenge straight from devnet. The full challenge pages come in later phases.
@@ -24,8 +30,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
   if (!account) notFound();
 
   const times = challengeTimes(account);
-  const slot = await connection.getSlot('confirmed');
-  const now = (await connection.getBlockTime(slot)) ?? Math.floor(Date.now() / 1000);
+  const now = await chainNow(connection);
   const phase = challengePhase(times, now);
   const isSol = account.mint.toBase58() === WSOL_MINT;
   const buyIn = `${formatAmount(BigInt(account.buyIn.toString()), isSol ? SOL_DECIMALS : USDC_DECIMALS)} ${isSol ? 'SOL' : 'USDC'}`;

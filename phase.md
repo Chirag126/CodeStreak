@@ -323,7 +323,7 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - **Duplicates rejected:** joining twice (by profile or by wallet), counting the same transaction twice (join, sponsorship, Shield, challenge creation), a second Shield for the same day, a wallet or provider account on two profiles, duplicate public IDs/usernames/on-chain challenges, two pending invites to one person.
 - **Other checks:** valid Solana addresses and signatures, join deadline ≤ start, Shield settings consistent, day length 60 s…1 day, 1–60 days; `is_demo` is derived (day < 24 h), not writable. All timestamps are `timestamptz` (UTC).
 - **Row level security on every table:** browsers can read public challenges and their members; private challenges only if they created, joined or were invited; their own wallets/linked accounts/invitations. Users can edit only presentation fields of their own profile (never `id` or `public_id`). Every other write happens on the server (service role) after checking the chain.
-- **CI job** (`database`): applies the migrations to a fresh Postgres 17 (with small stand-ins for Supabase's `auth` schema and API roles) and runs `supabase/tests/schema_a_test.sql`.
+- **CI job** (`database`): applies the migrations to a fresh Postgres 17 (with small stand-ins for Supabase's `auth` schema and API roles) and runs `supabase/tests/10_schema_a_test.sql`.
 - **Applied to the Supabase project** (`qyajonqjjtmlkdxvhloe`) as migration `schema_a`.
 
 **Tests:** 30+ rejected statements (floats as numbers and as text, negatives, zero amounts, u64 overflow, every duplicate above, bad addresses, inconsistent rules, writing `is_demo`) plus RLS checks (anon vs member vs outsider, own-profile edits only, no direct challenge inserts, public ID immutable) and positive checks (profile + public ID per sign-up, full u64 stored exactly, timestamptz).
@@ -348,7 +348,7 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - **Advisor fixes for Phase 10:** the visibility helpers moved to a `private` schema the API doesn't expose (no more callable SECURITY DEFINER functions), function search paths pinned, API execute revoked on Supabase's `rls_auto_enable`, indexes on the two unindexed foreign keys.
 - **Applied to Supabase** as migration `schema_b`. **Advisors: 0 security findings; performance shows only INFO "unused index"** notes, expected while the database is empty.
 
-**Tests** (`supabase/tests/schema_b_test.sql`, CI `database` job):
+**Tests** (`supabase/tests/20_schema_b_test.sql`, CI `database` job):
 - structure: RLS on every table, invoker views, no SECURITY DEFINER function in `public` executable by `anon`;
 - one-way results, duplicate evidence/receipts/disputes/badges, fractions and negatives, append-only audit log;
 - **two-user RLS:** a non-member can't read the private group through challenges, memberships, runs, evidence, results, disputes or the standings view, and can't write results or disputes; a member sees all of it; anonymous visitors see nothing private; the public challenge and leaderboard stay readable.
@@ -398,7 +398,7 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 
 **Tests:**
 - unit (`@codestreak/shared/wallet`, real ed25519 keys): fresh signature accepted; **replayed nonce**, **expired nonce** (at and after expiry), **0x address**, another wallet, edited message and forged signature all rejected; base58 round trip; every checked field appears in the message.
-- SQL (`supabase/tests/wallet_test.sql`): a nonce can be consumed only once; 0x addresses, reused nonces, over-long validity and non-random nonces rejected; **one wallet on two users rejected**; users can't create nonces or link wallets directly and see only their own nonces.
+- SQL (`supabase/tests/30_wallet_test.sql`): a nonce can be consumed only once; 0x addresses, reused nonces, over-long validity and non-random nonces rejected; **one wallet on two users rejected**; users can't create nonces or link wallets directly and see only their own nonces.
 
 ---
 
@@ -435,3 +435,4 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - Migration `relayer_requests` (RLS, users read only their own). `render.md`: `RELAYER_KEYPAIR_JSON` required on the web service.
 
 **Tests:** policy: sponsored join and private co-signed join accepted; **attacker token transfer added to the transaction rejected**; SOL drain from the relayer, non-relayed and duplicate program instructions, relayer in the user slot, a foreign co-signer, someone else as the user, another fee payer, and over-cap compute/priority all rejected; u64 argument encoding. **Rate limit: over-limit rejected** (per 10 minutes and per day). SQL: one idempotency key per user, single submission under concurrency, signature required to confirm, users can't write requests.
+- SQL test files are numbered (`10_`, `20_`, ...) so CI runs them in phase order: each file's fixtures assume the earlier ones ran first.
