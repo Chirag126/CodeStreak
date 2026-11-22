@@ -436,3 +436,23 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 
 **Tests:** policy: sponsored join and private co-signed join accepted; **attacker token transfer added to the transaction rejected**; SOL drain from the relayer, non-relayed and duplicate program instructions, relayer in the user slot, a foreign co-signer, someone else as the user, another fee payer, and over-cap compute/priority all rejected; u64 argument encoding. **Rate limit: over-limit rejected** (per 10 minutes and per day). SQL: one idempotency key per user, single submission under concurrency, signature required to confirm, users can't write requests.
 - SQL test files are numbered (`10_`, `20_`, ...) so CI runs them in phase order: each file's fixtures assume the earlier ones ran first.
+
+---
+
+## Phase 16: Transaction UX kit (M)
+
+**Goal:** every on-chain action shows clear progress and a clear result, and every failure reads like a sentence, not a stack trace.
+
+**Added**
+- **Stepper** (`components/tx`): Prepare → Approve → Confirm, driven by a pure reducer (`txFlowReducer`) and `useTxFlow()`: each step shows pending / working (spinner + hint) / done / failed, animated with Motion (reduced-motion respected), with the result underneath: "Confirmed on devnet · View on Explorer" or the error's headline and explanation. Announced to screen readers.
+- **Animated toasts** (`components/feedback/toaster.tsx`, in the app providers): success / error / info, spring in, slide out, auto-dismiss (errors stay longer and use `role="alert"`), optional Explorer link, dismiss button, at most 4 at a time.
+- **Explorer links** for every confirmed transaction (stepper and toast).
+- **Error mapping** (`@codestreak/shared/errors`, a light subpath the browser can load): `friendlyTxError()` turns anything into `{ code, title, message }`:
+  - wallet **rejected signature** (code 4001 or any "rejected / declined / cancelled" wording) → "Cancelled in your wallet: nothing was sent and nothing was charged";
+  - **failed simulation**: the Anchor `Error Code:` in the logs, or a numeric custom error (hex or JSON), is looked up in the IDL's 47 program errors, with friendlier wording for the ones users hit (joining closed, full, private group, Shield window, already claimed, ...);
+  - Anchor constraint failures, missing tokens / SOL, expired blockhash, network trouble, and a safe fallback.
+  The relayer now returns these codes and headlines with every refusal.
+- **Join button** rebuilt on the kit (stepper + toasts); "Try again" after a failure reuses the idempotency key.
+- **DB sync** (`lib/sync/chain.ts`): after a confirmed join the server mirrors, from the chain only, the challenge (inserted on first sight, refreshed after), the membership (Participant PDA, deposit, status, join tx) and a `join` receipt. Idempotent (upserts; a receipt per transaction). A sync failure is logged, never shown as a failed join, since the chain is already final. Migration `chain_sync`: `challenges.creator_id` may be null for challenges created outside the app (scripts, demo seed).
+
+**Tests:** error mapping (rejected signature in several wallet wordings; failed simulation from Anchor logs; hex and JSON custom codes through the IDL; missing tokens / SOL; constraint failures; expiry; network; every program error has text). Stepper reducer (full happy path with signature; the failing step is marked and keeps the friendly error; a failed simulation fails the first step; a retry starts clean; no progress after the end). SQL: challenges created outside the app sync, one row per on-chain challenge, re-sync updates it.
