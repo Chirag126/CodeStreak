@@ -12,7 +12,7 @@ describe('parseAuthFragment', () => {
   it('reads an expired-link error', () => {
     const f = parseAuthFragment('#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired');
     expect(f).toEqual({ kind: 'error', code: 'otp_expired', description: 'Email link is invalid or has expired' });
-    expect(authErrorMessage('otp_expired')).toMatch(/newest link/);
+    expect(authErrorMessage('otp_expired')).toMatch(/works once/);
   });
   it('ignores ordinary anchors', () => {
     expect(parseAuthFragment('#rules')).toEqual({ kind: 'none' });
