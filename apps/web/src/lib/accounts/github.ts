@@ -57,7 +57,7 @@ export async function syncGithub(profileId: string): Promise<GithubStatus> {
   const identities = userData.user.identities ?? [];
   const identity = githubAccountFromIdentity(identities.find((i) => i.provider === 'github') as Parameters<typeof githubAccountFromIdentity>[0]);
   const current = row ? { id: row.provider_user_id as string, username: row.provider_username as string, linkedAt: row.linked_at as string } : null;
-  let notice: string | null = null;
+  const notice: string | null = null;
 
   if (identity && current && identity.id === current.id) {
     if (identity.username !== current.username) {
