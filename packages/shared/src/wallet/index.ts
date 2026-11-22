@@ -147,3 +147,69 @@ export function checkBinding(input: { record: NonceRecord; address: string; sign
   }
   return { ok: true };
 }
+
+// ---------------------------------------------------------------- wallet login (Sign In With Solana)
+//
+// A linked wallet can sign in to its account without an email. Same rails as binding (server-made
+// message, single-use nonce, 5-minute expiry, ed25519 check), plus:
+//   - the message follows the Sign In With Solana layout, so wallets can show the requesting
+//     domain and warn when a different site asks for it (phishing);
+//   - its first line differs from the binding message, and the server only ever checks the exact
+//     message it stored for that nonce, so a signature can't be moved between the two purposes;
+//   - the challenge is tied to the browser that asked for it (cookie), so a signature can't be
+//     completed from another browser.
+
+export const LOGIN_TTL_SECONDS = 5 * 60;
+
+export interface LoginMessageInput {
+  domain: string;
+  uri: string;
+  address: string;
+  nonce: string;
+  issuedAt: Date;
+  expiresAt: Date;
+}
+
+export function buildLoginMessage(m: LoginMessageInput): string {
+  return [
+    `${m.domain} wants you to sign in with your Solana account:`,
+    m.address,
+    '',
+    'Sign in to CodeStreak with this linked wallet. Signing is free and does not move any funds.',
+    '',
+    `URI: ${m.uri}`,
+    'Version: 1',
+    'Chain ID: devnet',
+    `Nonce: ${m.nonce}`,
+    `Issued At: ${m.issuedAt.toISOString()}`,
+    `Expiration Time: ${m.expiresAt.toISOString()}`,
+  ].join('\n');
+}
+
+export interface LoginChallengeRecord {
+  address: string;
+  message: string;
+  browserHash: string;
+  expiresAt: Date;
+  usedAt: Date | null;
+}
+
+export type LoginCheck =
+  | { ok: true }
+  | { ok: false; reason: 'invalid_address' | 'used' | 'expired' | 'other_browser' | 'address_mismatch' | 'bad_signature'; message: string };
+
+const START_AGAIN = 'Sign-in request expired or was already used. Try again.';
+
+/** Checks a signed login against its stored challenge. Errors are deliberately generic. */
+export function checkLogin(input: { record: LoginChallengeRecord; address: string; browserHash: string; signature: Uint8Array; now: Date }): LoginCheck {
+  const { record, address, signature, now } = input;
+  if (!isSolanaAddress(address)) return { ok: false, reason: 'invalid_address', message: 'That is not a valid Solana address.' };
+  if (record.usedAt) return { ok: false, reason: 'used', message: START_AGAIN };
+  if (now.getTime() >= record.expiresAt.getTime()) return { ok: false, reason: 'expired', message: START_AGAIN };
+  if (record.browserHash !== input.browserHash) return { ok: false, reason: 'other_browser', message: START_AGAIN };
+  if (record.address !== address) return { ok: false, reason: 'address_mismatch', message: 'The signing wallet does not match the request.' };
+  if (!verifySolanaSignature(address, new TextEncoder().encode(record.message), signature)) {
+    return { ok: false, reason: 'bad_signature', message: 'The signature does not match this wallet.' };
+  }
+  return { ok: true };
+}

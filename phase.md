@@ -592,3 +592,25 @@ Notification links always opened a new tab (meant for Solana Explorer), so "Open
 - Sponsor modal (presets + custom amount, live validation, optional message, wallet, stepper); Sponsors card with leaderboard on the challenge page; creator's private sponsor link panel; `/sponsor/[token]` page.
 
 **Tests:** amounts (zero, blank, negative, non-numeric, too many decimals, below minimum, above maximum incl. u64-sized input); message cleaning; transaction-kit reset. SQL: raw token instead of hash, link without time, zero/negative/over-u64 amounts and a double-counted transaction rejected; leaderboard sums per wallet with latest tx, message and receipt; sponsorships bump the live board; an outsider can't read a private group's sponsors or link hash; users can't record sponsorships directly.
+
+### Wallet sign-in (between Phases 22 and 23)
+
+**Goal:** sign in with a linked wallet (one signature, no email, no Supabase email limit); email sign-in stays as is.
+
+**Flow:** "Sign in with Phantom" → the server issues a one-time Sign In With Solana message (domain, URI, devnet, nonce, 5-minute expiry) tied to this browser by an httpOnly cookie → the wallet signs it (no transaction, no fees) → the server checks the signature against the exact stored message, consumes the nonce, finds the account that verified this wallet in Phase 13, and creates that account's session on the server (`admin.generateLink` + `verifyOtp`; nothing is emailed, the token never leaves the server). Then the normal route guard (username step or `next`).
+
+**Loopholes checked and closed**
+- *Replay:* nonces are single-use (atomic conditional update) and expire in 5 minutes.
+- *Message swapping:* the client never sends the message; the server verifies against the text it stored for that nonce.
+- *Reusing a wallet-linking signature to sign in (or the reverse):* different first line and purpose; each check uses only its own stored message (tested).
+- *Signature completed in another browser:* challenges are bound to the requesting browser's httpOnly, SameSite=Strict cookie (stored as SHA-256).
+- *Signing in to someone else's account:* only a wallet its owner linked with a signed proof maps to an account, and a wallet belongs to at most one account (unique constraint). Unlinking removes wallet sign-in.
+- *Creating accounts through the wallet:* impossible: wallet sign-in only logs into existing accounts (sign-up stays email-first).
+- *Account enumeration:* a challenge is issued for any valid address; "not linked" is only revealed after a valid signature, i.e. to the wallet's owner.
+- *Owner lock-out by spam:* limits are per browser (10 challenges, 5 failures per 15 min) and per network (30 challenges), never per wallet address, so nobody can lock out a wallet's owner. Brute force is impossible anyway (needs the private key).
+- *Phishing:* the message names the site (Sign In With Solana layout) so the user and wallets can see who is asking; CodeStreak's own message says signing moves no funds.
+- *Open redirect:* `next` is sanitized (`safeNext`).
+- *Suspended accounts:* refused. Server actions keep Next.js origin checks (cross-site posts rejected).
+- *Side effect (by design):* a wallet sign-in invalidates any sign-in email still unopened for that account.
+
+**Tests:** shared login check (valid, replayed, expired, other browser, wrong wallet, altered message, linking signature reused for login); SQL: duplicate nonce, over-10-minute challenge, EVM address, raw cookie stored, users/guests can't read, forge or reset challenges.

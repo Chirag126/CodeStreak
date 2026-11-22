@@ -5,7 +5,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { providerWaitSecs, SIGN_IN_LIMITS } from '@codestreak/shared';
-import { attemptBlockedUntil, recordAttempt } from '@/lib/auth/attempts';
+import { attemptBlockedUntil, attemptKey, recordAttempt } from '@/lib/auth/attempts';
 import { HOME_AFTER_SIGN_IN, safeNext, USERNAME_PATH } from '@/lib/auth/routes';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -50,7 +50,7 @@ export async function requestCode(_prev: SignInState, form: FormData): Promise<S
   if (!parsed.success) return { step: 'email', error: parsed.error.issues[0]?.message, email: String(form.get('email') ?? '') };
   const email = parsed.data;
 
-  const blockedUntil = await attemptBlockedUntil(email, 'send');
+  const blockedUntil = await attemptBlockedUntil(attemptKey.email(email), 'send');
   if (blockedUntil) return { step: 'email', error: TOO_MANY_SENDS, email, retryAt: blockedUntil };
 
   const next = safeNext(String(form.get('next') ?? ''));
@@ -66,7 +66,7 @@ export async function requestCode(_prev: SignInState, form: FormData): Promise<S
     }
     return { step: 'email', error: friendly(error.message), email };
   }
-  await recordAttempt(email, 'send');
+  await recordAttempt(attemptKey.email(email), 'send');
   return {
     step: 'code',
     email,
@@ -81,7 +81,7 @@ export async function verifyCode(_prev: SignInState, form: FormData): Promise<Si
   const code = codeSchema.safeParse(String(form.get('code') ?? ''));
   if (!code.success) return { step: 'code', email: email.data, error: code.error.issues[0]?.message };
 
-  const blockedUntil = await attemptBlockedUntil(email.data, 'bad_code');
+  const blockedUntil = await attemptBlockedUntil(attemptKey.email(email.data), 'bad_code');
   if (blockedUntil) return { step: 'code', email: email.data, error: TOO_MANY_CODES, retryAt: blockedUntil };
 
   const supabase = await createSupabaseServerClient();
@@ -89,8 +89,8 @@ export async function verifyCode(_prev: SignInState, form: FormData): Promise<Si
   if (error || !data.user) {
     const wait = error ? providerWaitSecs({ message: error.message, code: error.code }) : null;
     if (wait) return { step: 'code', email: email.data, error: TOO_MANY_CODES, retryAt: Date.now() + wait * 1000 };
-    await recordAttempt(email.data, 'bad_code');
-    const until = await attemptBlockedUntil(email.data, 'bad_code');
+    await recordAttempt(attemptKey.email(email.data), 'bad_code');
+    const until = await attemptBlockedUntil(attemptKey.email(email.data), 'bad_code');
     return until
       ? { step: 'code', email: email.data, error: TOO_MANY_CODES, retryAt: until }
       : { step: 'code', email: email.data, error: friendly(error?.message ?? '') };

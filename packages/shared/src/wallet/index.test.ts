@@ -5,8 +5,12 @@ import {
   base58Decode,
   base58Encode,
   buildBindingMessage,
+  buildLoginMessage,
   checkBinding,
+  checkLogin,
   isSolanaAddress,
+  LOGIN_TTL_SECONDS,
+  type LoginChallengeRecord,
   NONCE_TTL_SECONDS,
   type NonceRecord,
 } from './index.js';
@@ -106,5 +110,44 @@ describe('binding check', () => {
     expect(message).toMatch(/Network: Solana devnet/);
     expect(message).toMatch(/Nonce: [0-9a-f]{32}/);
     expect(message).toMatch(/does not move any funds/);
+  });
+});
+
+describe('wallet login', () => {
+  const now = new Date('2026-11-22T10:00:00Z');
+  const browser = 'a'.repeat(64);
+  function login(address: string) {
+    const expiresAt = new Date(now.getTime() + LOGIN_TTL_SECONDS * 1000);
+    const message = buildLoginMessage({ domain: 'codestreak.app', uri: 'https://codestreak.app', address, nonce: randomBytes(16).toString('hex'), issuedAt: now, expiresAt });
+    const record: LoginChallengeRecord = { address, message, browserHash: browser, expiresAt, usedAt: null };
+    return { record, message };
+  }
+
+  it('accepts the linked wallet signing its own challenge', () => {
+    const w = newWallet();
+    const { record, message } = login(w.address);
+    expect(message.split('\n')[0]).toBe('codestreak.app wants you to sign in with your Solana account:');
+    expect(checkLogin({ record, address: w.address, browserHash: browser, signature: w.sign(message), now })).toEqual({ ok: true });
+  });
+
+  it('rejects a replayed, expired or other-browser attempt', () => {
+    const w = newWallet();
+    const { record, message } = login(w.address);
+    const sig = w.sign(message);
+    expect(checkLogin({ record: { ...record, usedAt: now }, address: w.address, browserHash: browser, signature: sig, now }).ok).toBe(false);
+    expect(checkLogin({ record, address: w.address, browserHash: browser, signature: sig, now: record.expiresAt })).toMatchObject({ reason: 'expired' });
+    expect(checkLogin({ record, address: w.address, browserHash: 'b'.repeat(64), signature: sig, now })).toMatchObject({ reason: 'other_browser' });
+  });
+
+  it('rejects a different wallet, a wrong message, and a wallet-linking signature reused as a login', () => {
+    const w = newWallet();
+    const other = newWallet();
+    const { record, message } = login(w.address);
+    expect(checkLogin({ record, address: other.address, browserHash: browser, signature: other.sign(message), now })).toMatchObject({ reason: 'address_mismatch' });
+    expect(checkLogin({ record, address: w.address, browserHash: browser, signature: other.sign(message), now })).toMatchObject({ reason: 'bad_signature' });
+    expect(checkLogin({ record, address: w.address, browserHash: browser, signature: w.sign(message + ' '), now })).toMatchObject({ reason: 'bad_signature' });
+    const binding = challenge(w.address, now).message;
+    expect(binding).not.toBe(message);
+    expect(checkLogin({ record, address: w.address, browserHash: browser, signature: w.sign(binding), now })).toMatchObject({ reason: 'bad_signature' });
   });
 });
