@@ -16,6 +16,10 @@
     "./program": {
       "types": "./dist/program/index.d.ts",
       "default": "./dist/program/index.js"
+    },
+    "./wallet": {
+      "types": "./dist/wallet/index.d.ts",
+      "default": "./dist/wallet/index.js"
     }
   },
   "files": [

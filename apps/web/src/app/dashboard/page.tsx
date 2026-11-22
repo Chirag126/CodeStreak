@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { CopyButton } from '@/components/auth/copy-button';
 import { Reveal } from '@/components/motion/primitives';
@@ -17,10 +18,10 @@ export default async function DashboardPage() {
   if (!viewer) redirect(SIGN_IN_PATH);
   if (!viewer.username) redirect(USERNAME_PATH);
 
-  const sections = [
+  const sections: { title: string; body: string; href?: string }[] = [
     { title: 'Your challenges', body: 'Active and past challenges will appear here.' },
     { title: 'Accounts', body: 'Link GitHub and LeetCode so your activity can be verified.' },
-    { title: 'Wallet', body: 'Connect Phantom to stake devnet USDC or SOL.' },
+    { title: 'Wallet', body: 'Link Phantom or MetaMask (Solana) and check your devnet balances.', href: '/dashboard/wallet' },
   ];
 
   return (
@@ -60,7 +61,13 @@ export default async function DashboardPage() {
                 <CardDescription>{s.body}</CardDescription>
               </CardHeader>
               <CardContent>
-                <Badge variant="outline">Coming soon</Badge>
+                {s.href ? (
+                  <Button asChild size="sm" variant="secondary">
+                    <Link href={s.href}>Open</Link>
+                  </Button>
+                ) : (
+                  <Badge variant="outline">Coming soon</Badge>
+                )}
               </CardContent>
             </Card>
           </Reveal>
