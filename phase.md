@@ -399,3 +399,19 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 **Tests:**
 - unit (`@codestreak/shared/wallet`, real ed25519 keys): fresh signature accepted; **replayed nonce**, **expired nonce** (at and after expiry), **0x address**, another wallet, edited message and forged signature all rejected; base58 round trip; every checked field appears in the message.
 - SQL (`supabase/tests/wallet_test.sql`): a nonce can be consumed only once; 0x addresses, reused nonces, over-long validity and non-random nonces rejected; **one wallet on two users rejected**; users can't create nonces or link wallets directly and see only their own nonces.
+
+---
+
+## Phase 14: First Render deploy (M)
+
+**Goal:** both services live on Render's free plan, with Supabase waking the worker on a schedule (free Render has no cron).
+
+**Added**
+- **Render services** (free, Singapore, auto-deploy from `main`): web **`codestreak`** → https://codestreak-k0uv.onrender.com, worker **`codestreak-worker`** → https://codestreak-worker.onrender.com. Created with every non-secret variable set (cluster, RPC, mints, program ID, Supabase URL and publishable key, operator public keys, `APP_URL`); secrets are added by hand in the dashboard.
+- **Health routes:** web `GET /api/health`, worker `GET /health` (both existed; now used by Render).
+- **Worker `wake` job** (`apps/worker/src/jobs/wake.ts`): answers the scheduled call and writes a `worker.wake` row to `audit_log` (service role), so every wake is visible in the database.
+- **Job endpoint hardening:** the secret is now checked before anything else, so any request to `/jobs/*` without it gets **401** (method and job name are not revealed).
+- **`pg_cron` → worker:** migration `worker_wake_cron`: `private.wake_worker(job)` reads `worker_url` and `worker_job_secret` from **Supabase Vault** and POSTs `/jobs/<job>` through `pg_net` (90 s timeout for cold starts); cron job `codestreak-wake-worker` every 30 minutes. The secret is generated inside Supabase, never in the repo or chat. Not callable through the API. In plain Postgres (CI) the schedule part is skipped.
+- **`render.md`:** live URLs, build/start commands, health check paths, free-plan budget (750 instance-hours shared by the workspace; the worker sleeps between wakes), how the wake works, and the secrets still to add.
+
+**Tests:** worker server (401 without the secret on any method or job name, 405 only with it), wake job (writes the audit row with the service role, still wakes without Supabase, fails loudly if the write fails). Live checks after the secrets are set: public URL, a `pg_net` call without the secret gets 401, and `cron.job_run_details` + `audit_log` show the worker woke.
