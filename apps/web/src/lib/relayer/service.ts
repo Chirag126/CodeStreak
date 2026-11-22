@@ -11,12 +11,15 @@ import {
   vaultPda,
   type ChallengeAccount,
 } from '@codestreak/shared/program';
+import { friendlyTxError } from '@codestreak/shared/errors';
 import { buildCodestreakInstruction, checkRelayedTransaction, rateLimitDecision } from '@codestreak/shared/relayer';
 import { ComputeBudgetProgram, Connection, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { syncJoin } from '@/lib/sync/chain';
 import { relayerKeypair } from './keypair';
 
-export type RelayResult<T> = ({ ok: true } & T) | { ok: false; error: string };
+/** Failures carry a plain-language message plus a stable code and headline for the UI. */
+export type RelayResult<T> = ({ ok: true } & T) | { ok: false; error: string; code?: string; title?: string };
 
 const COMPUTE_UNITS = 150_000;
 const PRIORITY_MICRO_LAMPORTS = 1_000;
@@ -28,9 +31,9 @@ export function serverConnection(): Connection {
 
 const messageHash = (tx: Transaction) => createHash('sha256').update(tx.serializeMessage()).digest('hex');
 
-function simulationError(logs: string[] | null | undefined, err: unknown): string {
-  const anchor = logs?.find((l) => l.includes('Error Message:'))?.split('Error Message:')[1]?.trim();
-  return anchor ? `The program rejected it: ${anchor}` : `Simulation failed: ${JSON.stringify(err)}`;
+function failure(err: unknown, logs?: readonly string[] | null) {
+  const f = friendlyTxError(err, logs);
+  return { ok: false as const, error: f.message, code: f.code, title: f.title };
 }
 
 async function userCounts(profileId: string) {
@@ -144,7 +147,7 @@ export async function prepareJoin(input: {
   if (!policy.ok) return { ok: false, error: `Refused: ${policy.errors.join('; ')}` };
 
   const sim = await connection.simulateTransaction(new VersionedTransaction(tx.compileMessage()), { sigVerify: false });
-  if (sim.value.err) return { ok: false, error: simulationError(sim.value.logs, sim.value.err) };
+  if (sim.value.err) return failure(sim.value.err, sim.value.logs);
 
   tx.partialSign(relayer);
   const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64');
@@ -204,14 +207,15 @@ export async function submitRelayed(input: { profileId: string; idempotencyKey: 
   const { data: claimed } = await admin.from('relayer_requests').update({ status: 'submitting' }).eq('id', row.id).eq('status', 'prepared').select('id');
   if (!claimed?.length) return { ok: false, error: 'This request was already submitted.' };
 
-  const fail = async (message: string) => {
-    await admin.from('relayer_requests').update({ status: 'failed', error: message.slice(0, 500) }).eq('id', row.id);
-    return { ok: false as const, error: message };
+  const fail = async (err: unknown, logs?: readonly string[] | null) => {
+    const f = failure(err, logs);
+    await admin.from('relayer_requests').update({ status: 'failed', error: `${f.code}: ${f.error}`.slice(0, 500) }).eq('id', row.id);
+    return f;
   };
 
   const raw = tx.serialize();
   const sim = await connection.simulateTransaction(VersionedTransaction.deserialize(raw), { sigVerify: true });
-  if (sim.value.err) return fail(simulationError(sim.value.logs, sim.value.err));
+  if (sim.value.err) return fail(sim.value.err, sim.value.logs);
 
   let signature: string;
   try {
@@ -220,12 +224,20 @@ export async function submitRelayed(input: { profileId: string; idempotencyKey: 
       { signature, blockhash: tx.recentBlockhash!, lastValidBlockHeight: Number(row.last_valid_block_height) },
       'confirmed',
     );
-    if (confirmation.value.err) return fail(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+    if (confirmation.value.err) return fail(confirmation.value.err);
   } catch (e) {
-    return fail(e instanceof Error ? e.message : 'Sending failed.');
+    return fail(e, (e as { logs?: string[] }).logs);
   }
 
   await admin.from('relayer_requests').update({ status: 'confirmed', signature, error: null }).eq('id', row.id);
+
+  // Mirror the result into the app tables. The chain is already final, so a sync failure is logged
+  // and retried on the next sync, never reported as a failed join.
+  if (row.kind === 'join') {
+    await syncJoin(connection, { challengeAddress: row.challenge_address as string, wallet: row.wallet as string, profileId: input.profileId, signature }).catch((e: unknown) =>
+      console.error('[sync] join mirror failed:', e instanceof Error ? e.message : e),
+    );
+  }
   await admin.from('audit_log').insert({
     actor_kind: 'relayer',
     actor_id: input.profileId,

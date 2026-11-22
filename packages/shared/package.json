@@ -24,6 +24,10 @@
     "./relayer": {
       "types": "./dist/relayer/index.d.ts",
       "default": "./dist/relayer/index.js"
+    },
+    "./errors": {
+      "types": "./dist/program/errors.d.ts",
+      "default": "./dist/program/errors.js"
     }
   },
   "files": [
