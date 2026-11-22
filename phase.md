@@ -472,3 +472,21 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
 - Dashboard "Your challenges" → **Create a challenge**; challenge page shows the title and description from the database.
 
 **Tests:** form validation (real and demo accepted with correct parameters; SOL decimals; 20 invalid inputs each blocked on the right field, including past / too-far start, bad amounts, player limits, Shield price and grace), Shields-off zeros, the program-rule mirror (every error), the rules document (ANY/ALL, providers); route guard protects `/challenges/new` while challenge pages stay public.
+
+---
+
+## Phase 18: Challenge list and detail (M)
+
+**Goal:** browse real devnet challenges, see how each pool stands, and know what you could win, with the estimate computed exactly as the program will.
+
+**Design**
+- **List reads the database mirror** (fast, filterable, RLS-scoped); **detail reads the chain live** (source of truth for money and players) and refreshes the mirror **after the response** when it is more than a minute old, so challenges joined outside the app catch up without slowing the page.
+- **One stats view**, `challenge_overview` (security invoker: private groups appear only to their creator, members and invitees): end time, pool size (stakes + sponsorships + Shields), members, players still in (no failed day that isn't covered by a Shield), survivors, finalized.
+- **Payout math mirrors the program** (`@codestreak/shared` `payout.ts`): `computeSettlement` is `compute_settlement` + `reward_amount` in bigint (no floats); the estimate applies it to the live pool.
+
+**Added**
+- **`/challenges`** (in the header nav): cards with status (joining open / starting soon / running / finished / cancelled), **DEMO** and Private badges, buy-in, **pool size**, players / max, **survival rate**, length and a relative time. **Filters** as shareable links (status, token, length incl. demo) and a title search (GET form, works without JavaScript); joining-open challenges sort by closing time. Empty and error states.
+- **Detail page:** "Live from devnet" badge; buy-in, pool, players (min/max), survival rate, length, dates, sponsorship total; **rules card** (what counts each day from the stored rules document, Shield terms, and the **payout formula**: R = forfeited stakes + sponsorships + Shields; survivor gets stake + ⌊R ÷ survivors⌋; dust to the last claimer; nobody survives → full refund; unverifiable day → stake back; too few players → cancelled and refunded); **reward estimate** with a survival-rate slider ("If 70% keep their streak: each survivor gets X, profit +Y"), counting you as a player while joining is open; **players** with verified / missed days and Shields; "You are in this challenge" instead of Join once joined.
+- Migration `challenge_overview` (view + indexes on join deadline and pool state). Applied to Supabase.
+
+**Tests:** the settlement mirror against the program's own fixtures (`rules.rs` settlement_math: R 31, share 15, dust 1; `settlement.rs` cases 1–5 including the 13.000001 pool split 6.5 + 1 base unit of dust, full refunds and voided stakes), the estimate (10 players, 70% → 4.285714 USDC per survivor, 2 units of dust; sponsorship-only pools; rate clamping), survival rate and status rules. SQL: pool size, end time, players still in (a shielded failure stays in), and RLS through the view (a non-member doesn't see the private challenge; the creator does).
