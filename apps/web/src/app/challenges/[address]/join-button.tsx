@@ -22,7 +22,7 @@ const toBase64 = (b: Uint8Array) => btoa(Array.from(b, (x) => String.fromCharCod
  * pre-signs) → Approve (the wallet adds the user's signature) → Confirm (server verifies, sends,
  * waits for devnet). Every failure ends in a plain-language message.
  */
-export function JoinButton({ challenge, linkedWallets, buyInLabel }: { challenge: string; linkedWallets: string[]; buyInLabel: string }) {
+export function JoinButton({ challenge, linkedWallets, buyInLabel, isSol = false }: { challenge: string; linkedWallets: string[]; buyInLabel: string; isSol?: boolean }) {
   const router = useRouter();
   const toast = useToast();
   const wallets = useSolanaWallets().filter((w) => 'solana:signTransaction' in w.features);
@@ -76,7 +76,11 @@ export function JoinButton({ challenge, linkedWallets, buyInLabel }: { challenge
           ))}
         </div>
       )}
-      <p className="text-xs text-muted-foreground">No SOL needed: CodeStreak pays the network fees. Your wallet only approves the buy-in.</p>
+      <p className="text-xs text-muted-foreground">
+        {isSol
+          ? 'CodeStreak pays the network fees. Your SOL is wrapped for the stake in the same transaction; your wallet shows one approval.'
+          : 'No SOL needed: CodeStreak pays the network fees. Your wallet only approves the buy-in.'}
+      </p>
       <TxStepper state={state} />
     </div>
   );

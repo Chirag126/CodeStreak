@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { serverConnection } from '@/lib/relayer/service';
 import { createSupabaseServerClient, getViewer } from '@/lib/supabase/server';
-import { syncChallenge } from '@/lib/sync/chain';
+import { syncMembers } from '@/lib/sync/chain';
 import { JoinButton } from './join-button';
 
 export const metadata: Metadata = { title: 'Challenge' };
@@ -75,7 +75,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
 
   const stale = !row || Date.parse(row.updated_at as string) < now * 1000 - 60_000;
   if (stale) {
-    after(() => syncChallenge(connection, address).then(() => undefined, (e: unknown) => console.error('[sync] challenge refresh failed:', e)));
+    after(() => syncMembers(connection, address).then(() => undefined, (e: unknown) => console.error('[sync] challenge refresh failed:', e)));
   }
 
   const rate = row ? survivalRate({ members: Number(row.members), stillIn: Number(row.still_in), survived: Number(row.survived), finalized: Number(row.finalized) }) : null;
@@ -121,7 +121,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
               Sign in to join
             </a>
           ) : (
-            <JoinButton challenge={address} linkedWallets={linkedWallets} buyInLabel={buyIn} />
+            <JoinButton challenge={address} linkedWallets={linkedWallets} buyInLabel={buyIn} isSol={isSol} />
           )}
         </CardContent>
       </Card>

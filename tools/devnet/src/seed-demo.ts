@@ -3,7 +3,8 @@
 //
 //   pnpm devnet:seed-demo                          (joining open ~14 minutes)
 //   pnpm devnet:seed-demo --start-in-minutes=180   (joining open ~3 hours, for testing joins)
-import { DEVNET_USDC_MINT, USDC_DECIMALS } from '@codestreak/shared';
+//   pnpm devnet:seed-demo --token=sol              (SOL stake: 0.05 SOL buy-in, wrapped on join)
+import { DEVNET_USDC_MINT, SOL_DECIMALS, USDC_DECIMALS, WSOL_MINT } from '@codestreak/shared';
 import {
   anchor,
   challengePda,
@@ -22,7 +23,10 @@ import { PublicKey, SystemProgram } from '@solana/web3.js';
 
 import { connectDevnet, loadKeypair, main, programFor } from './common.js';
 
-const USDC = (amount: number) => new anchor.BN(Math.round(amount * 10 ** USDC_DECIMALS));
+const isSol = process.argv.includes('--token=sol');
+const DECIMALS = isSol ? SOL_DECIMALS : USDC_DECIMALS;
+const SYMBOL = isSol ? 'SOL' : 'USDC';
+const units = (amount: number) => new anchor.BN(Math.round(amount * 10 ** DECIMALS));
 const iso = (ts: number) => new Date(ts * 1000).toISOString();
 
 await main(async () => {
@@ -54,14 +58,14 @@ await main(async () => {
   const challengeId = BigInt(Date.now());
   const params: InitializePoolParams = {
     challengeId: new anchor.BN(challengeId.toString()),
-    buyIn: USDC(1),
+    buyIn: units(isSol ? 0.05 : 1),
     startTs: new anchor.BN(start),
     dayLengthSecs: 300,
     numDays: 3,
     joinDeadlineTs: new anchor.BN(start - 60),
     minParticipants: 2,
     maxParticipants: 50,
-    shieldPrice: USDC(0.5),
+    shieldPrice: units(isSol ? 0.01 : 0.5),
     maxShieldsPerParticipant: 1,
     shieldGraceSecs: 120,
     verifyWindowSecs: 600,
@@ -79,7 +83,7 @@ await main(async () => {
       creator: relayer.publicKey,
       config: configPda(),
       challenge,
-      mint: new PublicKey(DEVNET_USDC_MINT),
+      mint: new PublicKey(isSol ? WSOL_MINT : DEVNET_USDC_MINT),
       vault,
       tokenProgram: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
       systemProgram: SystemProgram.programId,
@@ -95,8 +99,8 @@ await main(async () => {
   console.log(`  label           ${c.isDemo ? 'DEMO (compressed time)' : 'real time'}`);
   console.log(`  challenge id    ${c.challengeId.toString()}`);
   console.log(`  creator         ${c.creator.toBase58()}`);
-  console.log(`  mint            ${c.mint.toBase58()} (devnet USDC)`);
-  console.log(`  buy-in          ${Number(c.buyIn.toString()) / 10 ** USDC_DECIMALS} USDC`);
+  console.log(`  mint            ${c.mint.toBase58()} (${isSol ? 'wrapped SOL' : 'devnet USDC'})`);
+  console.log(`  buy-in          ${Number(c.buyIn.toString()) / 10 ** DECIMALS} ${SYMBOL}`);
   console.log(`  days            ${c.numDays} x ${c.dayLengthSecs}s`);
   console.log(`  join until      ${iso(times.joinDeadlineTs)}`);
   console.log(`  start / end     ${iso(times.startTs)} / ${iso(endTs(times))}`);
@@ -105,7 +109,7 @@ await main(async () => {
   console.log(`  rules hash      ${Buffer.from(c.rulesHash).toString('hex')}`);
   console.log(`  phase now       ${phase} (chain time ${iso(chainTime)})`);
   console.log(`  participants    ${c.participantCount}/${c.maxParticipants}`);
-  console.log(`  vault           ${vault.toBase58()} balance ${vaultBalance.value.uiAmountString} USDC`);
+  console.log(`  vault           ${vault.toBase58()} balance ${vaultBalance.value.uiAmountString} ${SYMBOL}`);
   if (!c.isDemo || !Buffer.from(c.rulesHash).equals(Buffer.from(hash))) throw new Error('read-back mismatch');
   console.log(`\n  ${explorerAddressUrl(challenge)}`);
   console.log(`  App page: ${process.env.APP_URL ?? 'http://localhost:3000'}/challenges/${challenge.toBase58()}`);

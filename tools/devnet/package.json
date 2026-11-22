@@ -7,7 +7,8 @@
   "scripts": {
     "init-config": "tsx src/init-config.ts",
     "seed-demo": "tsx src/seed-demo.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "close-challenges": "tsx src/close-challenges.ts"
   },
   "dependencies": {
     "@codestreak/shared": "workspace:*",
