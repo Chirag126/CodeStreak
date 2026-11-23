@@ -117,7 +117,18 @@ export function LeetcodeCard({ status }: { status: LeetcodeStatus }) {
           >
             <div className="min-w-56 flex-1 space-y-2">
               <Label htmlFor="leetcode-handle">Your LeetCode username</Label>
-              <Input id="leetcode-handle" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="username or leetcode.com/u/username" spellCheck={false} autoCapitalize="none" />
+              <Input
+                id="leetcode-handle"
+                value={handle}
+                onChange={(e) => setHandle(e.target.value)}
+                placeholder="username or leetcode.com/u/username"
+                spellCheck={false}
+                autoCapitalize="none"
+                aria-describedby="leetcode-handle-hint"
+              />
+              <p id="leetcode-handle-hint" className="text-xs text-muted-foreground">
+                Not your display name: it&apos;s the part after leetcode.com/u/ when you open your profile. Pasting the whole profile link works too.
+              </p>
             </div>
             <Button type="submit" loading={busy} disabled={!handle.trim()}>
               Get a code
