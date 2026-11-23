@@ -82,12 +82,18 @@ export function LeetcodeCard({ status }: { status: LeetcodeStatus }) {
               </li>
               <li>
                 Open{' '}
-                <a className="underline underline-offset-4" href="https://leetcode.com/profile/" target="_blank" rel="noreferrer">
-                  LeetCode → Edit Profile ↗
+                <a className="underline underline-offset-4" href="https://leetcode.com/settings/profile/" target="_blank" rel="noreferrer">
+                  LeetCode → Settings → Profile ↗
                 </a>{' '}
-                (signed in as <span className="font-mono">{pending.handle}</span>), paste it into <strong>Summary</strong> and save.
+                (signed in as <span className="font-mono">{pending.handle}</span>). Paste it into any field shown on your public profile: the short bio under your name (top of the page) or <strong>ReadMe</strong>. Save.
               </li>
-              <li>Come back and press Verify.</li>
+              <li>
+                Check it shows on{' '}
+                <a className="underline underline-offset-4" href={`https://leetcode.com/u/${pending.handle}/`} target="_blank" rel="noreferrer">
+                  your public profile ↗
+                </a>
+                , then press Verify. CodeStreak looks for the code anywhere on that page.
+              </li>
             </ol>
             <div className="flex flex-wrap items-center gap-2">
               <Button onClick={() => run(verifyLeetcodeAction, 'LeetCode linked')} loading={busy}>
