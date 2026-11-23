@@ -732,3 +732,7 @@ Real case: a push to `Chirag126/trust-dependency-mapper` at 12:37 UTC (branch `f
 **Residual risk (documented):** LeetCode usernames are the only public identity; if LeetCode ever let a user rename and someone else took the old name, the stored handle would point to the new owner. The per-challenge lock limits this to between challenges.
 
 **Tests:** handle parsing (names, @names, profile links; other sites, paths, bad characters refused); binding check (exact code, old/other code, code inside a word, someone else's page, missing profile, unreadable page, the real lee215 page shape); Firecrawl client (live fetch, Firecrawl error, network error). SQL: one live code per person, ≤ 15-minute codes, malformed code, bad handle, attempt cap, used code frees the slot, capitalised handle, same handle on a second account, users can't read codes.
+
+### Phase 26 follow-up: LeetCode's new settings page
+
+LeetCode separated account and profile settings (May 2026); the old "Edit Profile → Summary" wording no longer matches its UI. The verifier already searches the whole public profile page, so the instructions now say: put the code in any field shown on the public profile (the bio under the name, or ReadMe), check it on `leetcode.com/u/<handle>/`, then Verify. The settings link points to `leetcode.com/settings/profile/`.
