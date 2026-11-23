@@ -159,7 +159,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
     `Fewer than ${account.minParticipants} players by the join deadline: the challenge is cancelled and everyone is refunded.`,
     'A day that cannot be checked (for example a GitHub outage) never fails you.',
     `Results are final ${span(times.verifyWindowSecs + times.disputeWindowSecs)} after the last day (checks, then a dispute window).`,
-    'Your linked GitHub account cannot be changed or unlinked until the challenge ends.',
+    'Your linked GitHub and LeetCode accounts cannot be changed or unlinked until the challenge ends.',
     ...(account.joinAuthority ? ['Private group: only invited people can see it and join.'] : []),
   ];
 

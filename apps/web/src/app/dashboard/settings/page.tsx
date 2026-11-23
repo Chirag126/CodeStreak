@@ -3,8 +3,10 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { syncGithub } from '@/lib/accounts/github';
+import { leetcodeStatus } from '@/lib/accounts/leetcode';
 import { getViewer } from '@/lib/supabase/server';
 import { GithubCard } from './github-card';
+import { LeetcodeCard } from './leetcode-card';
 
 export const metadata: Metadata = { title: 'Settings' };
 
@@ -19,7 +21,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const viewer = await getViewer();
   if (!viewer) redirect('/sign-in?next=/dashboard/settings');
   const { link_error } = await searchParams;
-  const github = await syncGithub(viewer.userId);
+  const [github, leetcode] = await Promise.all([syncGithub(viewer.userId), leetcodeStatus(viewer.userId)]);
   const notice = (link_error && (LINK_ERRORS[link_error] ?? 'GitHub linking did not finish. Try again.')) || github.notice;
 
   return (
@@ -40,12 +42,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </Link>
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>LeetCode</CardTitle>
-          <CardDescription>Coming in a later phase.</CardDescription>
-        </CardHeader>
-      </Card>
+      <LeetcodeCard status={leetcode} />
     </div>
   );
 }

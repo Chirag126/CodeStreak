@@ -42,3 +42,25 @@ export function missingProviders(rules: { providers?: Provider[]; providerRule?:
 }
 
 export const PROVIDER_LABELS: Record<Provider, string> = { github: 'GitHub', leetcode: 'LeetCode' };
+
+// ---------------------------------------------------------------- LeetCode
+
+/** LeetCode usernames: letters, digits, "_" and "-". Case-insensitive on LeetCode. */
+export const LEETCODE_HANDLE = /^[A-Za-z0-9_-]{1,40}$/;
+
+/**
+ * Accepts what people paste ("alice", "@alice", "leetcode.com/u/alice/",
+ * "https://leetcode.com/alice") and returns the handle, or null. leetcode.cn is a different site.
+ */
+export function normalizeLeetcodeHandle(raw: string): string | null {
+  let s = raw.trim().replace(/^@/, '');
+  const url = /^(?:https?:\/\/)?(?:www\.)?leetcode\.com\/(?:u\/)?([^/?#\s]+)\/?(?:[?#].*)?$/i.exec(s);
+  if (url?.[1]) s = url[1];
+  else if (/leetcode\./i.test(s) || s.includes('/')) return null;
+  return LEETCODE_HANDLE.test(s) ? s : null;
+}
+
+/** The single-use code users paste into their LeetCode profile summary. */
+export const LEETCODE_CODE = /^CS-LC-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{10}$/;
+export const LEETCODE_CODE_TTL_SECONDS = 15 * 60;
+export const LEETCODE_LIMITS = { codesPerHour: 5, attemptsPerCode: 5 } as const;

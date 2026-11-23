@@ -81,3 +81,4 @@ new deploy (not just a restart).
 | 24 | **`GITHUB_API_TOKEN`** (worker, and `.env.local` for `pnpm verify:github`): a fine-grained token with **public repositories read-only** access, no other permissions. Without it GitHub allows only 60 requests/hour. Set it on the **worker** service on Render (secret). No migration. |
 | 24 follow-up | **`GITHUB_API_TOKEN`** is now also used by the **web** service (to check selected repositories when a challenge is created): add the same read-only token there as a secret. No migration. |
 | Day checks | **`GITHUB_API_TOKEN` on the web service is now required** for "Check now" (each check uses ~5–15 GitHub requests; without a token GitHub allows 60 per hour per server). Migration `member_day_checks` applied. |
+| 26 | **`FIRECRAWL_API_KEY` on the web service** (LeetCode Verify reads the profile through Firecrawl; ~1 credit per attempt). Migration `leetcode_binding` applied. |
