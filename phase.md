@@ -840,3 +840,21 @@ bot fetched it first (Slack, Teams, Telegram and Outlook Safe Links do the same)
 - Templates in `supabase/templates/` link to that page. Supabase only allows custom templates with
   custom SMTP on the free plan, so they take effect once SMTP is configured (see render.md).
 - Until then the expired-link message names the cause: open the link straight from the email.
+
+### Video 1 review fixes (sign-in, accounts, dashboard)
+
+Found by watching the first test recording frame by frame and confirming each cause in logs or code:
+- **GitHub link returned to `localhost:10000`** (1:12): behind Render's proxy a route handler's own URL is the
+  internal address, so `/auth/callback` and the proxy redirected there. Redirects now use `APP_URL`
+  (`lib/app-origin.ts`).
+- **"Something went wrong" on Email me a link**: Supabase's log showed the SMTP server rejecting the login
+  (`535 Invalid username`). Email-service failures now get their own message and a server log line.
+- **Header showed the wrong button** after signing in or out (0:24, 0:34-0:48): it read the session once;
+  it now re-reads it on every navigation.
+- **Wallet sign-in**: only the chosen wallet's button spins, both stay disabled until the next page loads,
+  and the email form's old error is cleared.
+- **GitHub unlink**: the card switches to "Not linked" when the server confirms, not seconds later.
+- Settings: GitHub, LeetCode, then Wallet; unlink buttons look like buttons; LeetCode "summary" copy → ReadMe;
+  dashboard no longer says "(and later LeetCode)".
+- **Cancelled challenges**: no "Surviving 100%", no reward estimate, players shown as "Refunded", red badge,
+  and the page says why it was cancelled.

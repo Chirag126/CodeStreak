@@ -187,7 +187,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
           <div className="flex flex-wrap items-center gap-2">
             {account.isDemo && <Badge variant="warning">DEMO · compressed time</Badge>}
             {account.joinAuthority && <Badge variant="accent">Private group</Badge>}
-            <Badge variant="primary">{phase}</Badge>
+            <Badge variant={phase === 'cancelled' ? 'danger' : 'primary'}>{phase}</Badge>
             <Badge variant="outline">Live from devnet</Badge>
           </div>
           <CardTitle className="text-2xl">{(row?.title as string | undefined) ?? `Challenge ${address.slice(0, 4)}…${address.slice(-4)}`}</CardTitle>
@@ -203,7 +203,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
             <div><dt className="text-muted-foreground">Buy-in</dt><dd className="font-mono">{buyIn}</dd></div>
             <div><dt className="text-muted-foreground">Pool</dt><dd className="font-mono">{fmt(pool)}</dd></div>
             <div><dt className="text-muted-foreground">Players</dt><dd>{account.participantCount} / {account.maxParticipants} (min {account.minParticipants})</dd></div>
-            <div><dt className="text-muted-foreground">Surviving</dt><dd>{percent(rate)}</dd></div>
+            <div><dt className="text-muted-foreground">Surviving</dt><dd>{phase === 'cancelled' ? '–' : percent(rate)}</dd></div>
             <div><dt className="text-muted-foreground">Days</dt><dd>{account.numDays} × {account.dayLengthSecs >= 86400 ? '1 day' : `${account.dayLengthSecs / 60} min`}</dd></div>
             <div><dt className="text-muted-foreground">Join until</dt><dd>{when(times.joinDeadlineTs)}</dd></div>
             <div><dt className="text-muted-foreground">Starts</dt><dd>{when(times.startTs)}</dd></div>
@@ -216,7 +216,9 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
                 : `Minimum of ${account.minParticipants} reached: it starts ${when(times.startTs)}.`}
             </p>
           )}
-          {phase !== 'joining' ? (
+          {phase === 'cancelled' ? (
+            <p className="text-sm text-muted-foreground">Cancelled: fewer than {account.minParticipants} players joined, so every stake was refunded.</p>
+          ) : phase !== 'joining' ? (
             <p className="text-sm text-muted-foreground">Joining is closed.</p>
           ) : viewerJoined ? (
             <p className="text-sm text-success">You are in this challenge.</p>
@@ -277,6 +279,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
           </CardContent>
         </Card>
 
+        {phase !== 'cancelled' && (
         <Card>
           <CardHeader>
             <CardTitle>Reward estimate</CardTitle>
@@ -294,6 +297,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
             />
           </CardContent>
         </Card>
+        )}
       </div>
 
       {myDay && <MyDayCard

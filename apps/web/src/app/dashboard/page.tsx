@@ -24,7 +24,7 @@ export default async function DashboardPage() {
 
   const sections: { title: string; body: string; href?: string; cta?: string }[] = [
     { title: 'Your challenges', body: 'Start a public challenge or a private group with friends.', href: '/challenges/new', cta: 'Create a challenge' },
-    { title: 'Accounts', body: 'Link GitHub (and later LeetCode) so your activity can be verified.', href: '/dashboard/settings', cta: 'Linked accounts' },
+    { title: 'Accounts', body: 'Link GitHub and LeetCode so your coding days can be verified.', href: '/dashboard/settings', cta: 'Linked accounts' },
     { title: 'Wallet', body: 'Link Phantom or MetaMask (Solana) and check your devnet balances.', href: '/dashboard/wallet' },
   ];
 

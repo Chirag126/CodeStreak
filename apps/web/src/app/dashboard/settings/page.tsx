@@ -31,6 +31,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <p className="text-sm text-muted-foreground">Linked accounts used to verify your challenges.</p>
       </div>
       <GithubCard account={github.account} locked={github.locked} notice={notice} />
+      <LeetcodeCard status={leetcode} />
       <Card>
         <CardHeader>
           <CardTitle>Wallet</CardTitle>
@@ -42,7 +43,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </Link>
         </CardContent>
       </Card>
-      <LeetcodeCard status={leetcode} />
     </div>
   );
 }

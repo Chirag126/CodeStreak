@@ -50,6 +50,7 @@ export function ChallengeCard({ row, now }: { row: OverviewRow; now: Date }) {
     status === 'joining' ? `Joining closes ${relativeTime(new Date(row.join_deadline_at), now)}` :
     status === 'starting' ? `Starts ${relativeTime(new Date(row.start_at), now)}` :
     status === 'running' ? `Ends ${relativeTime(new Date(row.end_at), now)}` :
+    status === 'cancelled' ? 'Cancelled: every stake was refunded' :
     `Ended ${relativeTime(new Date(row.end_at), now)}`;
 
   const body = (
@@ -74,7 +75,7 @@ export function ChallengeCard({ row, now }: { row: OverviewRow; now: Date }) {
             {row.participant_count} / {row.max_participants}
           </dd>
           <dt className="text-muted-foreground">Surviving</dt>
-          <dd className="text-right">{percent(rate)}</dd>
+          <dd className="text-right">{status === 'cancelled' ? '–' : percent(rate)}</dd>
           <dt className="text-muted-foreground">Length</dt>
           <dd className="text-right">{lengthLabel(row.num_days, row.day_length_secs)}</dd>
         </dl>
