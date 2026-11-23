@@ -1,4 +1,4 @@
-import { scrapeLeetcodeProfile, snapshotRowFromScrape } from '@codestreak/shared/verification';
+import { readLeetcodeSnapshot } from '@codestreak/shared/verification';
 import type { Job } from '../server.js';
 
 export interface LeetcodeSnapshotOptions {
@@ -35,8 +35,7 @@ export function createLeetcodeSnapshotJob(options: LeetcodeSnapshotOptions): Job
     let stored = 0;
     let unreadable = 0;
     for (const t of targets) {
-      const scrape = await scrapeLeetcodeProfile(firecrawlApiKey, t.handle, doFetch);
-      const row = snapshotRowFromScrape(scrape, t.profile_id, t.handle, 'scheduled');
+      const row = await readLeetcodeSnapshot(firecrawlApiKey, t.profile_id, t.handle, 'scheduled', doFetch);
       const res = await doFetch(`${supabaseUrl}/rest/v1/leetcode_snapshots`, { method: 'POST', headers: { ...headers, Prefer: 'return=minimal' }, body: JSON.stringify(row) });
       if (!res.ok) throw new Error(`snapshot insert failed: HTTP ${res.status}`);
       stored++;

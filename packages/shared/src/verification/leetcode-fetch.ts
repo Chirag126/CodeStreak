@@ -11,7 +11,7 @@ export interface ProfileScrape {
   error?: string;
 }
 
-export async function scrapeLeetcodeProfile(apiKey: string, handle: string, fetchImpl: typeof fetch = fetch): Promise<ProfileScrape> {
+export async function scrapeLeetcodeProfile(apiKey: string, handle: string, fetchImpl: typeof fetch = fetch, opts: { waitForMs?: number } = {}): Promise<ProfileScrape> {
   try {
     const res = await fetchImpl('https://api.firecrawl.dev/v2/scrape', {
       method: 'POST',
@@ -21,7 +21,7 @@ export async function scrapeLeetcodeProfile(apiKey: string, handle: string, fetc
         formats: ['markdown'],
         onlyMainContent: false,
         maxAge: 0,
-        waitFor: 4000,
+        waitFor: opts.waitForMs ?? 4000,
         timeout: 60000,
       }),
     });

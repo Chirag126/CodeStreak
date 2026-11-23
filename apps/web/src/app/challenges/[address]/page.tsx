@@ -1,4 +1,4 @@
-import { checkableDay, describeDailyGoal, formatAmount, missingProviders, PROVIDER_LABELS, type Provider, GITHUB_OPTION_LIMITS, SOL_DECIMALS, survivalRate, USDC_DECIMALS, WSOL_MINT } from '@codestreak/shared';
+import { checkableDay, describeDailyGoal, PHASE_LABELS, formatAmount, missingProviders, PROVIDER_LABELS, type Provider, GITHUB_OPTION_LIMITS, SOL_DECIMALS, survivalRate, USDC_DECIMALS, WSOL_MINT } from '@codestreak/shared';
 import { challengePhase, challengeTimes, createProgram, explorerAddressUrl, rulesHash } from '@codestreak/shared/program';
 import { isSolanaAddress } from '@codestreak/shared/wallet';
 import { PublicKey } from '@solana/web3.js';
@@ -161,7 +161,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
   const myMembershipId = board?.viewer.membershipId ?? null;
   const slot = checkableDay(times, now);
   const countsSomething = Boolean(((row?.rules ?? {}) as Rules).github || ((row?.rules ?? {}) as Rules).leetcode);
-  const myDay = myMembershipId && slot.ok && countsSomething ? { day: slot.day, logs: await readDayLogs(supabase, myMembershipId, slot.day) } : null;
+  const myDay = myMembershipId && slot.ok && countsSomething ? { day: slot.day, endsAt: slot.window.endSec, logs: await readDayLogs(supabase, myMembershipId, slot.day) } : null;
 
   // Rules integrity: what CodeStreak shows must hash to the on-chain fingerprint.
   const onChainRulesHash = Buffer.from(account.rulesHash).toString('hex');
@@ -193,7 +193,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
           <div className="flex flex-wrap items-center gap-2">
             {account.isDemo && <Badge variant="warning">DEMO · compressed time</Badge>}
             {account.joinAuthority && <Badge variant="accent">Private group</Badge>}
-            <Badge variant={phase === 'cancelled' ? 'danger' : 'primary'}>{phase}</Badge>
+            <Badge variant={phase === 'cancelled' ? 'danger' : phase === 'active' ? 'success' : 'primary'}>{PHASE_LABELS[phase]}</Badge>
             <Badge variant="outline">Live from devnet</Badge>
           </div>
           <CardTitle className="text-2xl">{(row?.title as string | undefined) ?? `Challenge ${address.slice(0, 4)}…${address.slice(-4)}`}</CardTitle>
@@ -223,7 +223,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
             </p>
           )}
           {phase === 'cancelled' ? (
-            <p className="text-sm text-muted-foreground">Cancelled: fewer than {account.minParticipants} players joined, so every stake was refunded.</p>
+            <p className="text-sm text-muted-foreground">Cancelled: fewer than {account.minParticipants} players joined. Every stake can be claimed back in full from the on-chain escrow.</p>
           ) : phase !== 'joining' ? (
             <p className="text-sm text-muted-foreground">Joining is closed.</p>
           ) : viewerJoined ? (
@@ -306,13 +306,17 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
         )}
       </div>
 
-      {myDay && <MyDayCard
+      {myDay && (
+        <MyDayCard
+          key={myDay.day}
           address={address}
           day={myDay.day}
+          dayEndsAt={myDay.endsAt}
           initial={myDay.logs}
           rule={((row?.rules ?? {}) as Rules).providerRule === 'all' ? 'all' : 'any'}
           providers={(['github', 'leetcode'] as const).filter((p) => Boolean(((row?.rules ?? {}) as Rules)[p]))}
-        />}
+        />
+      )}
 
       <SponsorLeaderboard
         sponsors={sponsors}

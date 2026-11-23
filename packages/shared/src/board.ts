@@ -47,6 +47,16 @@ export interface BoardInput {
   membersVisible: boolean;
   memberCount: number;
   members: BoardMemberInput[];
+  /** What a day needs (from the rules): lets "done today" count goals already met at the latest check. */
+  goal?: { providers: ('github' | 'leetcode')[]; rule: 'any' | 'all' };
+}
+
+/** A member's latest check for `day` meets the challenge's goal (ANY/ALL of its providers). */
+export function goalMetAtCheck(m: Pick<BoardMemberInput, 'checks'>, day: number, goal: BoardInput['goal']): boolean {
+  const progress = m.checks?.find((c) => c.day === day)?.progress;
+  if (!goal || !progress?.length || goal.providers.length === 0) return false;
+  const met = (p: 'github' | 'leetcode') => progress.some((x) => x.provider === p && x.outcome === 'met');
+  return goal.rule === 'all' ? goal.providers.every(met) : goal.providers.some(met);
 }
 
 export interface BoardMember extends Omit<BoardMemberInput, 'results' | 'shieldDays'> {
@@ -54,6 +64,8 @@ export interface BoardMember extends Omit<BoardMemberInput, 'results' | 'shieldD
   cells: CellState[];
   /** The current day's cell, or null outside the active period. */
   today: CellState | null;
+  /** Today's goal is met: recorded, shielded, or met at the latest check. */
+  doneToday: boolean;
   verifiedDays: number;
   shieldsUsed: number;
 }
@@ -145,6 +157,7 @@ export function buildBoard(input: BoardInput, now: number): Board {
         state: t.state === 'cancelled' && m.status === 'active' ? 'voided' : memberState(m),
         cells,
         today: day === null ? null : cells[day]!,
+        doneToday: day !== null && (cells[day] === 'verified' || cells[day] === 'shielded' || goalMetAtCheck(m, day, input.goal)),
         verifiedDays: cells.filter((c) => c === 'verified').length,
         shieldsUsed: shieldDays.length,
       };
@@ -162,7 +175,8 @@ export function buildBoard(input: BoardInput, now: number): Board {
     stillIn: members.filter((m) => m.state === 'in').length,
     out: members.filter((m) => m.state === 'out').length,
     survived: members.filter((m) => m.state === 'survived').length,
-    doneToday: day === null ? 0 : members.filter((m) => m.today === 'verified' || m.today === 'shielded').length,
+    // Recorded results, plus goals already met at the latest check (a preview until the day is recorded).
+    doneToday: day === null ? 0 : members.filter((m) => m.doneToday).length,
   };
 }
 

@@ -877,3 +877,26 @@ Found by watching the three recordings of video 2 frame by frame:
 - **Dashboard**: lists your challenges (created or playing); refreshes when you come back to the tab,
   so new invitations appear.
 - Sponsor dialog: wallet buttons no longer jump between side-by-side and stacked.
+
+### Video 3 review fixes (live challenge, checks, after the days)
+
+Found by watching the three recordings of video 3 and checking the stored snapshots, evidence and chain mirror:
+- **A real LeetCode solve got no credit**: the 21:43 snapshot read solved = 1 with an empty "Recent AC"
+  list (LeetCode fills it after the counts), so credit = min(1, 0) = 0; later reads at 21:51 and 21:54
+  were empty again. A page with solved > 0 and no recent submissions is now **unreadable** (never
+  "nothing solved", never "withdrawn evidence"), and is read once more with a longer wait.
+- **A day's evidence could vanish**: evidence is unique per member + item across days and was inserted
+  as one batch, so one item already recorded on another day rejected the whole batch (day 2's README
+  commit). Items already recorded are now skipped instead.
+- **"Your day 1" on day 2**: the card now remounts per day and the page refreshes when the day changes.
+- **Raw phase names** ("active", "disputeWindow", "awaitingSettlement") → Running / Dispute window / Ready to settle.
+- **Done today 0/2** while both goals were met: it now also counts goals met at the latest check (ANY/ALL).
+- Mid-day verdict says **"So far today: Not done yet"** instead of "Failed".
+- After the days end, the board says plainly that results aren't recorded yet and stakes stay in escrow.
+- **Dashboard "Your challenges"**: aligned rows (title + buy-in/length/date, one status column, role),
+  Active and Past groups, past list collapsible. Status is honest about money: "Results pending" for
+  ended-but-unsettled, "Too few players" for under-filled, "Settled" only when settled.
+- Copy: cancelled challenges no longer claim stakes "were refunded" (none were claimed yet); they are claimable.
+
+**Known gap (not a bug in these fixes):** nothing after the days runs yet: day results, on-chain
+verification records, finalize, settle and claim/refund are the next phases. Stakes stay safe in escrow.

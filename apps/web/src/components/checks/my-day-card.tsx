@@ -12,7 +12,22 @@ import type { ProviderRule, RuleProvider } from '@codestreak/shared';
 import { DayLogsView, DayVerdictView } from './day-log';
 
 /** A player's own day: check every provider now and see exactly what counted and why. */
-export function MyDayCard({ address, day, initial, rule, providers }: { address: string; day: number; initial: DayLog[]; rule: ProviderRule; providers: RuleProvider[] }) {
+export function MyDayCard({
+  address,
+  day,
+  dayEndsAt,
+  initial,
+  rule,
+  providers,
+}: {
+  address: string;
+  day: number;
+  /** Unix seconds: the verdict is worded as a preview until then. */
+  dayEndsAt: number;
+  initial: DayLog[];
+  rule: ProviderRule;
+  providers: RuleProvider[];
+}) {
   const toast = useToast();
   const [logs, setLogs] = useState<DayLog[]>(initial);
   const [busy, start] = useTransition();
@@ -47,7 +62,7 @@ export function MyDayCard({ address, day, initial, rule, providers }: { address:
         <CardDescription>Reads today’s GitHub pushes and/or LeetCode profile (whatever this challenge counts) and shows what counts. Push or solve, then check.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {logs.length > 0 && <DayVerdictView logs={logs} rule={rule} providers={providers} />}
+        {logs.length > 0 && <DayVerdictView logs={logs} rule={rule} providers={providers} dayEndsAt={dayEndsAt} />}
         {logs.length ? <DayLogsView logs={logs} /> : <p className="text-sm text-muted-foreground">Not checked yet today.</p>}
       </CardContent>
     </Card>

@@ -12,6 +12,11 @@ export interface BoardPayload {
 
 const secs = (iso: string) => Math.floor(Date.parse(iso) / 1000);
 
+function goalFromRules(rules: { providers?: string[]; providerRule?: string } | null): BoardInput['goal'] {
+  const providers = (rules?.providers ?? []).filter((p): p is 'github' | 'leetcode' => p === 'github' || p === 'leetcode');
+  return providers.length ? { providers, rule: rules?.providerRule === 'all' ? 'all' : 'any' } : undefined;
+}
+
 /**
  * Everything the group board shows, filtered for the viewer:
  *  - access: the challenge must be readable by the viewer (RLS on the viewer's own session);
@@ -23,7 +28,7 @@ export async function loadBoard(address: string): Promise<BoardPayload | null> {
   const supabase = await createSupabaseServerClient();
   const { data: c } = await supabase
     .from('challenges')
-    .select('id, creator_id, board_visibility, pool_state, start_at, day_length_secs, num_days, join_deadline_at, verify_window_secs, dispute_window_secs, min_participants, max_participants, total_stake, total_sponsor, total_shield')
+    .select('id, creator_id, board_visibility, pool_state, start_at, day_length_secs, num_days, join_deadline_at, verify_window_secs, dispute_window_secs, min_participants, max_participants, total_stake, total_sponsor, total_shield, rules')
     .eq('onchain_address', address)
     .maybeSingle();
   if (!c) return null;
@@ -119,6 +124,7 @@ export async function loadBoard(address: string): Promise<BoardPayload | null> {
       membersVisible,
       memberCount: rows.length,
       members,
+      goal: goalFromRules(c.rules as { providers?: string[]; providerRule?: string } | null),
     },
   };
 }

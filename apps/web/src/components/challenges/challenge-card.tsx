@@ -21,6 +21,7 @@ export interface OverviewRow {
   is_demo: boolean;
   pool_state: 'open' | 'cancelled' | 'settled';
   participant_count: number;
+  min_participants: number;
   pool_total: unknown;
   members: number;
   still_in: number;
@@ -36,6 +37,21 @@ export const STATUS_LABEL: Record<ChallengeStatus, { label: string; variant: 'pr
   cancelled: { label: 'Cancelled', variant: 'danger' },
 };
 
+type BadgeVariant = 'primary' | 'accent' | 'success' | 'default' | 'danger' | 'warning';
+
+/**
+ * The badge for a challenge, honest about money: "Finished" only once it is settled. A challenge
+ * whose days are over but whose results/payouts aren't recorded yet is "Results pending"; one that
+ * closed joining without enough players is "Too few players" (its stakes are refundable, not lost).
+ */
+export function statusBadge(status: ChallengeStatus, row: { pool_state: OverviewRow['pool_state']; participant_count: number; min_participants: number }): { label: string; variant: BadgeVariant } {
+  if (row.pool_state === 'cancelled') return STATUS_LABEL.cancelled;
+  if (row.pool_state === 'settled') return { label: 'Settled', variant: 'default' };
+  if (status !== 'joining' && row.participant_count < row.min_participants) return { label: 'Too few players', variant: 'danger' };
+  if (status === 'finished') return { label: 'Results pending', variant: 'warning' };
+  return STATUS_LABEL[status];
+}
+
 export function statusOf(row: OverviewRow, now: Date): ChallengeStatus {
   return challengeStatus(
     { poolState: row.pool_state, joinDeadlineMs: Date.parse(row.join_deadline_at), startMs: Date.parse(row.start_at), endMs: Date.parse(row.end_at) },
@@ -50,14 +66,14 @@ export function ChallengeCard({ row, now }: { row: OverviewRow; now: Date }) {
     status === 'joining' ? `Joining closes ${relativeTime(new Date(row.join_deadline_at), now)}` :
     status === 'starting' ? `Starts ${relativeTime(new Date(row.start_at), now)}` :
     status === 'running' ? `Ends ${relativeTime(new Date(row.end_at), now)}` :
-    status === 'cancelled' ? 'Cancelled: every stake was refunded' :
+    status === 'cancelled' ? 'Cancelled: every stake can be claimed back in full' :
     `Ended ${relativeTime(new Date(row.end_at), now)}`;
 
   const body = (
     <Card className="h-full transition-colors hover:border-cobalt-400/60">
       <CardHeader className="space-y-2">
         <div className="flex flex-wrap gap-1.5">
-          <Badge variant={STATUS_LABEL[status].variant}>{STATUS_LABEL[status].label}</Badge>
+          <Badge variant={statusBadge(status, row).variant}>{statusBadge(status, row).label}</Badge>
           {row.is_demo && <Badge variant="warning">DEMO</Badge>}
           {row.visibility === 'private' && <Badge variant="accent">Private</Badge>}
         </div>

@@ -133,3 +133,14 @@ describe('stored snapshots', () => {
     expect(snapshotRowFromScrape({ ok: false, pageStatus: null, markdown: '', title: null, error: 'timeout' }, 'p1', 'alice_99', 'scheduled')).toMatchObject({ readable: false, error: 'timeout' });
   });
 });
+
+describe('half-loaded profile pages', () => {
+  it('a page with a solved count but no recent submissions is unreadable, not "nothing solved"', async () => {
+    const { snapshotRowFromScrape } = await import('./leetcode-snapshot.js');
+    const md = page({ solved: 1, easy: 1, medium: 0, hard: 0, recent: [] });
+    const row = snapshotRowFromScrape({ ok: true, pageStatus: 200, markdown: md, title: 'alice_99 - LeetCode Profile' }, 'p1', 'alice_99', 'manual');
+    expect(row).toMatchObject({ readable: false, error: 'the recent submissions list had not loaded' });
+    // a brand-new account (nothing solved, empty list) is a normal readable page
+    expect(snapshotRowFromScrape({ ok: true, pageStatus: 200, markdown: page({ solved: 0, easy: 0, medium: 0, hard: 0, recent: [] }), title: 'alice_99 - LeetCode Profile' }, 'p1', 'alice_99', 'manual').readable).toBe(true);
+  });
+});
