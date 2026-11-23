@@ -1,6 +1,6 @@
 'use client';
 
-import { DEMO_DAY_MINUTES, STAKE_LIMITS, validateChallengeForm, type ChallengeFormInput } from '@codestreak/shared';
+import { DEMO_DAY_MINUTES, GITHUB_OPTION_LIMITS, STAKE_LIMITS, validateChallengeForm, type ChallengeFormInput } from '@codestreak/shared';
 import type { Wallet, WalletAccount } from '@wallet-standard/base';
 import { AnimatePresence, motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
@@ -25,7 +25,7 @@ const STEPS = [
   { title: 'Basics', fields: ['title', 'description', 'visibility'] },
   { title: 'Stake', fields: ['token', 'buyIn'] },
   { title: 'Schedule', fields: ['mode', 'durationDays', 'startDate', 'demoDayMinutes', 'demoStartMinutes'] },
-  { title: 'Rules', fields: ['providers', 'providerRule', 'minLines'] },
+  { title: 'Rules', fields: ['providers', 'providerRule', 'minLines', 'githubFileTypes', 'allowDocs', 'allowGenerated', 'allowForks', 'backdateHours'] },
   { title: 'Players & Shields', fields: ['minPlayers', 'maxPlayers', 'shieldsEnabled', 'shieldPrice', 'maxShields', 'shieldGraceMinutes'] },
   { title: 'Review', fields: [] as string[] },
 ] as const;
@@ -50,6 +50,11 @@ const INITIAL: Form = {
   providers: ['github'],
   providerRule: 'any',
   minLines: 15,
+  githubFileTypes: '',
+  allowDocs: false,
+  allowGenerated: false,
+  allowForks: false,
+  backdateHours: 0,
   minPlayers: 2,
   maxPlayers: 50,
   shieldsEnabled: true,
@@ -324,6 +329,46 @@ export function CreateWizard({ linkedWallets }: { linkedWallets: string[] }) {
                     <Field label="Minimum meaningful lines per day" htmlFor="minLines" error={errors.minLines} hint="Added + changed code lines in your own repos (not forks).">
                       <Input id="minLines" type="number" min={1} max={500} value={Number.isNaN(form.minLines) ? '' : form.minLines} onChange={(e) => set('minLines', num(e.target.value))} />
                     </Field>
+                  )}
+                  {form.providers.includes('github') && (
+                    <details className="rounded-lg border border-border p-4">
+                      <summary className="cursor-pointer text-sm font-medium">GitHub options (strict by default)</summary>
+                      <div className="mt-4 space-y-4">
+                        <Field
+                          label="Only these file types (optional)"
+                          htmlFor="githubFileTypes"
+                          error={errors.githubFileTypes}
+                          hint="Extensions like .ts .py and/or exact file names like main.py. Empty = all source files."
+                        >
+                          <Input id="githubFileTypes" value={form.githubFileTypes} onChange={(e) => set('githubFileTypes', e.target.value)} placeholder=".ts .tsx main.py" spellCheck={false} />
+                        </Field>
+                        <p className="text-xs text-muted-foreground">
+                          Never counted: whitespace-only or re-indented changes, moved lines, and the same change pushed again (rebase, cherry-pick). Counting them would let anyone farm lines.
+                        </p>
+                        <div className="space-y-2">
+                          {(
+                            [
+                              ['allowDocs', `Count README and docs (at most ${Math.floor(form.minLines * GITHUB_OPTION_LIMITS.docsCapShare) || 0} of the ${form.minLines || 0} lines)`],
+                              ['allowGenerated', `Count lockfiles, minified and generated files (at most ${Math.floor(form.minLines * GITHUB_OPTION_LIMITS.generatedCapShare) || 0} lines)`],
+                              ['allowForks', 'Count your own commits in your forks'],
+                            ] as const
+                          ).map(([key, label]) => (
+                            <label key={key} className="flex items-start gap-2 text-sm">
+                              <input type="checkbox" className="mt-0.5 size-4 accent-[var(--color-cobalt-400)]" checked={form[key]} onChange={(e) => set(key, e.target.checked)} />
+                              {label}
+                            </label>
+                          ))}
+                        </div>
+                        <Field
+                          label="Backdated commits: allow commits made up to this many hours before the day starts"
+                          htmlFor="backdateHours"
+                          error={errors.backdateHours}
+                          hint={`0 = only commits made during the day (strict). At most ${GITHUB_OPTION_LIMITS.maxBackdateHours}.`}
+                        >
+                          <Input id="backdateHours" type="number" min={0} max={GITHUB_OPTION_LIMITS.maxBackdateHours} value={Number.isNaN(form.backdateHours) ? '' : form.backdateHours} onChange={(e) => set('backdateHours', num(e.target.value))} />
+                        </Field>
+                      </div>
+                    </details>
                   )}
                 </>
               )}

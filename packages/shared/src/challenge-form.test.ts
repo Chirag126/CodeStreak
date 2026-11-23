@@ -117,3 +117,14 @@ describe('create-challenge validation', () => {
     expect(rulesDocument(single.form)).toMatchObject({ providerRule: 'any', leetcode: null });
   });
 });
+
+describe('GitHub options in the wizard (Phase 24)', () => {
+  it('parses file types: extensions and exact file names', async () => {
+    const { parseFileFilter } = await import('./challenge-form.js');
+    expect(parseFileFilter('')).toEqual({ ok: true, extensions: [], filenames: [] });
+    expect(parseFileFilter('.ts, py  main.py Makefile .TSX')).toEqual({ ok: true, extensions: ['.py', '.ts', '.tsx'], filenames: ['Makefile', 'main.py'] });
+    expect(parseFileFilter('../etc/passwd').ok).toBe(false);
+    expect(parseFileFilter('*.js').ok).toBe(false);
+    expect(parseFileFilter(Array.from({ length: 21 }, (_, i) => `.e${i}`).join(' ')).ok).toBe(false);
+  });
+});

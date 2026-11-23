@@ -4,7 +4,7 @@
 // refused on-chain.
 import { z } from 'zod';
 
-import { SOL_DECIMALS, USDC_DECIMALS } from './constants.js';
+import { GITHUB_OPTION_LIMITS, SOL_DECIMALS, USDC_DECIMALS } from './constants.js';
 import { parseAmount } from './money.js';
 
 export const PROGRAM_LIMITS = {
@@ -57,6 +57,12 @@ export const challengeFormSchema = z
     providers: z.array(z.enum(['github', 'leetcode'])).min(1, 'Choose at least one provider.').max(2),
     providerRule: z.enum(['any', 'all']),
     minLines: z.number().int().min(1, 'At least 1 line.').max(500, 'At most 500 lines.'),
+    /** GitHub options (strict by default): file filter and capped allowances. */
+    githubFileTypes: z.string().max(400, 'Too long.').default(''),
+    allowDocs: z.boolean().default(false),
+    allowGenerated: z.boolean().default(false),
+    allowForks: z.boolean().default(false),
+    backdateHours: z.number().int().min(0, 'At least 0.').max(GITHUB_OPTION_LIMITS.maxBackdateHours, `At most ${GITHUB_OPTION_LIMITS.maxBackdateHours} hours.`).default(0),
     minPlayers: z.number().int().min(2, 'At least 2 players.').max(1000),
     maxPlayers: z.number().int().min(2).max(1000, 'At most 1000 players.'),
     shieldsEnabled: z.boolean(),
@@ -72,6 +78,8 @@ export const challengeFormSchema = z
     } else if (buyIn < parseAmount(stake.min, stake.decimals) || buyIn > parseAmount(stake.max, stake.decimals)) {
       ctx.addIssue({ code: 'custom', path: ['buyIn'], message: `Between ${stake.min} and ${stake.max} ${stake.symbol}.` });
     }
+    const filter = parseFileFilter(f.githubFileTypes);
+    if (!filter.ok) ctx.addIssue({ code: 'custom', path: ['githubFileTypes'], message: filter.error });
     if (f.mode === 'real' && !f.startDate) ctx.addIssue({ code: 'custom', path: ['startDate'], message: 'Pick a start date.' });
     if (f.maxPlayers < f.minPlayers) ctx.addIssue({ code: 'custom', path: ['maxPlayers'], message: 'Must be at least the minimum.' });
     if (f.shieldsEnabled) {
@@ -103,6 +111,36 @@ export interface PoolParams {
   disputeWindowSecs: number;
 }
 
+/**
+ * "File types" input: extensions (".ts", "py") and/or exact file names ("main.py", "Makefile"),
+ * separated by commas or spaces. Empty = every source file.
+ */
+export function parseFileFilter(raw: string): { ok: true; extensions: string[]; filenames: string[] } | { ok: false; error: string } {
+  const entries = raw.split(/[\s,]+/).map((e) => e.trim()).filter(Boolean);
+  if (entries.length > GITHUB_OPTION_LIMITS.maxFilterEntries) return { ok: false, error: `At most ${GITHUB_OPTION_LIMITS.maxFilterEntries} entries.` };
+  const extensions = new Set<string>();
+  const filenames = new Set<string>();
+  for (const e of entries) {
+    // ".ts" or a short lowercase word ("py"): an extension.
+    if (/^\.[A-Za-z0-9]{1,10}$/.test(e) || /^[a-z0-9]{1,10}$/.test(e)) extensions.add(`.${e.replace(/^\./, '').toLowerCase()}`);
+    // "main.py", "Makefile", "Dockerfile.dev": an exact file name.
+    else if (/^[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}$/.test(e)) filenames.add(e);
+    else return { ok: false, error: `"${e.slice(0, 20)}" is not a file extension (like .ts) or a file name (like main.py).` };
+  }
+  return { ok: true, extensions: [...extensions].sort(), filenames: [...filenames].sort() };
+}
+
+function githubRulesDoc(f: ChallengeForm) {
+  const filter = parseFileFilter(f.githubFileTypes);
+  const fileFilter = filter.ok && (filter.extensions.length || filter.filenames.length) ? { extensions: filter.extensions, filenames: filter.filenames } : null;
+  return {
+    minMeaningfulLines: f.minLines,
+    ownNonForkReposOnly: !f.allowForks,
+    fileFilter,
+    allow: { docs: f.allowDocs, generated: f.allowGenerated, forks: f.allowForks, backdateHours: f.backdateHours },
+  };
+}
+
 /** The off-chain rules document; its SHA-256 (canonical JSON) is stored on-chain as rules_hash. */
 export function rulesDocument(f: ChallengeForm) {
   return {
@@ -112,7 +150,7 @@ export function rulesDocument(f: ChallengeForm) {
     label: f.mode === 'demo' ? `DEMO - compressed time: each day lasts ${f.demoDayMinutes} minutes. Devnet test tokens only.` : null,
     providers: [...f.providers].sort(),
     providerRule: f.providers.length > 1 ? f.providerRule : 'any',
-    github: f.providers.includes('github') ? { minMeaningfulLines: f.minLines, ownNonForkReposOnly: true } : null,
+    github: f.providers.includes('github') ? githubRulesDoc(f) : null,
     leetcode: f.providers.includes('leetcode') ? { minAcceptedPerDay: 1 } : null,
   };
 }

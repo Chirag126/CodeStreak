@@ -10,7 +10,8 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "verify:github": "tsx src/verify-github.ts"
   },
   "dependencies": {
     "@codestreak/shared": "workspace:*"

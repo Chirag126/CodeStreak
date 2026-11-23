@@ -20,8 +20,15 @@ export type ChallengeDurationDays = (typeof CHALLENGE_DURATIONS_DAYS)[number];
 export const DEFAULT_MIN_MEANINGFUL_LINES = 15;
 
 /** Source file extensions that count toward GitHub activity. */
-export const ELIGIBLE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.rs', '.py', '.cpp', '.go'] as const;
+/** Source files that count by default (a creator's file filter can narrow this further). */
+export const ELIGIBLE_EXTENSIONS = [
+  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.rs', '.py', '.cpp', '.cc', '.c', '.h', '.hpp', '.go', '.java', '.kt',
+  '.swift', '.cs', '.rb', '.php', '.sol', '.scala', '.dart', '.vue', '.svelte', '.sql', '.sh', '.lua', '.zig', '.ex', '.hs',
+] as const;
 
 /** Daily verification outcome. INDETERMINATE never causes forfeiture on its own. */
 export const VERIFICATION_STATUSES = ['VERIFIED', 'FAILED', 'INDETERMINATE'] as const;
 export type VerificationStatus = (typeof VERIFICATION_STATUSES)[number];
+
+/** Limits on a challenge creator's GitHub options (shared by the wizard and the verifier). */
+export const GITHUB_OPTION_LIMITS = { docsCapShare: 0.5, generatedCapShare: 0.25, maxBackdateHours: 72, maxFilterEntries: 20 } as const;
