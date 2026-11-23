@@ -2,6 +2,7 @@ import type { IdlAccounts, IdlTypes, Program, Provider } from '@anchor-lang/core
 import type { Connection, Keypair, PublicKey, Transaction } from '@solana/web3.js';
 import { VersionedTransaction } from '@solana/web3.js';
 
+import { canonicalJson, sha256Bytes } from '../canonical.js';
 import { anchor } from './anchor.js';
 import { CODESTREAK_IDL } from './idl/codestreak.idl.js';
 import type { Codestreak } from './idl/codestreak.types.js';
@@ -84,20 +85,9 @@ export function explorerTxUrl(signature: string): string {
   return `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
 }
 
-/** JSON with object keys sorted at every level, so equal rules always hash the same. */
-export function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  if (value !== null && typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, v]) => v !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
-  }
-  return JSON.stringify(value);
-}
+export { canonicalJson } from '../canonical.js';
 
 /** SHA-256 of the canonical rules JSON: the `rules_hash` stored on-chain with each challenge. */
 export async function rulesHash(rules: unknown): Promise<number[]> {
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalJson(rules)));
-  return Array.from(new Uint8Array(digest));
+  return Array.from(await sha256Bytes(canonicalJson(rules)));
 }

@@ -44,7 +44,7 @@ export interface LeetcodeDayResult {
   solvedDelta: number | null;
   levels: { easy: number | null; medium: number | null; hard: number | null };
   newSolves: { submissionId: string; title: string }[];
-  ignored: { submissionId: string; title: string; reason: 'already-solved-recently' | 'before-the-day' }[];
+  ignored: { submissionId: string; title: string; reason: 'already-solved-recently' | 'before-the-day' | 'after-the-day' }[];
   withdrawn: { submissionId: string; title: string }[];
   countDecreased: boolean;
 }
@@ -63,6 +63,9 @@ export function evaluateLeetcodeDay(input: {
   daySnapshots: LeetcodeSnapshotRecord[];
   window: { startSec: number; endSec: number };
   rules?: LeetcodeRules;
+  /** Also use snapshots taken up to this long after the day ends (the final check), so a solve in
+   *  the day's last minutes is still seen; solves dated after the end are excluded. Default 0. */
+  graceSecs?: number;
 }): LeetcodeDayResult {
   const rules = input.rules ?? DEFAULT_LEETCODE_RULES;
   const empty = (status: LeetcodeDayStatus): LeetcodeDayResult => ({
@@ -80,7 +83,7 @@ export function evaluateLeetcodeDay(input: {
   const inDay = input.daySnapshots
     .filter((s) => {
       const t = Date.parse(s.observedAt) / 1000;
-      return t >= input.window.startSec && t < input.window.endSec;
+      return t >= input.window.startSec && t < input.window.endSec + Math.max(0, input.graceSecs ?? 0);
     })
     .sort((a, b) => Date.parse(a.observedAt) - Date.parse(b.observedAt));
   const latest = inDay.at(-1);
@@ -107,6 +110,12 @@ export function evaluateLeetcodeDay(input: {
     }
     if (r.approxAgeSeconds !== null && r.approxAgeSeconds <= SHORT_AGE && latestObserved - r.approxAgeSeconds < input.window.startSec) {
       result.ignored.push({ submissionId: r.submissionId, title: r.title, reason: 'before-the-day' });
+      continue;
+    }
+    // Seen after the day ended: only solves dated inside the day count. Ages are whole minutes, so
+    // the estimate is moved one minute earlier (in the player's favour).
+    if (latestObserved >= input.window.endSec && (r.approxAgeSeconds === null || latestObserved - r.approxAgeSeconds - 60 >= input.window.endSec)) {
+      result.ignored.push({ submissionId: r.submissionId, title: r.title, reason: 'after-the-day' });
       continue;
     }
     result.newSolves.push({ submissionId: r.submissionId, title: r.title });
@@ -190,6 +199,8 @@ export function explainLeetcodeDay(r: LeetcodeDayResult, rules: LeetcodeRules): 
   if (resolves) hints.push(`${n(resolves, 'accepted submission was a re-solve', 'accepted submissions were re-solves')} of a problem you had already solved, so ${resolves === 1 ? 'it doesn’t' : 'they don’t'} count.`);
   const before = r.ignored.filter((i) => i.reason === 'before-the-day').length;
   if (before) hints.push(`${n(before, 'solve was', 'solves were')} made before the day started.`);
+  const after = r.ignored.filter((i) => i.reason === 'after-the-day').length;
+  if (after) hints.push(`${n(after, 'solve was', 'solves were')} made after the day ended (they count for the next day).`);
   if (r.solvedDelta === 0 && r.newSolves.length > 0) hints.push('Your solved count did not go up today, so new submissions were re-solves of older problems.');
   if (r.withdrawn.length) hints.push(`${n(r.withdrawn.length, 'solve seen earlier today has', 'solves seen earlier today have')} disappeared from your profile, so ${r.withdrawn.length === 1 ? 'it doesn’t' : 'they don’t'} count.`);
   if (r.countDecreased) hints.push('Your solved count went down during the day, so today’s solves can’t be credited.');
