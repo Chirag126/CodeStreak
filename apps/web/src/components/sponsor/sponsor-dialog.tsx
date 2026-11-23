@@ -43,6 +43,8 @@ export function SponsorDialog({ challenge, token, linkedWallets, sponsorToken, t
   const amountError = touched && !parsed.ok ? parsed.error : null;
   const busy = state.status === 'running';
   const done = state.status === 'success';
+  // Only the wallet in use shows a spinner; the others are just disabled.
+  const [activeWallet, setActiveWallet] = useState<string | null>(null);
 
   function edit(update: () => void) {
     update();
@@ -147,9 +149,18 @@ export function SponsorDialog({ challenge, token, linkedWallets, sponsorToken, t
           ) : wallets.length === 0 ? (
             <p className="text-sm text-muted-foreground">No Solana wallet found in this browser. Install Phantom and reload.</p>
           ) : (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2">
               {wallets.map((w) => (
-                <Button key={w.name} onClick={() => void sponsor(w)} loading={busy} disabled={done || !parsed.ok || !msg.ok}>
+                <Button
+                  key={w.name}
+                  className="w-full"
+                  onClick={() => {
+                    setActiveWallet(w.name);
+                    void sponsor(w);
+                  }}
+                  loading={busy && activeWallet === w.name}
+                  disabled={busy || done || !parsed.ok || !msg.ok}
+                >
                   {state.status === 'error' ? `Try again with ${w.name}` : `Sponsor with ${w.name}`}
                   {parsed.ok ? ` · ${amount.trim()} ${limits.symbol}` : ''}
                 </Button>

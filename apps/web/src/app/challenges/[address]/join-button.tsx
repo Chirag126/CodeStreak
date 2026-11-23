@@ -31,8 +31,25 @@ export interface StakeTerms {
   items: string[];
 }
 
-export function JoinButton({ challenge, linkedWallets, buyInLabel, isSol = false, terms }: { challenge: string; linkedWallets: string[]; buyInLabel: string; isSol?: boolean; terms: StakeTerms }) {
+export function JoinButton({
+  challenge,
+  linkedWallets,
+  buyInLabel,
+  isSol = false,
+  needToLink = null,
+  terms,
+}: {
+  challenge: string;
+  linkedWallets: string[];
+  buyInLabel: string;
+  isSol?: boolean;
+  /** Set when the viewer must link GitHub/LeetCode first: shown up front instead of after a failed join. */
+  needToLink?: string | null;
+  terms: StakeTerms;
+}) {
   const [agreed, setAgreed] = useState(false);
+  // Only the wallet in use shows a spinner; the others are just disabled.
+  const [activeWallet, setActiveWallet] = useState<string | null>(null);
   const router = useRouter();
   const toast = useToast();
   const wallets = useSolanaWallets().filter((w) => 'solana:signTransaction' in w.features);
@@ -105,12 +122,26 @@ export function JoinButton({ challenge, linkedWallets, buyInLabel, isSol = false
         </label>
         <p className="font-mono text-[11px] text-muted-foreground">Rules fingerprint (on-chain): {terms.rulesHash.slice(0, 16)}…</p>
       </section>
-      {wallets.length === 0 ? (
+      {needToLink ? (
+        <p role="status" className="rounded-lg border border-warning-400/40 bg-warning-400/10 p-3 text-sm">
+          {needToLink}{' '}
+          <a className="underline underline-offset-4" href="/dashboard/settings">
+            Open Settings
+          </a>
+        </p>
+      ) : wallets.length === 0 ? (
         <p className="text-sm text-muted-foreground">No Solana wallet found in this browser. Install Phantom and reload.</p>
       ) : (
         <div className="flex flex-wrap gap-2">
           {wallets.map((w) => (
-            <Button key={w.name} onClick={() => void join(w)} loading={busy} disabled={state.status === 'success' || !agreed} title={agreed ? undefined : 'Read the rules above and tick "I understand" first.'}>
+            <Button
+              key={w.name}
+              onClick={() => {
+                setActiveWallet(w.name);
+                void join(w);
+              }}
+              loading={busy && activeWallet === w.name}
+              disabled={busy || state.status === 'success' || !agreed} title={agreed ? undefined : 'Read the rules above and tick "I understand" first.'}>
               {state.status === 'error' ? `Try again with ${w.name}` : `Join with ${w.name}`} · {buyInLabel}
             </Button>
           ))}

@@ -75,7 +75,7 @@ export function ChallengeCard({ row, now }: { row: OverviewRow; now: Date }) {
             {row.participant_count} / {row.max_participants}
           </dd>
           <dt className="text-muted-foreground">Surviving</dt>
-          <dd className="text-right">{status === 'cancelled' ? '–' : percent(rate)}</dd>
+          <dd className="text-right">{status === 'cancelled' || status === 'joining' || status === 'starting' ? '–' : percent(rate)}</dd>
           <dt className="text-muted-foreground">Length</dt>
           <dd className="text-right">{lengthLabel(row.num_days, row.day_length_secs)}</dd>
         </dl>

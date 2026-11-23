@@ -2,7 +2,8 @@
 
 import { buildBoard, formatAmount, formatCountdown, type BoardMember, type CellState } from '@codestreak/shared';
 import { AnimatePresence, motion } from 'motion/react';
-import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useToast } from '@/components/feedback/toaster';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -62,10 +63,37 @@ function checksText(m: BoardMember, day: number | null): string | null {
   return `${today.counted}/${today.considered} commits counted`;
 }
 
+/**
+ * The board is the page's live part. When something it shows changes that the rest of the page
+ * also shows (players, pool, sponsors, the phase: joining → running → …), the server-rendered
+ * parts are refreshed too, so the header, Sponsors and reward estimate never contradict the board.
+ * At most one refresh every 3 s; client state (open dialogs, a transaction in flight) is kept.
+ */
+function usePageSync(signature: string) {
+  const router = useRouter();
+  const first = useRef(signature);
+  const last = useRef(0);
+  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (signature === first.current) return;
+    first.current = signature;
+    if (pending.current) clearTimeout(pending.current);
+    const wait = Math.max(0, last.current + 3000 - Date.now());
+    pending.current = setTimeout(() => {
+      last.current = Date.now();
+      router.refresh();
+    }, wait);
+    return () => {
+      if (pending.current) clearTimeout(pending.current);
+    };
+  }, [signature, router]);
+}
+
 export function GroupBoard({ address, initial, initialNow, decimals, symbol }: { address: string; initial: BoardPayload; initialNow: number; decimals: number; symbol: string }) {
   const { payload, live, refetch } = useLiveBoard(address, initial.challengeId, initial);
   const now = useNowSecs(initialNow);
   const board = buildBoard(payload.input, now);
+  usePageSync(`${payload.input.poolTotal}|${payload.input.memberCount}|${payload.input.times.state}|${board.statusLabel}`);
   const { input, viewer } = payload;
   const toast = useToast();
   const [busy, start] = useTransition();
