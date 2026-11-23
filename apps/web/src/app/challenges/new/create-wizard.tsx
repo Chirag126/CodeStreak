@@ -25,7 +25,7 @@ const STEPS = [
   { title: 'Basics', fields: ['title', 'description', 'visibility'] },
   { title: 'Stake', fields: ['token', 'buyIn'] },
   { title: 'Schedule', fields: ['mode', 'durationDays', 'startDate', 'demoDayMinutes', 'demoStartMinutes'] },
-  { title: 'Rules', fields: ['providers', 'providerRule', 'minLines', 'githubFileTypes', 'githubRepos', 'allowDocs', 'allowGenerated', 'allowForks', 'backdateHours'] },
+  { title: 'Rules', fields: ['providers', 'providerRule', 'minLines', 'githubFileTypes', 'githubRepos', 'allowDocs', 'allowGenerated', 'allowForks', 'backdateHours', 'leetcodeMinSolves', 'leetcodeDifficulty'] },
   { title: 'Players & Shields', fields: ['minPlayers', 'maxPlayers', 'shieldsEnabled', 'shieldPrice', 'maxShields', 'shieldGraceMinutes'] },
   { title: 'Review', fields: [] as string[] },
 ] as const;
@@ -56,6 +56,8 @@ const INITIAL: Form = {
   allowGenerated: false,
   allowForks: false,
   backdateHours: 0,
+  leetcodeMinSolves: 1,
+  leetcodeDifficulty: 'any',
   minPlayers: 2,
   maxPlayers: 50,
   shieldsEnabled: true,
@@ -331,6 +333,28 @@ export function CreateWizard({ linkedWallets }: { linkedWallets: string[] }) {
                       <Input id="minLines" type="number" min={1} max={500} value={Number.isNaN(form.minLines) ? '' : form.minLines} onChange={(e) => set('minLines', num(e.target.value))} />
                     </Field>
                   )}
+                  {form.providers.includes('leetcode') && (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Field label="New LeetCode problems per day" htmlFor="leetcodeMinSolves" error={errors.leetcodeMinSolves} hint="Problems never solved before. Re-solving an old one doesn't count.">
+                        <Input id="leetcodeMinSolves" type="number" min={1} max={5} value={Number.isNaN(form.leetcodeMinSolves) ? '' : form.leetcodeMinSolves} onChange={(e) => set('leetcodeMinSolves', num(e.target.value))} />
+                      </Field>
+                      <Field label="Minimum difficulty" error={errors.leetcodeDifficulty}>
+                        <Choice
+                          label="Minimum difficulty"
+                          value={form.leetcodeDifficulty}
+                          onChange={(v) => set('leetcodeDifficulty', v)}
+                          options={[
+                            { value: 'any', label: 'Any', hint: 'Easy counts' },
+                            { value: 'medium', label: 'Medium+', hint: 'Medium or Hard' },
+                            { value: 'hard', label: 'Hard', hint: 'Hard only' },
+                          ]}
+                        />
+                      </Field>
+                      <p className="text-xs text-muted-foreground sm:col-span-2">
+                        Players keep their LeetCode submission history public. CodeStreak snapshots their public profile when they join, every 30 minutes during the challenge and when they press Check now.
+                      </p>
+                    </div>
+                  )}
                   {form.providers.includes('github') && (
                     <details className="rounded-lg border border-border p-4">
                       <summary className="cursor-pointer text-sm font-medium">GitHub options (strict by default)</summary>
@@ -436,7 +460,9 @@ export function CreateWizard({ linkedWallets }: { linkedWallets: string[] }) {
                     <div>
                       <dt className="text-muted-foreground">Counts</dt>
                       <dd>
-                        {form.providers.map((p) => (p === 'github' ? `GitHub (≥ ${form.minLines} lines)` : 'LeetCode (1 accepted)')).join(form.providerRule === 'all' ? ' AND ' : ' OR ')}
+                        {form.providers
+                          .map((p) => (p === 'github' ? `GitHub (≥ ${form.minLines} lines)` : `LeetCode (${form.leetcodeMinSolves} new ${form.leetcodeMinSolves === 1 ? 'problem' : 'problems'}${form.leetcodeDifficulty === 'any' ? '' : form.leetcodeDifficulty === 'medium' ? ', Medium+' : ', Hard'})`))
+                          .join(form.providerRule === 'all' ? ' AND ' : ' OR ')}
                       </dd>
                     </div>
                     <div><dt className="text-muted-foreground">Players</dt><dd>{form.minPlayers} to {form.maxPlayers}</dd></div>

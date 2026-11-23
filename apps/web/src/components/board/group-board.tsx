@@ -50,6 +50,14 @@ function checksText(m: BoardMember, day: number | null): string | null {
   if (!m.checks) return m.isViewer ? null : 'check details private';
   const today = day === null ? undefined : m.checks.find((c) => c.day === day);
   if (!today) return day === null ? null : 'not checked today';
+  if (today.progress?.length) {
+    return today.progress
+      .slice()
+      .sort((a, b) => a.provider.localeCompare(b.provider))
+      .map((p) => `${p.value}/${p.goal} ${p.provider === 'github' ? 'lines' : 'new problems'}${p.outcome === 'met' ? ' ✓' : ''}`)
+      .join(' · ')
+      .concat(' today');
+  }
   if (today.lines !== undefined && today.goal) return `${today.lines}/${today.goal} lines today${today.outcome === 'met' ? ' ✓' : ''}`;
   return `${today.counted}/${today.considered} commits counted`;
 }

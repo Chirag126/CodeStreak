@@ -111,7 +111,7 @@ describe('create-challenge validation', () => {
   it('rules document records providers and the ANY/ALL rule', () => {
     const r = check({ providers: ['leetcode', 'github'], providerRule: 'all', minLines: 30 });
     if (!r.ok) throw new Error('invalid');
-    expect(rulesDocument(r.form)).toMatchObject({ providers: ['github', 'leetcode'], providerRule: 'all', github: { minMeaningfulLines: 30 }, leetcode: { minAcceptedPerDay: 1 } });
+    expect(rulesDocument(r.form)).toMatchObject({ providers: ['github', 'leetcode'], providerRule: 'all', github: { minMeaningfulLines: 30 }, leetcode: { minNewSolves: 1, minDifficulty: 'any' } });
     const single = check({ providerRule: 'all' });
     if (!single.ok) throw new Error('invalid');
     expect(rulesDocument(single.form)).toMatchObject({ providerRule: 'any', leetcode: null });

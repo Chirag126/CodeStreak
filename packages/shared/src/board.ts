@@ -17,6 +17,8 @@ export interface BoardCheck {
   lines?: number;
   goal?: number;
   outcome?: 'met' | 'not_met' | 'unknown';
+  /** Latest day check per provider (GitHub lines, LeetCode new problems). */
+  progress?: { provider: 'github' | 'leetcode'; value: number; goal: number; outcome: 'met' | 'not_met' | 'unknown' }[];
 }
 
 export interface BoardMemberInput {

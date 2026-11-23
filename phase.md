@@ -712,7 +712,7 @@ Real case: a push to `Chirag126/trust-dependency-mapper` at 12:37 UTC (branch `f
 
 ---
 
-## Phase 26: LeetCode binding (S)
+## Phase 25: LeetCode binding (S)
 
 **Goal:** link a real LeetCode profile to a CodeStreak account, safely.
 
@@ -733,6 +733,49 @@ Real case: a push to `Chirag126/trust-dependency-mapper` at 12:37 UTC (branch `f
 
 **Tests:** handle parsing (names, @names, profile links; other sites, paths, bad characters refused); binding check (exact code, old/other code, code inside a word, someone else's page, missing profile, unreadable page, the real lee215 page shape); Firecrawl client (live fetch, Firecrawl error, network error). SQL: one live code per person, ≤ 15-minute codes, malformed code, bad handle, attempt cap, used code frees the slot, capitalised handle, same handle on a second account, users can't read codes.
 
-### Phase 26 follow-up: LeetCode's new settings page
+### Phase 25 follow-up: LeetCode's new settings page
 
 LeetCode separated account and profile settings (May 2026); the old "Edit Profile → Summary" wording no longer matches its UI. The verifier already searches the whole public profile page, so the instructions now say: put the code in any field shown on the public profile (the bio under the name, or ReadMe), check it on `leetcode.com/u/<handle>/`, then Verify. The settings link points to `leetcode.com/settings/profile/`.
+
+## Phase 26: LeetCode provider (M)
+
+LeetCode has no public API for "what did this person solve today", and its profile page shows only the
+solved count, per-difficulty counts and the last ~15-20 accepted submissions (title, submission id,
+"x minutes ago"). So the provider works from **snapshots** of that public page, read live through
+Firecrawl (`maxAge: 0`), and compares them.
+
+**Snapshots** (`leetcode_snapshots`, server-only, RLS on with no policies):
+- at join (after the response), every 30 minutes by the worker (`pg_cron` `codestreak-leetcode-snapshots`,
+  `:15/:45` → `/jobs/leetcode-snapshots`, only for players in a running LeetCode challenge whose newest
+  snapshot is older than 25 min, max 15 profiles a run), and on every "Check now".
+- one snapshot serves all of a person's challenges; a page that isn't `<handle> - LeetCode Profile` or
+  fails to load is stored as **unreadable**, never as zero.
+
+**The day rule** (`evaluateLeetcodeDay`, `@codestreak/shared/verification`):
+- **Anchor** = the newest readable snapshot of the same handle taken at or before the day starts (the
+  "midnight" snapshot). No anchor → indeterminate (never a fail).
+- A solve is **new** when its submission id is above every id in the anchor and its title is not in the
+  anchor's recent list. **Credit = min(rise in solved count, distinct new titles)**: both signals must agree,
+  so re-solving an old problem (new submission, count unchanged) earns nothing.
+- Difficulty: only the Easy/Medium/Hard count rises can prove a solve's level, so a Medium+/Hard goal
+  counts only those rises.
+- **Withdrawn evidence**: a submission seen in an earlier snapshot today that is gone later, or a solved
+  count that goes down, zeroes the day's credit and is shown in the log.
+- Outcomes: profile unreadable / no anchor / no data → **indeterminate**; submission history hidden
+  (private) → **failed**; otherwise met / not met.
+
+**Creator options** (wizard → Rules, stored in the rules document and so in the on-chain fingerprint):
+providers GitHub, LeetCode or both (any/all), new problems a day 1-5, minimum difficulty any / Medium+ / Hard.
+The challenge page and the stake consent list the LeetCode rules in plain words.
+
+**Loopholes closed:** re-solves, solves before the day (age older than the day), deleting or hiding
+submissions after a check, switching the profile to another handle (snapshots are per handle, and links
+are locked during a challenge), hiding the profile (fails, it doesn't excuse), Firecrawl/LeetCode outages
+(indeterminate, never a fail), check spamming (60 s cooldown per member, worker cap per run).
+
+**Fixtures** (`leetcode-day.test.ts`): real solve the same day → met; scrape failure → INDETERMINATE;
+private profile → FAILED; old-problem re-solve → no credit; withdrawn evidence; credit = min(count, titles);
+difficulty; solve before the day; no anchor; old rules documents; snapshot round-trip.
+
+**Test it:** create a challenge with LeetCode (1 new problem), join with a linked LeetCode account, solve a
+problem you have never solved on leetcode.com, then press **Check now** on the challenge page.
