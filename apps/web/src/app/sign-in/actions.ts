@@ -28,7 +28,7 @@ const PROVIDER_BUSY = 'Our email service is sending too many emails right now. W
 const EMAIL_SEND_FAILED = "We couldn't send the sign-in email: our email service refused it (a CodeStreak setup problem, not your address). Sign in with your wallet below, or try again later.";
 
 /** The email provider (SMTP) failed: Supabase answers 5xx / unexpected_failure / "Error sending … email". */
-export function isEmailSendFailure(error: { message: string; code?: string; status?: number }): boolean {
+function isEmailSendFailure(error: { message: string; code?: string; status?: number }): boolean {
   return (error.status ?? 0) >= 500 || error.code === 'unexpected_failure' || /error sending .*email|smtp/i.test(error.message);
 }
 
