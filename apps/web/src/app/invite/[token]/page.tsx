@@ -24,7 +24,16 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
           </CardDescription>
         </CardHeader>
         {preview.ok && (
-          <CardContent>
+          <CardContent className="space-y-4">
+            <dl className="grid grid-cols-2 gap-3 text-sm">
+              <div><dt className="text-muted-foreground">Stake to join</dt><dd className="font-mono">{preview.terms.stake}</dd></div>
+              <div><dt className="text-muted-foreground">Length</dt><dd>{preview.terms.days}</dd></div>
+              <div><dt className="text-muted-foreground">Starts</dt><dd>{preview.terms.starts}</dd></div>
+              <div><dt className="text-muted-foreground">Join by</dt><dd>{preview.terms.joinBy}</dd></div>
+            </dl>
+            <p className="text-sm text-muted-foreground">
+              {preview.terms.goal} Miss a day and you lose your stake. You&apos;ll see every rule again, and confirm them, before you stake.
+            </p>
             {viewer ? (
               <RedeemButton token={token} />
             ) : (

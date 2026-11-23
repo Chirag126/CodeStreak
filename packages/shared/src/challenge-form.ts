@@ -59,6 +59,8 @@ export const challengeFormSchema = z
     minLines: z.number().int().min(1, 'At least 1 line.').max(500, 'At most 500 lines.'),
     /** GitHub options (strict by default): file filter and capped allowances. */
     githubFileTypes: z.string().max(400, 'Too long.').default(''),
+    /** Only pushes to these repositories count ("owner/name", resolved to ids on the server). */
+    githubRepos: z.string().max(500, 'Too long.').default(''),
     allowDocs: z.boolean().default(false),
     allowGenerated: z.boolean().default(false),
     allowForks: z.boolean().default(false),
@@ -80,6 +82,8 @@ export const challengeFormSchema = z
     }
     const filter = parseFileFilter(f.githubFileTypes);
     if (!filter.ok) ctx.addIssue({ code: 'custom', path: ['githubFileTypes'], message: filter.error });
+    const repos = parseRepoList(f.githubRepos);
+    if (!repos.ok) ctx.addIssue({ code: 'custom', path: ['githubRepos'], message: repos.error });
     if (f.mode === 'real' && !f.startDate) ctx.addIssue({ code: 'custom', path: ['startDate'], message: 'Pick a start date.' });
     if (f.maxPlayers < f.minPlayers) ctx.addIssue({ code: 'custom', path: ['maxPlayers'], message: 'Must be at least the minimum.' });
     if (f.shieldsEnabled) {
@@ -130,7 +134,29 @@ export function parseFileFilter(raw: string): { ok: true; extensions: string[]; 
   return { ok: true, extensions: [...extensions].sort(), filenames: [...filenames].sort() };
 }
 
-function githubRulesDoc(f: ChallengeForm) {
+export const MAX_SELECTED_REPOS = 5;
+
+/** "owner/name" entries (or full github.com URLs), separated by commas, spaces or new lines. */
+export function parseRepoList(raw: string): { ok: true; repos: string[] } | { ok: false; error: string } {
+  const entries = raw
+    .split(/[\s,]+/)
+    .map((e) => e.trim().replace(/^https?:\/\/(www\.)?github\.com\//i, '').replace(/\.git$/i, '').replace(/\/+$/, ''))
+    .filter(Boolean);
+  const repos = new Map<string, string>();
+  for (const e of entries) {
+    if (!/^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9_.-]{1,100}$/.test(e) || e.endsWith('/.') || e.includes('/..')) {
+      return { ok: false, error: `"${e.slice(0, 40)}" is not a repository. Write it as owner/name, like octocat/hello-world.` };
+    }
+    repos.set(e.toLowerCase(), e);
+  }
+  if (repos.size > MAX_SELECTED_REPOS) return { ok: false, error: `At most ${MAX_SELECTED_REPOS} repositories.` };
+  return { ok: true, repos: [...repos.values()] };
+}
+
+/** Repositories resolved on the server (numeric id, current name), checked public at creation. */
+export type ResolvedRepo = { id: number; fullName: string };
+
+function githubRulesDoc(f: ChallengeForm, repos: ResolvedRepo[]) {
   const filter = parseFileFilter(f.githubFileTypes);
   const fileFilter = filter.ok && (filter.extensions.length || filter.filenames.length) ? { extensions: filter.extensions, filenames: filter.filenames } : null;
   return {
@@ -138,11 +164,12 @@ function githubRulesDoc(f: ChallengeForm) {
     ownNonForkReposOnly: !f.allowForks,
     fileFilter,
     allow: { docs: f.allowDocs, generated: f.allowGenerated, forks: f.allowForks, backdateHours: f.backdateHours },
+    ...(repos.length ? { repos: [...repos].sort((a, b) => a.id - b.id) } : {}),
   };
 }
 
 /** The off-chain rules document; its SHA-256 (canonical JSON) is stored on-chain as rules_hash. */
-export function rulesDocument(f: ChallengeForm) {
+export function rulesDocument(f: ChallengeForm, resolved: { repos?: ResolvedRepo[] } = {}) {
   return {
     version: 1,
     mode: f.mode,
@@ -150,7 +177,7 @@ export function rulesDocument(f: ChallengeForm) {
     label: f.mode === 'demo' ? `DEMO - compressed time: each day lasts ${f.demoDayMinutes} minutes. Devnet test tokens only.` : null,
     providers: [...f.providers].sort(),
     providerRule: f.providers.length > 1 ? f.providerRule : 'any',
-    github: f.providers.includes('github') ? githubRulesDoc(f) : null,
+    github: f.providers.includes('github') ? githubRulesDoc(f, resolved.repos ?? []) : null,
     leetcode: f.providers.includes('leetcode') ? { minAcceptedPerDay: 1 } : null,
   };
 }

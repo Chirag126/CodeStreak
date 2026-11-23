@@ -1,14 +1,20 @@
 // Collects one user's commits for a day from the GitHub REST API (node-only, needs fetch).
 //
-// Since October 2025 push events no longer list their commits, only `before` and `head`, so:
-//   1. GET /user/{id}                          numeric id -> current login (survives renames)
-//   2. GET /users/{login}/events/public        PushEvents in the day window (max 300 events, 3 pages)
-//   3. GET /repos/{repo}                       fork? owner id? (cached)
-//   4. GET /repos/{repo}/compare/{before}...{head}   the pushed commits (new branch / rewritten
-//                                               history: the newest commits on `head` instead)
-//   5. GET /repos/{repo}/commits/{sha}         files and patches, only for commits that can count
-// Anything that stops the data from being complete (rate limit, server error, too many commits)
-// marks the result incomplete, which makes a below-goal day indeterminate instead of failed.
+// GitHub's public event feed lags (minutes to hours) and, since October 2025, lists no commits.
+// The repository activity API records every push immediately, with GitHub's server time, the
+// branch, before/after and WHO pushed, so it is the source of truth here:
+//   1. GET /user/{id}                                numeric id -> current login (survives renames)
+//   2. Repositories to read:
+//        - creator-selected repos: GET /repositories/{id} (by id: survives renames and transfers)
+//        - otherwise: GET /users/{login}/repos?type=owner&sort=pushed   (public repos the user owns,
+//          pushed since the day started)
+//   3. GET /repos/{repo}/activity?actor={login}      the user's pushes, branch creations, force pushes
+//   4. GET /repos/{repo}/compare/{before}...{after}  the pushed commits (new branch / rewritten
+//                                                    history: the newest commits on `after` instead)
+//   5. GET /repos/{repo}/commits/{sha}               files and patches, only for commits that can count
+// Merge-button merges ("pr_merge") are not read: that work counts when it is pushed.
+// Anything that stops the data being complete marks the result incomplete, which makes a
+// below-goal day indeterminate (never failed).
 import type { GithubCommit } from './github.js';
 
 export interface GithubResponse {
@@ -34,6 +40,13 @@ export function createGithubGet(token: string | undefined, fetchImpl: typeof fet
   };
 }
 
+export interface RepoReport {
+  fullName: string;
+  /** read: pushes found; no-pushes: none by this user in the day; missing/private: can't be read. */
+  status: 'read' | 'no-pushes' | 'missing' | 'private';
+  pushes: number;
+}
+
 export interface CollectResult {
   login: string | null;
   commits: GithubCommit[];
@@ -41,16 +54,17 @@ export interface CollectResult {
   complete: boolean;
   notes: string[];
   apiCalls: number;
-  /** Push events GitHub listed in the window (0 = nothing visible yet). */
+  /** The user's pushes found in the day window, across all repositories read. */
   pushes: number;
+  repos: RepoReport[];
 }
 
-interface PushEvent {
-  type: string;
-  created_at: string;
-  actor?: { id?: number };
-  repo?: { name?: string };
-  payload?: { before?: string; head?: string; ref?: string };
+interface Activity {
+  timestamp: string;
+  activity_type: string;
+  before?: string;
+  after?: string;
+  actor?: { id?: number } | null;
 }
 
 interface ApiCommit {
@@ -61,20 +75,34 @@ interface ApiCommit {
   files?: { filename: string; patch?: string }[];
 }
 
+interface ApiRepo {
+  id?: number;
+  full_name?: string;
+  fork?: boolean;
+  private?: boolean;
+  pushed_at?: string;
+  owner?: { id?: number };
+}
+
 const ZERO_SHA = /^0{40}$/;
 const SHA = /^[0-9a-f]{40}$/;
 const REPO_NAME = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const COUNTED_ACTIVITY = new Set(['push', 'force_push', 'branch_creation']);
+/** Owned repositories pushed in one day that we read (more = incomplete). */
+const MAX_REPOS = 20;
 
 export async function collectGithubCommits(input: {
   get: GithubGet;
   githubId: number;
   window: { startSec: number; endSec: number };
+  /** Creator-selected repositories (numeric ids); empty/absent = the user's own public repos. */
+  repoIds?: number[] | null;
   /** Upper bound on per-commit detail calls for one day (keeps API usage bounded). */
   maxCommitDetails?: number;
 }): Promise<CollectResult> {
   const { get, githubId, window } = input;
   const maxDetails = input.maxCommitDetails ?? 80;
-  const out: CollectResult = { login: null, commits: [], complete: true, notes: [], apiCalls: 0, pushes: 0 };
+  const out: CollectResult = { login: null, commits: [], complete: true, notes: [], apiCalls: 0, pushes: 0, repos: [] };
   const call = async (path: string) => {
     out.apiCalls++;
     try {
@@ -89,79 +117,98 @@ export async function collectGithubCommits(input: {
     return out;
   };
   const transient = (status: number) => status === 0 || status === 403 || status === 429 || status >= 500;
+  const inWindow = (iso: string | undefined) => {
+    const t = iso ? Date.parse(iso) / 1000 : Number.NaN;
+    return t >= window.startSec && t < window.endSec;
+  };
 
   // 1. Current login for the numeric id.
   const user = await call(`/user/${githubId}`);
   if (user.status === 404) {
-    out.notes.push('GitHub account not found (deleted?): no activity.');
+    out.notes.push('This GitHub account no longer exists, so it has no activity.');
     return out;
   }
-  if (user.status !== 200) return fail(`user lookup failed (${user.status})`);
+  if (user.status !== 200) return fail(`Could not look up the GitHub account (HTTP ${user.status}).`);
   const login = (user.json as { login?: string } | null)?.login;
-  if (!login || !/^[A-Za-z0-9-]{1,39}$/.test(login)) return fail('user lookup returned no login');
+  if (!login || !/^[A-Za-z0-9-]{1,39}$/.test(login)) return fail('GitHub returned no login for this account.');
   out.login = login;
 
-  // 2. Push events in the window (newest first; stop once older than the window).
-  const pushes: PushEvent[] = [];
-  let reachedStart = false;
-  for (let page = 1; page <= 3 && !reachedStart; page++) {
-    const r = await call(`/users/${login}/events/public?per_page=100&page=${page}`);
-    if (r.status !== 200 || !Array.isArray(r.json)) return fail(`events page ${page} failed (${r.status})`);
-    const events = r.json as PushEvent[];
-    for (const e of events) {
-      const at = Date.parse(e.created_at) / 1000;
-      if (at < window.startSec) {
-        reachedStart = true;
-        continue;
+  // 2. Repositories to read.
+  const targets: { id: number; fullName: string; fork: boolean; ownerId: number }[] = [];
+  const selected = (input.repoIds ?? []).filter((id) => Number.isSafeInteger(id) && id > 0);
+  if (selected.length > 0) {
+    for (const id of selected) {
+      const r = await call(`/repositories/${id}`);
+      if (r.status === 404) {
+        // Deleted or made private: nobody can be checked there, so nobody is failed for it.
+        out.repos.push({ fullName: `repository #${id}`, status: 'missing', pushes: 0 });
+        return fail(`The selected repository #${id} is no longer public or no longer exists, so pushes there can't be checked.`);
       }
-      if (at >= window.endSec || e.type !== 'PushEvent') continue;
-      if (e.actor?.id !== undefined && e.actor.id !== githubId) continue;
-      pushes.push(e);
+      if (r.status !== 200) return fail(`Could not read the selected repository #${id} (HTTP ${r.status}).`);
+      const j = r.json as ApiRepo;
+      if (j.private) {
+        out.repos.push({ fullName: j.full_name ?? `#${id}`, status: 'private', pushes: 0 });
+        return fail(`The selected repository ${j.full_name} is private now, so pushes there can't be checked.`);
+      }
+      if (j.full_name && REPO_NAME.test(j.full_name)) targets.push({ id, fullName: j.full_name, fork: j.fork === true, ownerId: j.owner?.id ?? -1 });
     }
-    if (events.length < 100) reachedStart = true; // no more pages
-  }
-  if (!reachedStart) {
-    out.complete = false;
-    out.notes.push('more than 300 events since the day started: older pushes are out of reach');
+  } else {
+    const r = await call(`/users/${login}/repos?type=owner&sort=pushed&direction=desc&per_page=100`);
+    if (r.status !== 200 || !Array.isArray(r.json)) return fail(`Could not list the account's repositories (HTTP ${r.status}).`);
+    for (const j of r.json as ApiRepo[]) {
+      // pushed_at is the latest push: anything pushed during the day has pushed_at >= the day start.
+      if (!j.pushed_at || Date.parse(j.pushed_at) / 1000 < window.startSec) continue;
+      if (j.private || !j.id || !j.full_name || !REPO_NAME.test(j.full_name)) continue;
+      targets.push({ id: j.id, fullName: j.full_name, fork: j.fork === true, ownerId: j.owner?.id ?? -1 });
+    }
+    if (targets.length > MAX_REPOS) {
+      targets.length = MAX_REPOS;
+      out.complete = false;
+      out.notes.push(`More than ${MAX_REPOS} repositories were pushed since the day started; only the ${MAX_REPOS} most recent were read.`);
+    }
   }
 
+  // 3. The user's pushes in each repository.
+  type Push = { repo: (typeof targets)[number]; at: string; before: string; after: string; pusherId: number | null };
+  const pushes: Push[] = [];
+  for (const repo of targets) {
+    const r = await call(`/repos/${repo.fullName}/activity?per_page=100&direction=desc&actor=${encodeURIComponent(login)}`);
+    if (r.status !== 200 || !Array.isArray(r.json)) {
+      if (transient(r.status)) return fail(`Could not read the activity of ${repo.fullName} (HTTP ${r.status}).`);
+      out.repos.push({ fullName: repo.fullName, status: 'missing', pushes: 0 });
+      continue;
+    }
+    const all = r.json as Activity[];
+    const found = all.filter((a) => COUNTED_ACTIVITY.has(a.activity_type) && inWindow(a.timestamp));
+    if (all.length === 100 && all.every((a) => Date.parse(a.timestamp) / 1000 >= window.startSec)) {
+      out.complete = false;
+      out.notes.push(`${repo.fullName} has more than 100 pushes since the day started; older ones were not read.`);
+    }
+    for (const a of found) {
+      if (!a.after || !SHA.test(a.after)) continue;
+      pushes.push({ repo, at: a.timestamp, before: a.before ?? '', after: a.after, pusherId: a.actor?.id ?? null });
+    }
+    out.repos.push({ fullName: repo.fullName, status: found.length ? 'read' : 'no-pushes', pushes: found.length });
+  }
   out.pushes = pushes.length;
+  pushes.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 
-  // 3-5. Commits of each push, oldest push first (so a commit gets its earliest push time).
-  const repos = new Map<string, { fork: boolean; ownerId: number } | null>();
+  // 4-5. Commits of each push (a commit keeps its earliest push).
   const bySha = new Map<string, GithubCommit>();
   let details = 0;
-  pushes.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
-
   for (const push of pushes) {
-    const repo = push.repo?.name ?? '';
-    const before = push.payload?.before ?? '';
-    const head = push.payload?.head ?? '';
-    if (!REPO_NAME.test(repo) || !SHA.test(head)) continue;
-
-    if (!repos.has(repo)) {
-      const r = await call(`/repos/${repo}`);
-      if (r.status === 404) repos.set(repo, null); // deleted or now private: nothing to verify
-      else if (r.status !== 200) return fail(`repo ${repo} lookup failed (${r.status})`);
-      else {
-        const j = r.json as { fork?: boolean; owner?: { id?: number } };
-        repos.set(repo, { fork: j.fork === true, ownerId: j.owner?.id ?? -1 });
-      }
-    }
-    const info = repos.get(repo);
-    if (!info) continue;
-
+    const name = push.repo.fullName;
     let listed: ApiCommit[] = [];
-    if (SHA.test(before) && !ZERO_SHA.test(before)) {
-      const r = await call(`/repos/${repo}/compare/${before}...${head}`);
+    if (SHA.test(push.before) && !ZERO_SHA.test(push.before)) {
+      const r = await call(`/repos/${name}/compare/${push.before}...${push.after}`);
       if (r.status === 200) listed = ((r.json as { commits?: ApiCommit[] }).commits ?? []).slice(-250);
-      else if (transient(r.status)) return fail(`compare ${repo} failed (${r.status})`);
-      // 404/422: `before` no longer exists (history rewritten); fall through to the head commits.
+      else if (transient(r.status)) return fail(`Could not compare a push in ${name} (HTTP ${r.status}).`);
+      // 404/422: `before` no longer exists (history rewritten): use the newest commits instead.
     }
     if (listed.length === 0) {
-      const r = await call(`/repos/${repo}/commits?sha=${head}&per_page=20`);
+      const r = await call(`/repos/${name}/commits?sha=${push.after}&per_page=20`);
       if (r.status === 200 && Array.isArray(r.json)) listed = (r.json as ApiCommit[]).reverse();
-      else if (transient(r.status)) return fail(`commits ${repo} failed (${r.status})`);
+      else if (transient(r.status)) return fail(`Could not list the commits of a push in ${name} (HTTP ${r.status}).`);
     }
 
     for (const c of listed) {
@@ -172,27 +219,28 @@ export async function collectGithubCommits(input: {
         sha: c.sha,
         parentShas,
         authorId,
-        pushedAt: push.created_at,
+        pusherId: push.pusherId,
+        pushedAt: push.at,
         authoredAt: c.commit?.author?.date,
         committedAt: c.commit?.committer?.date,
-        repo: { fullName: repo, fork: info.fork, ownerId: info.ownerId },
+        repo: { id: push.repo.id, fullName: name, fork: push.repo.fork, ownerId: push.repo.ownerId },
         files: [],
       };
       // Commits that can never count don't need their files (saves API calls).
-      if (parentShas.length > 1 || authorId !== githubId) {
+      if (parentShas.length > 1 || authorId !== githubId || push.pusherId !== githubId) {
         bySha.set(c.sha, base);
         continue;
       }
       if (details >= maxDetails) {
         out.complete = false;
-        out.notes.push(`more than ${maxDetails} commits to read: the rest were not checked`);
+        out.notes.push(`More than ${maxDetails} commits to read in one day; the rest were not checked.`);
         bySha.set(c.sha, base);
         continue;
       }
       details++;
-      const d = await call(`/repos/${repo}/commits/${c.sha}`);
+      const d = await call(`/repos/${name}/commits/${c.sha}`);
       if (d.status !== 200) {
-        if (transient(d.status)) return fail(`commit ${c.sha.slice(0, 8)} failed (${d.status})`);
+        if (transient(d.status)) return fail(`Could not read commit ${c.sha.slice(0, 8)} in ${name} (HTTP ${d.status}).`);
         continue;
       }
       const files = ((d.json as ApiCommit).files ?? []).map((f) => ({ filename: f.filename, patch: f.patch }));

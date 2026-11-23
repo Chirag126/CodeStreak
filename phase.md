@@ -677,3 +677,19 @@ Linking succeeded (auth log: `identity_linked`), but Supabase sent the browser b
 The command now says why nothing counted: no public push events yet (GitHub's public feed can lag; private repos are never visible), commits authored by another identity (git email not on the account), backdated commits, or how many more lines are needed. The collector reports `pushes` (push events GitHub listed in the window).
 
 Real case: a push to `Chirag126/trust-dependency-mapper` at 12:37 UTC (branch `fix/render-proxy-trust`, 3 added lines = 2 meaningful) was not yet in GitHub's public feed minutes later, so 0 commits were read.
+
+### Phase 24 follow-up: repository activity, selected repos, consent before staking
+
+**Problem found with real data:** a push to `Chirag126/trust-dependency-mapper` at 12:37 UTC was still missing from GitHub's public event feed long afterwards, so the verifier saw nothing. GitHub's **repository activity API** listed both pushes immediately, with server time, branch, before/after and the pusher.
+
+**Verifier now:** account → repositories (creator-selected ones by numeric id, otherwise the user's public owned repos pushed since the day started, ≤ 20) → `/repos/{repo}/activity?actor=` (push, force push, branch creation; merge-button merges are not read: that work counts when pushed) → compare → commit details. Real data, 23 Nov: 2 pushes found, 7 API calls; `c6f65870` counted 2 meaningful lines, `0ecb47e2` had no countable changes → failed at 2/15 (correct).
+
+**New anti-cheat rule:** the **pusher must be the user**. Git lets anyone put someone else's email on a commit; in a shared repo that would credit the victim. Commits pushed by another account are skipped (`pushed-by-other`).
+
+**Creator option: "Only pushes to these repositories"** (up to 5, `owner/name` or GitHub URLs). The server resolves each on GitHub when the challenge is created, refuses missing or private ones with a specific message, and stores `{ id, fullName }` in the hashed rules: renames, transfers or a new repo under the old name can't change what counts. Members' own pushes there count whoever owns the repo; other repos don't (`other-repo`). A selected repo that later becomes private or disappears makes days indeterminate (never failed).
+
+**Before you stake:** the join area lists stake, schedule (UTC), the exact rules (with the creator's GitHub options), what missing a day costs, payouts, Shields, the minimum-players refund, outage handling, when results are final, the GitHub lock and private-group visibility. Joining needs "I understand". The browser sends the on-chain rules fingerprint the user accepted; the server refuses if it isn't the on-chain one (`rules.changed`) or if the saved rules don't hash to it (`rules.unverified`: e.g. challenges created outside the app). The rules card shows "Matches on-chain fingerprint" or "Can't be verified". Invite links show stake, length, start, join-by and the daily goal before accepting.
+
+**Clearer messages:** `verify:github` lists each repository read and explains from what it saw (no public repo pushed that day; pushed by others; author email not on the account; merges; re-indents; lines still needed; incomplete data). The join requirement says exactly which account to link.
+
+**Tests:** collector with a fake GitHub (unlisted-in-feed pushes found, pr_merge not read, spoofed author pushed by another account, selected repos by id, private/deleted selected repo → indeterminate, branch creation and force push, rate limit, network error, commit cap, no pushes, deleted account); repo list parsing.

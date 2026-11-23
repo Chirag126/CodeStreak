@@ -1,5 +1,5 @@
 import { formatAmount, GITHUB_OPTION_LIMITS, SOL_DECIMALS, survivalRate, USDC_DECIMALS, WSOL_MINT } from '@codestreak/shared';
-import { challengePhase, challengeTimes, createProgram, explorerAddressUrl } from '@codestreak/shared/program';
+import { challengePhase, challengeTimes, createProgram, explorerAddressUrl, rulesHash } from '@codestreak/shared/program';
 import { isSolanaAddress } from '@codestreak/shared/wallet';
 import { PublicKey } from '@solana/web3.js';
 import type { Metadata } from 'next';
@@ -36,6 +36,7 @@ type GithubRulesDoc = {
   minMeaningfulLines?: number;
   fileFilter?: { extensions?: string[]; filenames?: string[] } | null;
   allow?: { docs?: boolean; generated?: boolean; forks?: boolean; backdateHours?: number } | null;
+  repos?: { id: number; fullName: string }[] | null;
 };
 type Rules = { providers?: string[]; providerRule?: 'any' | 'all'; github?: GithubRulesDoc | null };
 
@@ -44,15 +45,16 @@ function githubOptionLines(g: GithubRulesDoc | null | undefined): string[] {
   if (!g) return [];
   const min = g.minMeaningfulLines ?? 15;
   const filter = [...(g.fileFilter?.extensions ?? []), ...(g.fileFilter?.filenames ?? [])];
+  const repos = (g.repos ?? []).map((r) => r.fullName);
   const lines = [
+    repos.length ? `Only your own pushes to ${repos.join(', ')} count.` : 'Only pushes to public repositories you own count (pushes to private repositories are never visible).',
     filter.length ? `Only these files count: ${filter.join(', ')}.` : 'Any source file counts (not docs, lockfiles, minified or generated files).',
-    'Whitespace-only changes, moved lines and re-pushed changes never count. Merges and commits by others never count.',
+    'Each commit must be written and pushed by you. Whitespace-only changes, moved lines, re-pushed changes and merges never count.',
   ];
   if (g.allow?.docs) lines.push(`README/docs count, up to ${Math.floor(min * GITHUB_OPTION_LIMITS.docsCapShare)} lines a day.`);
   if (g.allow?.generated) lines.push(`Lockfiles, minified and generated files count, up to ${Math.floor(min * GITHUB_OPTION_LIMITS.generatedCapShare)} lines a day.`);
-  lines.push(g.allow?.forks ? 'Your own commits in your forks count.' : 'Forks don’t count.');
+  if (!repos.length) lines.push(g.allow?.forks ? 'Your own commits in your forks count.' : 'Forks don’t count.');
   lines.push(g.allow?.backdateHours ? `Commits made up to ${g.allow.backdateHours}h before a day starts still count for it.` : 'Commits must be made during the day they are pushed.');
-  lines.push('Only public repositories you own can be checked.');
   return lines;
 }
 
@@ -130,6 +132,29 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
   }
   const title = (row?.title as string | undefined) ?? `Challenge ${address.slice(0, 4)}…${address.slice(-4)}`;
 
+  // Rules integrity: what CodeStreak shows must hash to the on-chain fingerprint.
+  const onChainRulesHash = Buffer.from(account.rulesHash).toString('hex');
+  const rulesVerified = Boolean(row?.rules) && Buffer.from(await rulesHash(row!.rules)).toString('hex') === onChainRulesHash;
+  const dayLabel = account.dayLengthSecs >= 86400 ? '24 hours' : `${account.dayLengthSecs / 60} minutes`;
+  const endTs = times.startTs + times.numDays * times.dayLengthSecs;
+  const span = (secs: number) => (secs >= 3600 ? `${Math.round(secs / 3600)} h` : `${Math.round(secs / 60)} min`);
+  const stakeTerms = [
+    `Stake: ${buyIn}, locked in the challenge until it settles. CodeStreak pays the network fees.`,
+    `Schedule: ${account.numDays} days of ${dayLabel}, ${when(times.startTs)} to ${when(endTs)}. Join by ${when(times.joinDeadlineTs)}.`,
+    `Each day counts if you make ${rulesText || 'a verified coding contribution'}.`,
+    ...githubLines,
+    `Miss a day${shieldsOn ? ' without a Shield' : ''} and you lose your stake. It is shared by the players who keep their streak.`,
+    'Keep your streak and you get your stake back plus an equal share of forfeited stakes, sponsorships and Shield payments. If nobody keeps it, everyone is refunded.',
+    shieldsOn
+      ? `Shields: up to ${account.maxShieldsPerParticipant} per player at ${fmt(account.shieldPrice)}, bought until ${Math.round(account.shieldGraceSecs / 60)} min after a missed day ends.`
+      : 'Shields are off: a missed day cannot be covered.',
+    `Fewer than ${account.minParticipants} players by the join deadline: the challenge is cancelled and everyone is refunded.`,
+    'A day that cannot be checked (for example a GitHub outage) never fails you.',
+    `Results are final ${span(times.verifyWindowSecs + times.disputeWindowSecs)} after the last day (checks, then a dispute window).`,
+    'Your linked GitHub account cannot be changed or unlinked until the challenge ends.',
+    ...(account.joinAuthority ? ['Private group: only invited people can see it and join.'] : []),
+  ];
+
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-12 sm:px-6">
       <Card>
@@ -175,7 +200,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
               Sign in to join
             </a>
           ) : (
-            <JoinButton challenge={address} linkedWallets={linkedWallets} buyInLabel={buyIn} isSol={isSol} />
+            <JoinButton challenge={address} linkedWallets={linkedWallets} buyInLabel={buyIn} isSol={isSol} terms={{ rulesHash: onChainRulesHash, verified: rulesVerified, items: stakeTerms }} />
           )}
         </CardContent>
       </Card>
@@ -185,8 +210,15 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Rules</CardTitle>
-            <CardDescription>Their SHA-256 fingerprint is stored on-chain, so they can&apos;t change after creation.</CardDescription>
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle>Rules</CardTitle>
+              {rulesVerified ? <Badge variant="success">Matches on-chain fingerprint</Badge> : <Badge variant="danger">Can&apos;t be verified</Badge>}
+            </div>
+            <CardDescription>
+              {rulesVerified
+                ? 'Their SHA-256 fingerprint is stored on-chain, so they can’t change after creation.'
+                : 'The saved rules don’t match this challenge’s on-chain fingerprint (it was created outside the app), so joining is blocked.'}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <p>

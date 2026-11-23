@@ -25,7 +25,7 @@ const STEPS = [
   { title: 'Basics', fields: ['title', 'description', 'visibility'] },
   { title: 'Stake', fields: ['token', 'buyIn'] },
   { title: 'Schedule', fields: ['mode', 'durationDays', 'startDate', 'demoDayMinutes', 'demoStartMinutes'] },
-  { title: 'Rules', fields: ['providers', 'providerRule', 'minLines', 'githubFileTypes', 'allowDocs', 'allowGenerated', 'allowForks', 'backdateHours'] },
+  { title: 'Rules', fields: ['providers', 'providerRule', 'minLines', 'githubFileTypes', 'githubRepos', 'allowDocs', 'allowGenerated', 'allowForks', 'backdateHours'] },
   { title: 'Players & Shields', fields: ['minPlayers', 'maxPlayers', 'shieldsEnabled', 'shieldPrice', 'maxShields', 'shieldGraceMinutes'] },
   { title: 'Review', fields: [] as string[] },
 ] as const;
@@ -51,6 +51,7 @@ const INITIAL: Form = {
   providerRule: 'any',
   minLines: 15,
   githubFileTypes: '',
+  githubRepos: '',
   allowDocs: false,
   allowGenerated: false,
   allowForks: false,
@@ -341,6 +342,14 @@ export function CreateWizard({ linkedWallets }: { linkedWallets: string[] }) {
                           hint="Extensions like .ts .py and/or exact file names like main.py. Empty = all source files."
                         >
                           <Input id="githubFileTypes" value={form.githubFileTypes} onChange={(e) => set('githubFileTypes', e.target.value)} placeholder=".ts .tsx main.py" spellCheck={false} />
+                        </Field>
+                        <Field
+                          label="Only pushes to these repositories (optional)"
+                          htmlFor="githubRepos"
+                          error={errors.githubRepos}
+                          hint="For a team project: owner/name, up to 5, public only. Each member's own pushes there count, whoever owns the repo. Empty = each member's own public repositories."
+                        >
+                          <Input id="githubRepos" value={form.githubRepos} onChange={(e) => set('githubRepos', e.target.value)} placeholder="acme/team-app" spellCheck={false} />
                         </Field>
                         <p className="text-xs text-muted-foreground">
                           Never counted: whitespace-only or re-indented changes, moved lines, and the same change pushed again (rebase, cherry-pick). Counting them would let anyone farm lines.

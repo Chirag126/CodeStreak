@@ -10,6 +10,7 @@ import {
   challengeTimes,
   configPda,
   createProgram,
+  rulesHash,
   participantPda,
   PROGRAM_ID,
   sponsorReceiptPda,
@@ -81,6 +82,13 @@ async function mayJoinPrivate(profileId: string, challengeAddress: string): Prom
   return Boolean(count);
 }
 
+/** True when the rules document CodeStreak shows hashes to the challenge's on-chain fingerprint. */
+export async function rulesMatchChain(challengeAddress: string, onChainHashHex: string): Promise<boolean> {
+  const { data } = await createSupabaseAdminClient().from('challenges').select('rules').eq('onchain_address', challengeAddress).maybeSingle();
+  if (!data?.rules) return false;
+  return Buffer.from(await rulesHash(data.rules)).toString('hex') === onChainHashHex;
+}
+
 /** Providers that can be linked today; the others are not required yet (LeetCode linking comes later). */
 const LINKABLE = new Set(['github']);
 
@@ -92,8 +100,10 @@ async function joinRequirement(profileId: string, challengeAddress: string): Pro
   const notYetLinkable = (rules?.providers ?? []).filter((p) => !LINKABLE.has(p));
   const check = missingProviders(rules, [...linked, ...notYetLinkable]);
   if (check.ok) return null;
-  const names = check.need.map((p) => PROVIDER_LABELS[p]).join(check.rule === 'all' ? ' and ' : ' or ');
-  return `This challenge counts ${names} activity. Link ${names} first (Dashboard → Settings).`;
+  if (check.rule === 'all') {
+    return `This challenge counts ${check.need.map((p) => PROVIDER_LABELS[p]).join(' and ')} activity, and your ${check.need.map((p) => PROVIDER_LABELS[p]).join(' and ')} account isn't linked yet. Link it in Dashboard → Settings, then join.`;
+  }
+  return `This challenge counts ${check.need.map((p) => PROVIDER_LABELS[p]).join(' or ')} activity, and you haven't linked any of them yet. Link GitHub in Dashboard → Settings, then join.`;
 }
 
 /** Joining a private group answers its pending invitation. */
@@ -235,6 +245,8 @@ export async function prepareJoin(input: {
   wallet: string;
   challengeAddress: string;
   idempotencyKey: string;
+  /** The on-chain rules fingerprint (hex) of the rules the user read and accepted. */
+  acknowledgedRulesHash: string;
 }): Promise<RelayResult<{ transaction: string } | { signature: string }>> {
   const prior = await existingOrRateLimit(input);
   if (prior.done) return prior.done;
@@ -252,6 +264,22 @@ export async function prepareJoin(input: {
   if (challengePhase(challengeTimes(challenge), await chainNow(connection)) !== 'joining') {
     return { ok: false, error: 'Joining has closed for this challenge.', code: 'program.JoinClosed', title: 'Joining is closed' };
   }
+
+  // Consent is bound to the exact rules: the user's accepted fingerprint must be the on-chain one,
+  // and the rules CodeStreak shows must hash to it (otherwise nobody can see what they'd agree to).
+  const onChainHash = Buffer.from(challenge.rulesHash).toString('hex');
+  if (input.acknowledgedRulesHash !== onChainHash) {
+    return { ok: false, code: 'rules.changed', title: 'Read the rules again', error: 'These are not the rules you accepted. Reload the page, read the rules again and confirm.' };
+  }
+  if (!(await rulesMatchChain(input.challengeAddress, onChainHash))) {
+    return {
+      ok: false,
+      code: 'rules.unverified',
+      title: "Rules can't be verified",
+      error: "The rules saved for this challenge don't match its on-chain fingerprint, so CodeStreak can't show you what you would agree to. Joining is blocked.",
+    };
+  }
+
   const participant = participantPda(challengeKey, user);
   if (await connection.getAccountInfo(participant)) return { ok: false, error: 'This wallet already joined.', code: 'join.already', title: 'Already joined' };
 

@@ -1,10 +1,11 @@
 'use server';
 
-import { DEVNET_USDC_MINT, rulesDocument, validateChallengeForm, WSOL_MINT } from '@codestreak/shared';
+import { DEVNET_USDC_MINT, parseRepoList, rulesDocument, validateChallengeForm, WSOL_MINT } from '@codestreak/shared';
 import { rulesHash } from '@codestreak/shared/program';
 import { isSolanaAddress } from '@codestreak/shared/wallet';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
+import { resolvePublicRepos } from '@/lib/github/repos';
 import { prepareCreate, serverConnection, submitRelayed, type RelayResult } from '@/lib/relayer/service';
 import { createSupabaseServerClient, getViewer } from '@/lib/supabase/server';
 
@@ -39,7 +40,13 @@ export async function prepareCreateAction(input: { form: unknown; wallet: string
   const checked = validateChallengeForm(input.form, await chainNow());
   if (!checked.ok) return { ok: false, error: 'Some settings need fixing.', code: 'form.invalid', title: 'Check the form', fieldErrors: checked.errors };
 
-  const rules = rulesDocument(checked.form);
+  // "Only these repositories": resolve to ids now (public check), before the rules are hashed.
+  const repoNames = checked.form.providers.includes('github') ? parseRepoList(checked.form.githubRepos) : { ok: true as const, repos: [] };
+  if (!repoNames.ok) return { ok: false, error: repoNames.error, code: 'form.invalid', title: 'Check the form', fieldErrors: { githubRepos: repoNames.error } };
+  const resolved = repoNames.repos.length ? await resolvePublicRepos(repoNames.repos) : { ok: true as const, repos: [] };
+  if (!resolved.ok) return { ok: false, error: resolved.error, code: 'form.invalid', title: 'Check the repositories', fieldErrors: { githubRepos: resolved.error } };
+
+  const rules = rulesDocument(checked.form, { repos: resolved.repos });
   return prepareCreate({
     profileId: viewer.userId,
     wallet: input.wallet,
