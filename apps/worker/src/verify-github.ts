@@ -51,6 +51,30 @@ async function main() {
   for (const c of day.counted) console.log(`  counted  ${c.sha.slice(0, 8)}  ${c.repo}  ${c.meaningfulLines} lines`);
   for (const s of day.skipped) console.log(`  skipped  ${s.sha.slice(0, 8)}  ${s.repo}  ${s.reason}`);
   for (const a of day.anomalies) console.log(`  flagged  ${a.sha.slice(0, 8)}  ${a.detail}`);
+  for (const hint of explain(data, day, rules.minMeaningfulLines)) console.log(`\n  ${hint}`);
+}
+
+/** Plain-language hints for the most common "why didn't it count?" cases. */
+function explain(
+  data: { pushes: number; complete: boolean },
+  day: { meaningfulLines: number; counted: unknown[]; skipped: { reason: string }[] },
+  goal: number,
+): string[] {
+  const hints: string[] = [];
+  if (data.pushes === 0 && data.complete) {
+    hints.push(
+      'No public push events for this day. Either GitHub has not listed the push yet (its public feed can lag by minutes to hours: run this again later), the repository is private (private pushes are never visible), or the push was made from another GitHub account.',
+    );
+  }
+  const reasons = new Set(day.skipped.map((s) => s.reason));
+  if (reasons.has('author-mismatch')) {
+    hints.push('Some commits are authored by someone else, or by a git email not added to this GitHub account (check `git config user.email`).');
+  }
+  if (reasons.has('backdated')) hints.push('Some commits were made before the day started (old work pushed late).');
+  if (day.counted.length > 0 && day.meaningfulLines < goal) {
+    hints.push(`Pushes were found, but ${goal - day.meaningfulLines} more meaningful lines are needed to reach ${goal}.`);
+  }
+  return hints;
 }
 
 main().catch((e: unknown) => {

@@ -53,6 +53,7 @@ describe('collecting a day of GitHub commits', () => {
     const r = await collectGithubCommits({ get: gh.get, githubId: ID, window: WINDOW });
     expect(r.complete).toBe(true);
     expect(r.login).toBe('Chirag126');
+    expect(r.pushes).toBe(1);
     expect(r.commits.map((c) => c.sha[0])).toEqual(['b', 'c', 'd']);
     // Details were fetched only for the commit that can count (not the merge, not the other author).
     expect(gh.calls.filter((p) => p.includes('/commits/'))).toEqual([`/repos/Chirag126/app/commits/${sha('b')}`]);
@@ -122,6 +123,6 @@ describe('collecting a day of GitHub commits', () => {
 
   it('a deleted GitHub account means no activity (not an error)', async () => {
     const r = await collectGithubCommits({ get: fakeGithub({}).get, githubId: ID, window: WINDOW });
-    expect(r).toMatchObject({ complete: true, commits: [] });
+    expect(r).toMatchObject({ complete: true, commits: [], pushes: 0 });
   });
 });

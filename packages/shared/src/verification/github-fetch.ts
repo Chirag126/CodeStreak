@@ -41,6 +41,8 @@ export interface CollectResult {
   complete: boolean;
   notes: string[];
   apiCalls: number;
+  /** Push events GitHub listed in the window (0 = nothing visible yet). */
+  pushes: number;
 }
 
 interface PushEvent {
@@ -72,7 +74,7 @@ export async function collectGithubCommits(input: {
 }): Promise<CollectResult> {
   const { get, githubId, window } = input;
   const maxDetails = input.maxCommitDetails ?? 80;
-  const out: CollectResult = { login: null, commits: [], complete: true, notes: [], apiCalls: 0 };
+  const out: CollectResult = { login: null, commits: [], complete: true, notes: [], apiCalls: 0, pushes: 0 };
   const call = async (path: string) => {
     out.apiCalls++;
     try {
@@ -122,6 +124,8 @@ export async function collectGithubCommits(input: {
     out.complete = false;
     out.notes.push('more than 300 events since the day started: older pushes are out of reach');
   }
+
+  out.pushes = pushes.length;
 
   // 3-5. Commits of each push, oldest push first (so a commit gets its earliest push time).
   const repos = new Map<string, { fork: boolean; ownerId: number } | null>();

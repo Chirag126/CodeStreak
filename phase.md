@@ -671,3 +671,9 @@ Linking succeeded (auth log: `identity_linked`), but Supabase sent the browser b
 **Check any account and day:** `pnpm verify:github -- --login <github-login> --date YYYY-MM-DD [--min 15] [--files ".ts main.py"] [--allow docs,generated,forks] [--backdate 4]`.
 
 **Tests:** fixtures for whitespace-only, moved lines, lockfiles, README, minified (by name and by long lines), forks, backdated, rebase duplicate; each option on with its cap (docs alone can never complete a day); options that stay excluded with everything on; file filter by extension and name; rules document → engine rules (strict defaults, caps enforced); day outcome; pipeline with a fake GitHub (normal push, merges and other authors skipped without detail calls, new branch, rewritten history, rate limit, network error, commit cap, deleted account); wizard file-type parsing.
+
+### Phase 24 follow-up: clearer `verify:github` output
+
+The command now says why nothing counted: no public push events yet (GitHub's public feed can lag; private repos are never visible), commits authored by another identity (git email not on the account), backdated commits, or how many more lines are needed. The collector reports `pushes` (push events GitHub listed in the window).
+
+Real case: a push to `Chirag126/trust-dependency-mapper` at 12:37 UTC (branch `fix/render-proxy-trust`, 3 added lines = 2 meaningful) was not yet in GitHub's public feed minutes later, so 0 commits were read.
