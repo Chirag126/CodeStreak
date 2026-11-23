@@ -84,3 +84,4 @@ new deploy (not just a restart).
 | 25 | **`FIRECRAWL_API_KEY` on the web service** (LeetCode Verify reads the profile through Firecrawl; ~1 credit per attempt). Migration `leetcode_binding` applied. |
 | 26 | **`FIRECRAWL_API_KEY` on the worker too** (scheduled LeetCode snapshots, ~1 credit per profile per 30 min while a LeetCode challenge runs). pg_cron job `codestreak-leetcode-snapshots` (`:15`/`:45`) → `/jobs/leetcode-snapshots`. Migration `leetcode_snapshots` applied. |
 | 27 | No new settings. Migration `day_receipts` applied (receipts table, `member_day_checks.confidence`). |
+| fix | **Optional, recommended: custom SMTP** (e.g. Resend or Brevo free tier) in Supabase → Authentication → SMTP. Then paste `supabase/templates/magic-link.html` and `confirm-signup.html` into Authentication → Emails. Makes sign-in links safe from link previews and scanners, and lifts the built-in mailer's limits (2 emails/hour, organisation members only). |

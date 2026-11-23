@@ -16,7 +16,7 @@ export function parseAuthFragment(hash: string): AuthFragment {
 
 export function authErrorMessage(code: string): string {
   if (code === 'otp_expired' || code === 'access_denied') {
-    return 'That sign-in link was already used or has expired (each link works once, and only the newest one). If you opened it before, you may already be signed in in that tab; otherwise request a new link.';
+    return 'That sign-in link was already used or has expired. Each link works once, and only the newest one. Apps that show link previews (WhatsApp, Telegram, Slack, Teams, some mail scanners) open the link before you do, so open it straight from the email instead of sharing or forwarding it. Request a new link below.';
   }
   return 'That sign-in link did not work. Request a new one.';
 }
