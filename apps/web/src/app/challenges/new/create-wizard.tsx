@@ -122,10 +122,27 @@ export function CreateWizard({ linkedWallets }: { linkedWallets: string[] }) {
   const [form, setForm] = useState<Form>(INITIAL);
   const [step, setStep] = useState(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Only the wallet in use shows a spinner; the others are just disabled.
+  const [activeWallet, setActiveWallet] = useState<string | null>(null);
   const { state, run } = useTxFlow();
   const [idempotencyKey] = useState(() => crypto.randomUUID());
 
-  const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
+  const set = <K extends keyof Form>(key: K, value: Form[K]) => {
+    setForm((f) => {
+      const next = { ...f, [key]: value };
+      // Shield grace can't be longer than a day: demo days are minutes long, so keep it in range.
+      if ((key === 'mode' || key === 'demoDayMinutes') && next.mode === 'demo' && next.shieldGraceMinutes > next.demoDayMinutes) {
+        next.shieldGraceMinutes = next.demoDayMinutes;
+      }
+      return next;
+    });
+    // A field's old error goes away as soon as it is edited (it is checked again on Next).
+    setErrors((e) => {
+      if (!(key in e)) return e;
+      const { [key as string]: _cleared, ...rest } = e;
+      return rest;
+    });
+  };
   const symbol = STAKE_LIMITS[form.token].symbol;
 
   /** Client-side validation with the same rules the server and program use. */
@@ -478,7 +495,15 @@ export function CreateWizard({ linkedWallets }: { linkedWallets: string[] }) {
                   ) : (
                     <div className="flex flex-wrap gap-2">
                       {wallets.map((w) => (
-                        <Button key={w.name} onClick={() => void create(w)} loading={state.status === 'running'} disabled={state.status === 'success'}>
+                        <Button
+                          key={w.name}
+                          onClick={() => {
+                            setActiveWallet(w.name);
+                            void create(w);
+                          }}
+                          loading={state.status === 'running' && activeWallet === w.name}
+                          disabled={state.status === 'running' || state.status === 'success'}
+                        >
                           Create with {w.name}
                         </Button>
                       ))}

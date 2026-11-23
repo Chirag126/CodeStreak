@@ -2,8 +2,10 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { CopyButton } from '@/components/auth/copy-button';
+import { listMyChallenges, MyChallenges } from '@/components/challenges/my-challenges';
 import { MyInvites } from '@/components/groups/my-invites';
 import { Reveal } from '@/components/motion/primitives';
+import { RefreshOnFocus } from '@/components/motion/refresh-on-focus';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,22 +16,21 @@ import { signOut } from '../sign-in/actions';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
-// Dashboard shell: identity is real; the sections below are filled in by later phases.
 export default async function DashboardPage() {
   const viewer = await getViewer();
   if (!viewer) redirect(SIGN_IN_PATH);
   if (!viewer.username) redirect(USERNAME_PATH);
 
-  const invites = await listMyInvites(viewer.userId);
+  const [invites, challenges] = await Promise.all([listMyInvites(viewer.userId), listMyChallenges(viewer.userId)]);
 
   const sections: { title: string; body: string; href?: string; cta?: string }[] = [
-    { title: 'Your challenges', body: 'Start a public challenge or a private group with friends.', href: '/challenges/new', cta: 'Create a challenge' },
     { title: 'Accounts', body: 'Link GitHub and LeetCode so your coding days can be verified.', href: '/dashboard/settings', cta: 'Linked accounts' },
     { title: 'Wallet', body: 'Link Phantom or MetaMask (Solana) and check your devnet balances.', href: '/dashboard/wallet' },
   ];
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-12 sm:px-6">
+      <RefreshOnFocus />
       <Reveal trigger="mount" className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1">
           <p className="text-sm text-muted-foreground">Signed in as {viewer.email}</p>
@@ -62,7 +63,11 @@ export default async function DashboardPage() {
         </Reveal>
       )}
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <Reveal trigger="mount" delay={0.09}>
+        <MyChallenges items={challenges} />
+      </Reveal>
+
+      <div className="grid gap-4 md:grid-cols-2">
         {sections.map((s, i) => (
           <Reveal key={s.title} trigger="mount" delay={0.1 + i * 0.05}>
             <Card className="h-full">

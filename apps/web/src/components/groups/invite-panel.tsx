@@ -29,6 +29,8 @@ const STATUS_VARIANT: Record<string, 'primary' | 'success' | 'default' | 'danger
 };
 
 /** Creator-only: invite friends by public ID or by an expiring link, and see who was invited. */
+const utc = (iso: string) => new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }) + ' UTC';
+
 export function InvitePanel({ address, invites }: { address: string; invites: InviteRow[] }) {
   const router = useRouter();
   const toast = useToast();
@@ -36,7 +38,7 @@ export function InvitePanel({ address, invites }: { address: string; invites: In
   const [publicId, setPublicId] = useState('');
   const [uses, setUses] = useState<number>(INVITE_LINK_LIMITS.defaultMaxUses);
   const [hours, setHours] = useState<number>(INVITE_LINK_LIMITS.defaultHours);
-  const [link, setLink] = useState<{ url: string; expiresAt: string } | null>(null);
+  const [link, setLink] = useState<{ url: string; expiresAt: string; requestedHours: number } | null>(null);
 
   function inviteById() {
     start(async () => {
@@ -52,14 +54,16 @@ export function InvitePanel({ address, invites }: { address: string; invites: In
     start(async () => {
       const r = await createLinkAction(address, uses, hours);
       if (!r.ok) return toast({ kind: 'error', title: 'Link not created', message: r.error });
-      setLink({ url: r.url, expiresAt: r.expiresAt });
+      setLink({ url: r.url, expiresAt: r.expiresAt, requestedHours: hours });
       router.refresh();
     });
   }
 
-  function revoke(id: string) {
+  function revoke(id: string, kind: string) {
     start(async () => {
       const r = await revokeInviteAction(address, id);
+      // A turned-off link must not stay on screen ready to copy.
+      if (r.ok && kind === 'link') setLink(null);
       toast(r.ok ? { kind: 'info', title: 'Invitation turned off' } : { kind: 'error', title: 'Not revoked', message: r.error });
       router.refresh();
     });
@@ -81,7 +85,7 @@ export function InvitePanel({ address, invites }: { address: string; invites: In
         >
           <div className="min-w-56 flex-1 space-y-2">
             <Label htmlFor="publicId">By public ID</Label>
-            <Input id="publicId" value={publicId} onChange={(e) => setPublicId(e.target.value)} placeholder="CS-7KQ2M9XA" autoCapitalize="characters" spellCheck={false} />
+            <Input id="publicId" value={publicId} onChange={(e) => setPublicId(e.target.value)} placeholder="CS-XXXXXXXX" autoCapitalize="characters" spellCheck={false} />
           </div>
           <Button type="submit" loading={busy} disabled={!publicId.trim()}>
             Invite
@@ -124,7 +128,8 @@ export function InvitePanel({ address, invites }: { address: string; invites: In
                 <CopyButton value={link.url} label="Copy invite link" />
               </div>
               <p className="text-xs text-muted-foreground">
-                Shown only now: CodeStreak keeps just a fingerprint of it. Expires {new Date(link.expiresAt).toUTCString()}.
+                Shown only now: CodeStreak keeps just a fingerprint of it. Expires {utc(link.expiresAt)}
+                {Date.parse(link.expiresAt) < Date.now() + link.requestedHours * 3600_000 - 60_000 ? ' (when joining closes: a link never outlives the join deadline)' : ''}.
               </p>
             </div>
           )}
@@ -142,7 +147,7 @@ export function InvitePanel({ address, invites }: { address: string; invites: In
                   <Badge variant={STATUS_VARIANT[i.status] ?? 'default'}>{i.status}</Badge>
                   <span className="text-xs text-muted-foreground">{i.detail}</span>
                   {i.status === 'pending' && (
-                    <Button variant="ghost" size="sm" className="ml-auto" onClick={() => revoke(i.id)} disabled={busy}>
+                    <Button variant="ghost" size="sm" className="ml-auto" onClick={() => revoke(i.id, i.kind)} disabled={busy}>
                       Revoke
                     </Button>
                   )}

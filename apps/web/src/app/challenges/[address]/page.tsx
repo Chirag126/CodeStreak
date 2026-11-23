@@ -1,4 +1,4 @@
-import { checkableDay, formatAmount, GITHUB_OPTION_LIMITS, SOL_DECIMALS, survivalRate, USDC_DECIMALS, WSOL_MINT } from '@codestreak/shared';
+import { checkableDay, describeDailyGoal, formatAmount, missingProviders, PROVIDER_LABELS, type Provider, GITHUB_OPTION_LIMITS, SOL_DECIMALS, survivalRate, USDC_DECIMALS, WSOL_MINT } from '@codestreak/shared';
 import { challengePhase, challengeTimes, createProgram, explorerAddressUrl, rulesHash } from '@codestreak/shared/program';
 import { isSolanaAddress } from '@codestreak/shared/wallet';
 import { PublicKey } from '@solana/web3.js';
@@ -72,16 +72,7 @@ function githubOptionLines(g: GithubRulesDoc | null | undefined): string[] {
   return lines;
 }
 
-function describeRules(rules: Rules): string {
-  return (rules.providers ?? [])
-    .map((p) => {
-      if (p === 'github') return `a GitHub push with at least ${rules.github?.minMeaningfulLines ?? 15} meaningful lines`;
-      const n = rules.leetcode?.minNewSolves ?? rules.leetcode?.minAcceptedPerDay ?? 1;
-      const d = rules.leetcode?.minDifficulty === 'hard' ? ' Hard' : rules.leetcode?.minDifficulty === 'medium' ? ' Medium+' : '';
-      return `${n === 1 ? 'a new' : `${n} new`}${d} LeetCode problem${n === 1 ? '' : 's'} solved`;
-    })
-    .join(rules.providerRule === 'all' ? ' and ' : ' or ');
-}
+const describeRules = (rules: Rules) => describeDailyGoal(rules);
 
 /**
  * Challenge detail. Money and players are read live from devnet (the source of truth); app
@@ -123,9 +114,24 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
         .limit(100)
     : { data: [] };
   let linkedWallets: string[] = [];
+  // What this viewer still has to link before they can join (the server checks again on join).
+  let needToLink: string | null = null;
   if (viewer) {
-    const { data } = await supabase.from('wallets').select('address').not('verified_at', 'is', null);
+    const [{ data }, { data: accounts }] = await Promise.all([
+      supabase.from('wallets').select('address').not('verified_at', 'is', null),
+      supabase.from('linked_accounts').select('provider').eq('profile_id', viewer.userId),
+    ]);
     linkedWallets = (data ?? []).map((w) => w.address as string);
+    const missing = missingProviders(row?.rules as Parameters<typeof missingProviders>[0], (accounts ?? []).map((a) => a.provider as Provider));
+    if (!missing.ok) {
+      const names = missing.need.map((p) => PROVIDER_LABELS[p]);
+      needToLink =
+        missing.need.length === 1
+          ? `This challenge counts ${names[0]} activity. Link your ${names[0]} account in Dashboard → Settings, then come back to join.`
+          : missing.rule === 'all'
+            ? `This challenge counts both ${names.join(' and ')}. Link both in Dashboard → Settings, then come back to join.`
+            : `This challenge counts ${names.join(' or ')}. Link at least one of them in Dashboard → Settings, then come back to join.`;
+    }
   }
 
   const stale = !row || Date.parse(row.updated_at as string) < now * 1000 - 60_000;
@@ -203,7 +209,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
             <div><dt className="text-muted-foreground">Buy-in</dt><dd className="font-mono">{buyIn}</dd></div>
             <div><dt className="text-muted-foreground">Pool</dt><dd className="font-mono">{fmt(pool)}</dd></div>
             <div><dt className="text-muted-foreground">Players</dt><dd>{account.participantCount} / {account.maxParticipants} (min {account.minParticipants})</dd></div>
-            <div><dt className="text-muted-foreground">Surviving</dt><dd>{phase === 'cancelled' ? '–' : percent(rate)}</dd></div>
+            <div><dt className="text-muted-foreground">Surviving</dt><dd>{phase === 'cancelled' || phase === 'joining' || phase === 'starting' ? '–' : percent(rate)}</dd></div>
             <div><dt className="text-muted-foreground">Days</dt><dd>{account.numDays} × {account.dayLengthSecs >= 86400 ? '1 day' : `${account.dayLengthSecs / 60} min`}</dd></div>
             <div><dt className="text-muted-foreground">Join until</dt><dd>{when(times.joinDeadlineTs)}</dd></div>
             <div><dt className="text-muted-foreground">Starts</dt><dd>{when(times.startTs)}</dd></div>
@@ -227,7 +233,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
               Sign in to join
             </a>
           ) : (
-            <JoinButton challenge={address} linkedWallets={linkedWallets} buyInLabel={buyIn} isSol={isSol} terms={{ rulesHash: onChainRulesHash, verified: rulesVerified, items: stakeTerms }} />
+            <JoinButton challenge={address} linkedWallets={linkedWallets} buyInLabel={buyIn} isSol={isSol} needToLink={needToLink} terms={{ rulesHash: onChainRulesHash, verified: rulesVerified, items: stakeTerms }} />
           )}
         </CardContent>
       </Card>

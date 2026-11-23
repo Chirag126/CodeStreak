@@ -1,8 +1,10 @@
 import 'server-only';
 
-import { formatAmount, INVITE_LINK_LIMITS, INVITE_TOKEN_PATTERN, inviteLinkProblem, LINK_PROBLEM_MESSAGES, normalizePublicId, SOL_DECIMALS, USDC_DECIMALS, type InviteStatus } from '@codestreak/shared';
+import { describeDailyGoal, formatAmount, INVITE_LINK_LIMITS, INVITE_TOKEN_PATTERN, inviteLinkProblem, LINK_PROBLEM_MESSAGES, normalizePublicId, SOL_DECIMALS, USDC_DECIMALS, type InviteStatus } from '@codestreak/shared';
 import { createHash, randomBytes } from 'node:crypto';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+
+const utc = (iso: string) => new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }) + ' UTC';
 
 export type GroupResult<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -128,14 +130,10 @@ export async function previewInviteLink(token: string): Promise<GroupResult<{ ti
     day_length_secs: number;
     start_at: string;
     join_deadline_at: string;
-    rules: { github?: { minMeaningfulLines?: number } | null; providers?: string[] } | null;
+    rules: Parameters<typeof describeDailyGoal>[0];
   };
   const decimals = group.token === 'sol' ? SOL_DECIMALS : USDC_DECIMALS;
-  const utc = (iso: string) => new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }) + ' UTC';
-  const providers = group.rules?.providers ?? [];
-  const goal = providers
-    .map((p) => (p === 'github' ? `a GitHub push with at least ${group.rules?.github?.minMeaningfulLines ?? 15} meaningful lines` : 'an accepted LeetCode solution'))
-    .join(' and/or ');
+  const goal = describeDailyGoal(group.rules);
   return {
     ok: true,
     title: group.title,
@@ -225,7 +223,7 @@ export async function listGroupInvites(viewerId: string, challengeId: string) {
     }
     const problem = inviteLinkProblem({ status: r.status as InviteStatus, expiresAt: new Date(r.expires_at as string), maxUses: r.max_uses as number, useCount: r.use_count as number }, now);
     const status = problem === 'expired' ? 'expired' : problem === 'used_up' ? 'used' : (r.status as string);
-    return { id: r.id as string, kind: 'link' as const, label: 'Invite link', status, detail: `${r.use_count}/${r.max_uses} used · expires ${new Date(r.expires_at as string).toUTCString()}` };
+    return { id: r.id as string, kind: 'link' as const, label: 'Invite link', status, detail: `${r.use_count}/${r.max_uses} used · expires ${utc(r.expires_at as string)}` };
   });
 }
 

@@ -54,3 +54,16 @@ describe('LeetCode handles', () => {
     }
   });
 });
+
+describe('describeDailyGoal', () => {
+  it('says exactly what counts, joined by the rule', async () => {
+    const { describeDailyGoal } = await import('./accounts.js');
+    expect(describeDailyGoal({ providers: ['github', 'leetcode'], providerRule: 'any', github: { minMeaningfulLines: 15 }, leetcode: { minNewSolves: 1, minDifficulty: 'any' } })).toBe(
+      'a GitHub push with at least 15 meaningful lines or a new LeetCode problem solved',
+    );
+    expect(describeDailyGoal({ providers: ['github', 'leetcode'], providerRule: 'all', leetcode: { minNewSolves: 2, minDifficulty: 'medium' } })).toBe(
+      'a GitHub push with at least 15 meaningful lines and 2 new Medium+ LeetCode problems solved',
+    );
+    expect(describeDailyGoal(null)).toBe('');
+  });
+});

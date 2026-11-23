@@ -858,3 +858,22 @@ Found by watching the first test recording frame by frame and confirming each ca
   dashboard no longer says "(and later LeetCode)".
 - **Cancelled challenges**: no "Surviving 100%", no reward estimate, players shown as "Refunded", red badge,
   and the page says why it was cancelled.
+
+### Video 2 review fixes (challenges, joining, invites, sponsorship)
+
+Found by watching the three recordings of video 2 frame by frame:
+- **Page out of sync with the live board** (biggest one): only the Group board updated live; the header
+  (players, pool, phase "joining" while running), Sponsors list and reward estimate stayed as loaded.
+  The board now refreshes the rest of the page when players, pool, sponsors or phase change (≤ 1 per 3 s).
+- **Two spinners**: Create, Join and Sponsor spun on every wallet button; now only the one you picked.
+- **Join requirements up front**: "link GitHub/LeetCode first" is shown before pressing Join, with a link
+  to Settings, instead of after a failed attempt.
+- **Wizard**: a field's error clears when you edit it; Shield grace follows demo day length.
+- **Surviving 100% before the start** → "–" until the challenge runs (cards and page).
+- **Invite page** said "an accepted LeetCode solution … and/or": it now uses the same sentence as the
+  challenge page ("… or a new LeetCode problem solved"), from one shared function.
+- **Invites**: a revoked link no longer stays on screen to copy; the public-ID box no longer has a
+  real-looking ID as placeholder; link expiry shows in UTC and explains when it's capped at the deadline.
+- **Dashboard**: lists your challenges (created or playing); refreshes when you come back to the tab,
+  so new invitations appear.
+- Sponsor dialog: wallet buttons no longer jump between side-by-side and stacked.

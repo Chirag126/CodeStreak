@@ -64,3 +64,21 @@ export function normalizeLeetcodeHandle(raw: string): string | null {
 export const LEETCODE_CODE = /^CS-LC-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{10}$/;
 export const LEETCODE_CODE_TTL_SECONDS = 15 * 60;
 export const LEETCODE_LIMITS = { codesPerHour: 5, attemptsPerCode: 5 } as const;
+
+/** A challenge's daily goal in plain words, e.g. "a GitHub push with at least 15 meaningful lines or a new LeetCode problem solved". */
+export function describeDailyGoal(rules: {
+  providers?: string[];
+  providerRule?: 'any' | 'all';
+  github?: { minMeaningfulLines?: number } | null;
+  leetcode?: { minNewSolves?: number; minDifficulty?: 'any' | 'medium' | 'hard'; minAcceptedPerDay?: number } | null;
+} | null | undefined): string {
+  const r = rules ?? {};
+  return (r.providers ?? [])
+    .map((p) => {
+      if (p === 'github') return `a GitHub push with at least ${r.github?.minMeaningfulLines ?? 15} meaningful lines`;
+      const n = r.leetcode?.minNewSolves ?? r.leetcode?.minAcceptedPerDay ?? 1;
+      const d = r.leetcode?.minDifficulty === 'hard' ? ' Hard' : r.leetcode?.minDifficulty === 'medium' ? ' Medium+' : '';
+      return `${n === 1 ? 'a new' : `${n} new`}${d} LeetCode problem${n === 1 ? '' : 's'} solved`;
+    })
+    .join(r.providerRule === 'all' ? ' and ' : ' or ');
+}
