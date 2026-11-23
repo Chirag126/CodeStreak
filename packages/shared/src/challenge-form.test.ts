@@ -128,3 +128,14 @@ describe('GitHub options in the wizard (Phase 24)', () => {
     expect(parseFileFilter(Array.from({ length: 21 }, (_, i) => `.e${i}`).join(' ')).ok).toBe(false);
   });
 });
+
+describe('selected repositories (Phase 24)', () => {
+  it('parses owner/name lists and GitHub URLs, rejecting anything else', async () => {
+    const { parseRepoList } = await import('./challenge-form.js');
+    expect(parseRepoList('')).toEqual({ ok: true, repos: [] });
+    expect(parseRepoList('acme/app, https://github.com/Chirag126/trust-dependency-mapper.git\nacme/APP')).toEqual({ ok: true, repos: ['acme/APP', 'Chirag126/trust-dependency-mapper'] });
+    expect(parseRepoList('just-a-name').ok).toBe(false);
+    expect(parseRepoList('acme/../etc').ok).toBe(false);
+    expect(parseRepoList('a/1 a/2 a/3 a/4 a/5 a/6').ok).toBe(false);
+  });
+});

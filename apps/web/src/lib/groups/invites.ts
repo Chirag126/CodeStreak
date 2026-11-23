@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { INVITE_LINK_LIMITS, INVITE_TOKEN_PATTERN, inviteLinkProblem, LINK_PROBLEM_MESSAGES, normalizePublicId, type InviteStatus } from '@codestreak/shared';
+import { formatAmount, INVITE_LINK_LIMITS, INVITE_TOKEN_PATTERN, inviteLinkProblem, LINK_PROBLEM_MESSAGES, normalizePublicId, SOL_DECIMALS, USDC_DECIMALS, type InviteStatus } from '@codestreak/shared';
 import { createHash, randomBytes } from 'node:crypto';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
@@ -97,12 +97,20 @@ export async function respondToInvite(viewerId: string, inviteId: string, answer
 }
 
 /** Public preview for the invite page (title only), without consuming anything. */
-export async function previewInviteLink(token: string): Promise<GroupResult<{ title: string; address: string }>> {
+export interface InviteTerms {
+  stake: string;
+  days: string;
+  starts: string;
+  joinBy: string;
+  goal: string;
+}
+
+export async function previewInviteLink(token: string): Promise<GroupResult<{ title: string; address: string; terms: InviteTerms }>> {
   if (!INVITE_TOKEN_PATTERN.test(token)) return { ok: false, error: LINK_PROBLEM_MESSAGES.invalid };
   const admin = createSupabaseAdminClient();
   const { data: link } = await admin
     .from('invitations')
-    .select('status, expires_at, max_uses, use_count, challenges(title, onchain_address)')
+    .select('status, expires_at, max_uses, use_count, challenges(title, onchain_address, token, buy_in, num_days, day_length_secs, start_at, join_deadline_at, rules)')
     .eq('code_hash', hashInviteToken(token))
     .maybeSingle();
   if (!link) return { ok: false, error: LINK_PROBLEM_MESSAGES.invalid };
@@ -111,8 +119,35 @@ export async function previewInviteLink(token: string): Promise<GroupResult<{ ti
     new Date(),
   );
   if (problem) return { ok: false, error: LINK_PROBLEM_MESSAGES[problem] };
-  const group = link.challenges as unknown as { title: string; onchain_address: string };
-  return { ok: true, title: group.title, address: group.onchain_address };
+  const group = link.challenges as unknown as {
+    title: string;
+    onchain_address: string;
+    token: 'usdc' | 'sol';
+    buy_in: string | number;
+    num_days: number;
+    day_length_secs: number;
+    start_at: string;
+    join_deadline_at: string;
+    rules: { github?: { minMeaningfulLines?: number } | null; providers?: string[] } | null;
+  };
+  const decimals = group.token === 'sol' ? SOL_DECIMALS : USDC_DECIMALS;
+  const utc = (iso: string) => new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }) + ' UTC';
+  const providers = group.rules?.providers ?? [];
+  const goal = providers
+    .map((p) => (p === 'github' ? `a GitHub push with at least ${group.rules?.github?.minMeaningfulLines ?? 15} meaningful lines` : 'an accepted LeetCode solution'))
+    .join(' and/or ');
+  return {
+    ok: true,
+    title: group.title,
+    address: group.onchain_address,
+    terms: {
+      stake: `${formatAmount(BigInt(String(group.buy_in)), decimals)} ${group.token === 'sol' ? 'SOL' : 'USDC'}`,
+      days: `${group.num_days} days of ${group.day_length_secs >= 86400 ? '24 hours' : `${group.day_length_secs / 60} minutes`}`,
+      starts: utc(group.start_at),
+      joinBy: utc(group.join_deadline_at),
+      goal: goal ? `Each day: ${goal}.` : 'Each day: a verified coding contribution.',
+    },
+  };
 }
 
 /**

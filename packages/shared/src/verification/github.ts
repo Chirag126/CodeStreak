@@ -33,12 +33,14 @@ export interface GithubCommit {
   parentShas: string[];
   /** GitHub numeric user id of the commit author; null when the git email is not linked to any account. */
   authorId: number | null;
-  /** Push time from the PushEvent (ISO string, GitHub server clock). */
+  /** Push time (ISO string, GitHub server clock, from repository activity). */
   pushedAt: string;
+  /** GitHub id of who pushed it. Git author emails can be set to anyone's, the pusher can't. */
+  pusherId?: number | null;
   /** Git author and committer dates (ISO, user-controlled). Missing = treated as the push time. */
   authoredAt?: string | undefined;
   committedAt?: string | undefined;
-  repo: { fullName: string; fork: boolean; ownerId: number };
+  repo: { id?: number; fullName: string; fork: boolean; ownerId: number };
   files: GithubFile[];
 }
 
@@ -68,6 +70,11 @@ export interface GithubRules {
   bulkCommitFiles: number;
   /** When set, only matching files count (on top of the exclusions above). */
   fileFilter?: GithubFileFilter | null;
+  /**
+   * When set, only pushes to these repositories (numeric GitHub repo ids) count, whoever owns
+   * them (a team repo): the user must still be the author and the pusher of each commit.
+   */
+  repos?: number[] | null;
   allow?: GithubAllowances;
 }
 
@@ -79,6 +86,8 @@ export type GithubSkipReason =
   | 'outside-day'
   | 'merge-commit'
   | 'author-mismatch'
+  | 'pushed-by-other'
+  | 'other-repo'
   | 'fork'
   | 'not-repo-owner'
   | 'backdated'
@@ -243,8 +252,15 @@ export function evaluateGithubDay(input: {
     if (!(pushedSec >= input.window.startSec && pushedSec < input.window.endSec)) { skip('outside-day'); continue; }
     if (c.parentShas.length > 1) { skip('merge-commit'); continue; }
     if (c.authorId !== input.userGithubId) { skip('author-mismatch'); continue; }
-    if (c.repo.fork && !allow.forks) { skip('fork'); continue; }
-    if (c.repo.ownerId !== input.userGithubId) { skip('not-repo-owner'); continue; }
+    // Unknown pusher (undefined) only in old records; a known other pusher never counts.
+    if (c.pusherId !== undefined && c.pusherId !== input.userGithubId) { skip('pushed-by-other'); continue; }
+    if (rules.repos && rules.repos.length > 0) {
+      // Creator-selected repositories replace the "own repos" rule.
+      if (c.repo.id === undefined || !rules.repos.includes(c.repo.id)) { skip('other-repo'); continue; }
+    } else {
+      if (c.repo.fork && !allow.forks) { skip('fork'); continue; }
+      if (c.repo.ownerId !== input.userGithubId) { skip('not-repo-owner'); continue; }
+    }
     // Either git date older than the allowance: old work pushed late.
     const dated = [c.authoredAt, c.committedAt].filter((d): d is string => Boolean(d)).map((d) => Math.floor(Date.parse(d) / 1000));
     if (dated.some((s) => Number.isFinite(s) && s < backdateLimitSec)) { skip('backdated'); continue; }
@@ -335,6 +351,8 @@ export interface GithubRulesDocument {
   ownNonForkReposOnly?: boolean;
   fileFilter?: { extensions?: string[]; filenames?: string[] } | null;
   allow?: Partial<GithubAllowances> | null;
+  /** Creator-selected repositories (resolved and checked public when the challenge was created). */
+  repos?: { id: number; fullName: string }[] | null;
 }
 
 /** Engine rules from a challenge's (hashed, immutable) rules document. Unknown fields stay strict. */
@@ -347,6 +365,7 @@ export function githubRulesFromDocument(doc: GithubRulesDocument): GithubRules {
     fileFilter: filter && ((filter.extensions?.length ?? 0) > 0 || (filter.filenames?.length ?? 0) > 0)
       ? { extensions: filter.extensions ?? [], filenames: filter.filenames ?? [] }
       : null,
+    repos: (doc.repos ?? []).map((r) => r.id).filter((id) => Number.isSafeInteger(id) && id > 0),
     allow: {
       docs: allow.docs === true,
       generated: allow.generated === true,
