@@ -90,3 +90,8 @@ function explain(
   if (!data.complete) hints.push('GitHub could not be read completely, so a day below the goal is "indeterminate": it never costs a stake.');
   return hints;
 }
+
+main().catch((e: unknown) => {
+  console.error(e instanceof Error ? e.message : e);
+  process.exit(1);
+});
