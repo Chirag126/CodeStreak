@@ -36,6 +36,8 @@ import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { linkedProviders } from '@/lib/accounts/github';
 import { syncChallenge, syncJoin, syncSponsor } from '@/lib/sync/chain';
 import { relayerKeypair } from './keypair';
+import { after } from 'next/server';
+import { takeLeetcodeSnapshot } from '@/lib/verification/day-check';
 
 /** Failures carry a plain-language message plus a stable code and headline for the UI. */
 export type RelayResult<T> = ({ ok: true } & T) | { ok: false; error: string; code?: string; title?: string };
@@ -632,7 +634,15 @@ export async function submitRelayed(input: { profileId: string; idempotencyKey: 
           })
         : syncChallenge(connection, row.challenge_address as string, { ...(row.payload as ChallengeDetails), creatorId: input.profileId, createTx: signature });
   await Promise.resolve(mirror).catch((e: unknown) => console.error(`[sync] ${kind} mirror failed:`, e instanceof Error ? e.message : e));
-  if (kind === 'join') await acceptInvitationOnJoin(input.profileId, row.challenge_address as string);
+  if (kind === 'join') {
+    await acceptInvitationOnJoin(input.profileId, row.challenge_address as string);
+    // LeetCode challenges: a first snapshot now, so day 1 has an anchor even before the scheduled ones.
+    const { data: joined } = await admin.from('challenges').select('rules').eq('onchain_address', row.challenge_address as string).maybeSingle();
+    if ((joined?.rules as { leetcode?: unknown } | null)?.leetcode) {
+      const profileId = input.profileId;
+      after(() => takeLeetcodeSnapshot(profileId, 'join').then(() => undefined));
+    }
+  }
 
   await admin.from('audit_log').insert({
     actor_kind: 'relayer',

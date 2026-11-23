@@ -13,6 +13,10 @@ export interface RecentAccepted {
 export interface LeetcodeSnapshot {
   solved: number | null;
   totalProblems: number | null;
+  /** Solved per difficulty ("Easy 128/978", "Med. 426/2152", "Hard 155/993"). */
+  easy?: number | null;
+  medium?: number | null;
+  hard?: number | null;
   recentAccepted: RecentAccepted[];
   hasRecentAcSection: boolean;
 }
@@ -52,7 +56,19 @@ export function parseLeetcodeProfile(markdown: string): LeetcodeSnapshot {
     seen.add(submissionId);
     recentAccepted.push({ title: title.trim(), ago, approxAgeSeconds: agoToSeconds(ago), submissionId });
   }
-  return { solved, totalProblems, recentAccepted, hasRecentAcSection: /\bRecent AC\b/.test(markdown) };
+  const level = (label: string) => {
+    const m = new RegExp(`\\b${label}\\s*\\n+\\s*(\\d[\\d,]*)\\s*\\/\\s*\\d`).exec(markdown);
+    return m?.[1] ? Number(m[1].replace(/,/g, '')) : null;
+  };
+  return {
+    solved,
+    totalProblems,
+    easy: level('Easy'),
+    medium: level('Med\\.?(?:ium)?'),
+    hard: level('Hard'),
+    recentAccepted,
+    hasRecentAcSection: /\bRecent AC\b/.test(markdown),
+  };
 }
 
 /** True when the exact verification code appears as a standalone token (used for account binding). */

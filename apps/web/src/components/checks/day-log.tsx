@@ -7,16 +7,19 @@ const OUTCOME = {
   not_met: { label: 'Not yet', variant: 'warning' },
   unknown: { label: "Couldn't be fully checked", variant: 'default' },
 } as const;
+const NAME = { github: 'GitHub', leetcode: 'LeetCode' } as const;
 
-/** A day check, readable by anyone allowed to see it: progress, explanations, then every commit. */
+/** A day check for one provider, readable by anyone allowed to see it: progress, explanations, then every item. */
 export function DayLogView({ log, preview = true }: { log: DayLog; preview?: boolean }) {
-  const pct = Math.min(100, Math.round((log.lines / log.goal) * 100));
+  const pct = Math.min(100, Math.round((log.lines / Math.max(1, log.goal)) * 100));
+  const github = log.provider === 'github';
+  const time = new Date(log.checkedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
   return (
     <div className="space-y-4 text-sm">
       <div className="space-y-1.5">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">
-            Day {log.day + 1}: {log.lines} of {log.goal} meaningful lines
+            {NAME[log.provider]} · day {log.day + 1}: {log.lines} of {log.goal} {log.unit}
           </span>
           <Badge variant={OUTCOME[log.outcome].variant}>{OUTCOME[log.outcome].label}</Badge>
           {preview && <span className="text-xs text-muted-foreground">Preview: the final result is recorded after the day ends.</span>}
@@ -25,7 +28,7 @@ export function DayLogView({ log, preview = true }: { log: DayLog; preview?: boo
           <div className={cn('h-full rounded-full transition-[width] duration-500', log.outcome === 'met' ? 'bg-electric-400' : 'bg-cobalt-400')} style={{ width: `${pct}%` }} />
         </div>
         <p className="text-xs text-muted-foreground">
-          {log.pushes} push{log.pushes === 1 ? '' : 'es'} found · checked {new Date(log.checkedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })} UTC
+          {github ? `${log.pushes} push${log.pushes === 1 ? '' : 'es'} found` : `${log.pushes} profile snapshot${log.pushes === 1 ? '' : 's'} today`} · checked {time} UTC
         </p>
       </div>
 
@@ -42,23 +45,23 @@ export function DayLogView({ log, preview = true }: { log: DayLog; preview?: boo
           <table className="w-full text-left text-xs">
             <thead className="text-muted-foreground">
               <tr>
-                <th className="py-1 pr-3 font-medium">Commit</th>
-                <th className="py-1 pr-3 font-medium">Repository</th>
-                <th className="py-1 pr-3 font-medium">Lines</th>
+                <th className="py-1 pr-3 font-medium">{github ? 'Commit' : 'Problem'}</th>
+                {github && <th className="py-1 pr-3 font-medium">Repository</th>}
+                {github && <th className="py-1 pr-3 font-medium">Lines</th>}
                 <th className="py-1 font-medium">Why</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {log.commits.map((c) => (
-                <tr key={c.sha} className={c.counted ? '' : 'text-muted-foreground'}>
-                  <td className="py-1.5 pr-3 font-mono">
-                    <a className="underline underline-offset-2" href={`https://github.com/${c.repo}/commit/${c.sha}`} target="_blank" rel="noreferrer">
-                      {c.sha.slice(0, 8)} ↗
+                <tr key={c.id} className={c.counted ? '' : 'text-muted-foreground'}>
+                  <td className={cn('py-1.5 pr-3', github && 'font-mono')}>
+                    <a className="underline underline-offset-2" href={c.url} target="_blank" rel="noreferrer">
+                      {c.label} ↗
                     </a>
                   </td>
-                  <td className="py-1.5 pr-3">{c.repo}</td>
-                  <td className="py-1.5 pr-3">{c.counted ? c.lines : '–'}</td>
-                  <td className="py-1.5">{c.reason}</td>
+                  {github && <td className="py-1.5 pr-3">{c.context}</td>}
+                  {github && <td className="py-1.5 pr-3">{c.value}</td>}
+                  <td className="py-1.5">{c.counted && !github ? `✓ ${c.reason}` : c.reason}</td>
                 </tr>
               ))}
             </tbody>
@@ -73,6 +76,17 @@ export function DayLogView({ log, preview = true }: { log: DayLog; preview?: boo
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/** Every provider's log for a day, one after another. */
+export function DayLogsView({ logs, preview = true }: { logs: DayLog[]; preview?: boolean }) {
+  return (
+    <div className="space-y-6">
+      {logs.map((l) => (
+        <DayLogView key={l.provider} log={l} preview={preview} />
+      ))}
     </div>
   );
 }

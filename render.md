@@ -18,7 +18,7 @@ Both auto-deploy from `main`. Build and start commands:
 
 **Free plan budget:** 750 instance-hours a month for the whole workspace (shared with your other free services). Each free service sleeps after ~15 idle minutes and takes up to about a minute to wake. The worker is woken every 30 minutes by Supabase (below), so it is awake about half the time.
 
-**Waking the worker:** Supabase `pg_cron` job `codestreak-wake-worker` (every 30 minutes) calls `private.wake_worker('wake')`, which POSTs to `<worker_url>/jobs/wake` through `pg_net` with the secret. The URL and secret live in **Supabase Vault** as `worker_url` and `worker_job_secret`. The secret is generated inside Supabase; copy it to the worker's `WORKER_JOB_SECRET` from Supabase → Project Settings → Vault.
+**Waking the worker:** Supabase `pg_cron` job `codestreak-wake-worker` (every 30 minutes) calls `private.wake_worker('wake')` (and `codestreak-leetcode-snapshots` at :15/:45 calls `private.wake_worker('leetcode-snapshots')`), which POSTs to `<worker_url>/jobs/wake` through `pg_net` with the secret. The URL and secret live in **Supabase Vault** as `worker_url` and `worker_job_secret`. The secret is generated inside Supabase; copy it to the worker's `WORKER_JOB_SECRET` from Supabase → Project Settings → Vault.
 
 This file is updated every phase. It lists what currently points at **localhost** or at files on
 your laptop, and what each value must be on Render. Never commit real secret values: set them in
@@ -81,4 +81,5 @@ new deploy (not just a restart).
 | 24 | **`GITHUB_API_TOKEN`** (worker, and `.env.local` for `pnpm verify:github`): a fine-grained token with **public repositories read-only** access, no other permissions. Without it GitHub allows only 60 requests/hour. Set it on the **worker** service on Render (secret). No migration. |
 | 24 follow-up | **`GITHUB_API_TOKEN`** is now also used by the **web** service (to check selected repositories when a challenge is created): add the same read-only token there as a secret. No migration. |
 | Day checks | **`GITHUB_API_TOKEN` on the web service is now required** for "Check now" (each check uses ~5–15 GitHub requests; without a token GitHub allows 60 per hour per server). Migration `member_day_checks` applied. |
-| 26 | **`FIRECRAWL_API_KEY` on the web service** (LeetCode Verify reads the profile through Firecrawl; ~1 credit per attempt). Migration `leetcode_binding` applied. |
+| 25 | **`FIRECRAWL_API_KEY` on the web service** (LeetCode Verify reads the profile through Firecrawl; ~1 credit per attempt). Migration `leetcode_binding` applied. |
+| 26 | **`FIRECRAWL_API_KEY` on the worker too** (scheduled LeetCode snapshots, ~1 credit per profile per 30 min while a LeetCode challenge runs). pg_cron job `codestreak-leetcode-snapshots` (`:15`/`:45`) → `/jobs/leetcode-snapshots`. Migration `leetcode_snapshots` applied. |

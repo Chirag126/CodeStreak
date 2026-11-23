@@ -20,7 +20,7 @@ import { SponsorLinkPanel } from '@/components/sponsor/sponsor-link-panel';
 import { listSponsors } from '@/lib/sponsor/load';
 import { loadBoard } from '@/lib/board/load';
 import { MyDayCard } from '@/components/checks/my-day-card';
-import { readDayLog } from '@/lib/verification/day-check';
+import { readDayLogs } from '@/lib/verification/day-check';
 import { listGroupInvites } from '@/lib/groups/invites';
 import { JoinButton } from './join-button';
 
@@ -40,7 +40,19 @@ type GithubRulesDoc = {
   allow?: { docs?: boolean; generated?: boolean; forks?: boolean; backdateHours?: number } | null;
   repos?: { id: number; fullName: string }[] | null;
 };
-type Rules = { providers?: string[]; providerRule?: 'any' | 'all'; github?: GithubRulesDoc | null };
+type LeetcodeRulesDoc = { minNewSolves?: number; minDifficulty?: 'any' | 'medium' | 'hard'; minAcceptedPerDay?: number };
+type Rules = { providers?: string[]; providerRule?: 'any' | 'all'; github?: GithubRulesDoc | null; leetcode?: LeetcodeRulesDoc | null };
+
+/** The creator's LeetCode options in plain words. */
+function leetcodeOptionLines(l: LeetcodeRulesDoc | null | undefined): string[] {
+  if (!l) return [];
+  const diff = l.minDifficulty === 'hard' ? 'Hard' : l.minDifficulty === 'medium' ? 'Medium or Hard' : null;
+  return [
+    'LeetCode: your profile and its recent submissions must stay public. CodeStreak snapshots it at day start, every 30 minutes and when you check.',
+    `A problem counts only if it is new for you: your solved count must go up and it must appear in your recent accepted submissions.${diff ? ` Only ${diff} problems count.` : ''}`,
+    'Re-solving a problem you already solved, or a solve made before the day started, never counts. Hiding your profile fails the day.',
+  ];
+}
 
 /** The creator's GitHub options in plain words (older challenges have none: strict). */
 function githubOptionLines(g: GithubRulesDoc | null | undefined): string[] {
@@ -62,7 +74,12 @@ function githubOptionLines(g: GithubRulesDoc | null | undefined): string[] {
 
 function describeRules(rules: Rules): string {
   return (rules.providers ?? [])
-    .map((p) => (p === 'github' ? `a GitHub push with at least ${rules.github?.minMeaningfulLines ?? 15} meaningful lines` : 'an accepted LeetCode solution'))
+    .map((p) => {
+      if (p === 'github') return `a GitHub push with at least ${rules.github?.minMeaningfulLines ?? 15} meaningful lines`;
+      const n = rules.leetcode?.minNewSolves ?? rules.leetcode?.minAcceptedPerDay ?? 1;
+      const d = rules.leetcode?.minDifficulty === 'hard' ? ' Hard' : rules.leetcode?.minDifficulty === 'medium' ? ' Medium+' : '';
+      return `${n === 1 ? 'a new' : `${n} new`}${d} LeetCode problem${n === 1 ? '' : 's'} solved`;
+    })
     .join(rules.providerRule === 'all' ? ' and ' : ' or ');
 }
 
@@ -118,7 +135,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
 
   const rate = row ? survivalRate({ members: Number(row.members), stillIn: Number(row.still_in), survived: Number(row.survived), finalized: Number(row.finalized) }) : null;
   const rulesText = describeRules((row?.rules ?? {}) as Rules);
-  const githubLines = githubOptionLines(((row?.rules ?? {}) as Rules).github);
+  const githubLines = [...githubOptionLines(((row?.rules ?? {}) as Rules).github), ...leetcodeOptionLines(((row?.rules ?? {}) as Rules).leetcode)];
   const shieldsOn = account.maxShieldsPerParticipant > 0;
   const viewerJoined = Boolean(viewer && (standings ?? []).some((m) => m.public_id === viewer.publicId));
   const isCreator = Boolean(viewer && row && row.creator_id === viewer.userId);
@@ -134,11 +151,11 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
   }
   const title = (row?.title as string | undefined) ?? `Challenge ${address.slice(0, 4)}…${address.slice(-4)}`;
 
-  // A player's own day (GitHub challenges): the latest check of the day that can be checked now.
+  // A player's own day: the latest check per provider for the day that can be checked now.
   const myMembershipId = board?.viewer.membershipId ?? null;
   const slot = checkableDay(times, now);
-  const countsGithub = Boolean(((row?.rules ?? {}) as Rules).github);
-  const myDay = myMembershipId && slot.ok && countsGithub ? { day: slot.day, log: await readDayLog(supabase, myMembershipId, slot.day) } : null;
+  const countsSomething = Boolean(((row?.rules ?? {}) as Rules).github || ((row?.rules ?? {}) as Rules).leetcode);
+  const myDay = myMembershipId && slot.ok && countsSomething ? { day: slot.day, logs: await readDayLogs(supabase, myMembershipId, slot.day) } : null;
 
   // Rules integrity: what CodeStreak shows must hash to the on-chain fingerprint.
   const onChainRulesHash = Buffer.from(account.rulesHash).toString('hex');
@@ -157,7 +174,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
       ? `Shields: up to ${account.maxShieldsPerParticipant} per player at ${fmt(account.shieldPrice)}, bought until ${Math.round(account.shieldGraceSecs / 60)} min after a missed day ends.`
       : 'Shields are off: a missed day cannot be covered.',
     `Fewer than ${account.minParticipants} players by the join deadline: the challenge is cancelled and everyone is refunded.`,
-    'A day that cannot be checked (for example a GitHub outage) never fails you.',
+    'A day that cannot be checked (for example a GitHub or LeetCode outage) never fails you.',
     `Results are final ${span(times.verifyWindowSecs + times.disputeWindowSecs)} after the last day (checks, then a dispute window).`,
     'Your linked GitHub and LeetCode accounts cannot be changed or unlinked until the challenge ends.',
     ...(account.joinAuthority ? ['Private group: only invited people can see it and join.'] : []),
@@ -279,7 +296,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
         </Card>
       </div>
 
-      {myDay && <MyDayCard address={address} day={myDay.day} initial={myDay.log} />}
+      {myDay && <MyDayCard address={address} day={myDay.day} initial={myDay.logs} />}
 
       <SponsorLeaderboard
         sponsors={sponsors}

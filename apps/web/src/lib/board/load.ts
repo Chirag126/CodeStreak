@@ -48,7 +48,7 @@ export async function loadBoard(address: string): Promise<BoardPayload | null> {
       admin.from('day_results').select('membership_id, day, result').in('membership_id', ids).limit(60_000),
       admin.from('shields').select('membership_id, day').in('membership_id', ids).limit(5_000),
       admin.from('evidence').select('membership_id, day, provider, counted').in('membership_id', ids).limit(20_000),
-      admin.from('member_day_checks').select('membership_id, day, lines, goal, outcome').in('membership_id', ids).limit(60_000),
+      admin.from('member_day_checks').select('membership_id, day, provider, lines, goal, outcome').in('membership_id', ids).limit(60_000),
     ]);
 
     members = rows.map((m) => {
@@ -72,8 +72,12 @@ export async function loadBoard(address: string): Promise<BoardPayload | null> {
         for (const d of dayChecks ?? []) {
           if (d.membership_id !== id) continue;
           const day = d.day as number;
-          const entry = byDay.get(day) ?? { day, counted: 0, considered: 0, providers: ['github'] };
-          byDay.set(day, { ...entry, lines: d.lines as number, goal: d.goal as number, outcome: d.outcome as 'met' | 'not_met' | 'unknown' });
+          const provider = d.provider as 'github' | 'leetcode';
+          const outcome = d.outcome as 'met' | 'not_met' | 'unknown';
+          const entry = byDay.get(day) ?? { day, counted: 0, considered: 0, providers: [] };
+          if (!entry.providers.includes(provider)) entry.providers.push(provider);
+          const progress = [...(entry.progress ?? []).filter((x) => x.provider !== provider), { provider, value: d.lines as number, goal: d.goal as number, outcome }];
+          byDay.set(day, { ...entry, progress, ...(provider === 'github' ? { lines: d.lines as number, goal: d.goal as number, outcome } : {}) });
         }
         checks = [...byDay.values()].sort((a, b) => a.day - b.day);
       }

@@ -62,6 +62,9 @@ export const challengeFormSchema = z
     /** Only pushes to these repositories count ("owner/name", resolved to ids on the server). */
     githubRepos: z.string().max(500, 'Too long.').default(''),
     allowDocs: z.boolean().default(false),
+    /** LeetCode: new problems per day and minimum difficulty. */
+    leetcodeMinSolves: z.number().int().min(1, 'At least 1 problem.').max(5, 'At most 5 problems.').default(1),
+    leetcodeDifficulty: z.enum(['any', 'medium', 'hard']).default('any'),
     allowGenerated: z.boolean().default(false),
     allowForks: z.boolean().default(false),
     backdateHours: z.number().int().min(0, 'At least 0.').max(GITHUB_OPTION_LIMITS.maxBackdateHours, `At most ${GITHUB_OPTION_LIMITS.maxBackdateHours} hours.`).default(0),
@@ -178,7 +181,7 @@ export function rulesDocument(f: ChallengeForm, resolved: { repos?: ResolvedRepo
     providers: [...f.providers].sort(),
     providerRule: f.providers.length > 1 ? f.providerRule : 'any',
     github: f.providers.includes('github') ? githubRulesDoc(f, resolved.repos ?? []) : null,
-    leetcode: f.providers.includes('leetcode') ? { minAcceptedPerDay: 1 } : null,
+    leetcode: f.providers.includes('leetcode') ? { minNewSolves: f.leetcodeMinSolves, minDifficulty: f.leetcodeDifficulty } : null,
   };
 }
 

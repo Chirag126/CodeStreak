@@ -8,12 +8,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { checkMyDayAction } from '@/app/challenges/[address]/check-actions';
 import { useCountdown } from '@/app/sign-in/use-countdown';
 import type { DayLog } from '@/lib/verification/day-check';
-import { DayLogView } from './day-log';
+import { DayLogsView } from './day-log';
 
-/** A player's own day: check GitHub now and see exactly what counted and why. */
-export function MyDayCard({ address, day, initial }: { address: string; day: number; initial: DayLog | null }) {
+/** A player's own day: check every provider now and see exactly what counted and why. */
+export function MyDayCard({ address, day, initial }: { address: string; day: number; initial: DayLog[] }) {
   const toast = useToast();
-  const [log, setLog] = useState<DayLog | null>(initial);
+  const [logs, setLogs] = useState<DayLog[]>(initial);
   const [busy, start] = useTransition();
   const [retryAt, setRetryAt] = useState<number | undefined>(undefined);
   const wait = useCountdown(retryAt);
@@ -26,9 +26,11 @@ export function MyDayCard({ address, day, initial }: { address: string; day: num
         toast({ kind: 'error', title: 'Not checked', message: r.error });
         return;
       }
-      if (r.log) setLog(r.log);
+      const next = r.logs ?? [];
+      if (next.length) setLogs(next);
       setRetryAt(Date.now() + 60_000);
-      toast({ kind: r.log?.outcome === 'met' ? 'success' : 'info', title: r.log?.outcome === 'met' ? 'Goal reached for today' : 'Checked', message: r.log ? `${r.log.lines} of ${r.log.goal} meaningful lines so far.` : undefined });
+      const allMet = next.length > 0 && next.every((l) => l.outcome === 'met');
+      toast({ kind: allMet ? 'success' : 'info', title: allMet ? 'Goal reached for today' : 'Checked', message: next.map((l) => `${l.provider === 'github' ? 'GitHub' : 'LeetCode'}: ${l.lines} of ${l.goal} ${l.unit}`).join(' · ') || undefined });
     });
   }
 
@@ -38,12 +40,12 @@ export function MyDayCard({ address, day, initial }: { address: string; day: num
         <div className="flex flex-wrap items-center gap-3">
           <CardTitle>Your day {day + 1}</CardTitle>
           <Button className="ml-auto" onClick={check} loading={busy} disabled={wait > 0}>
-            {wait > 0 ? `Check again in ${formatWait(wait)}` : log ? 'Check again' : 'Check now'}
+            {wait > 0 ? `Check again in ${formatWait(wait)}` : logs.length ? 'Check again' : 'Check now'}
           </Button>
         </div>
-        <CardDescription>Reads your pushes on GitHub for today and shows what counts. Push, then check.</CardDescription>
+        <CardDescription>Reads today’s GitHub pushes and/or LeetCode profile (whatever this challenge counts) and shows what counts. Push or solve, then check.</CardDescription>
       </CardHeader>
-      <CardContent>{log ? <DayLogView log={log} /> : <p className="text-sm text-muted-foreground">Not checked yet today.</p>}</CardContent>
+      <CardContent>{logs.length ? <DayLogsView logs={logs} /> : <p className="text-sm text-muted-foreground">Not checked yet today.</p>}</CardContent>
     </Card>
   );
 }

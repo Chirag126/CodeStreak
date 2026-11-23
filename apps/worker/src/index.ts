@@ -1,5 +1,6 @@
 import { EnvError, parseEnv, workerEnvSchema, type WorkerEnv } from '@codestreak/shared';
 import { loadLocalEnv } from './load-env.js';
+import { createLeetcodeSnapshotJob } from './jobs/leetcode-snapshots.js';
 import { createWakeJob } from './jobs/wake.js';
 import { createWorkerServer, type Job } from './server.js';
 
@@ -21,6 +22,7 @@ const env = loadEnv();
 const jobs: Record<string, Job> = {
   noop: async () => ({ message: 'worker is alive' }),
   wake: createWakeJob({ supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL, serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY, version: VERSION }),
+  'leetcode-snapshots': createLeetcodeSnapshotJob({ supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL, serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY, firecrawlApiKey: env.FIRECRAWL_API_KEY }),
 };
 
 const server = createWorkerServer({ jobSecret: env.WORKER_JOB_SECRET, jobs, version: VERSION });
