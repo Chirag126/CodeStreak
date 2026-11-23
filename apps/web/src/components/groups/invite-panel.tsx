@@ -38,7 +38,7 @@ export function InvitePanel({ address, invites }: { address: string; invites: In
   const [publicId, setPublicId] = useState('');
   const [uses, setUses] = useState<number>(INVITE_LINK_LIMITS.defaultMaxUses);
   const [hours, setHours] = useState<number>(INVITE_LINK_LIMITS.defaultHours);
-  const [link, setLink] = useState<{ url: string; expiresAt: string; requestedHours: number } | null>(null);
+  const [link, setLink] = useState<{ url: string; expiresAt: string; capped: boolean } | null>(null);
 
   function inviteById() {
     start(async () => {
@@ -54,7 +54,8 @@ export function InvitePanel({ address, invites }: { address: string; invites: In
     start(async () => {
       const r = await createLinkAction(address, uses, hours);
       if (!r.ok) return toast({ kind: 'error', title: 'Link not created', message: r.error });
-      setLink({ url: r.url, expiresAt: r.expiresAt, requestedHours: hours });
+      // Links never outlive the join deadline: say so when that shortened the requested time.
+      setLink({ url: r.url, expiresAt: r.expiresAt, capped: Date.parse(r.expiresAt) < Date.now() + hours * 3600_000 - 60_000 });
       router.refresh();
     });
   }
@@ -129,7 +130,7 @@ export function InvitePanel({ address, invites }: { address: string; invites: In
               </div>
               <p className="text-xs text-muted-foreground">
                 Shown only now: CodeStreak keeps just a fingerprint of it. Expires {utc(link.expiresAt)}
-                {Date.parse(link.expiresAt) < Date.now() + link.requestedHours * 3600_000 - 60_000 ? ' (when joining closes: a link never outlives the join deadline)' : ''}.
+                {link.capped ? ' (when joining closes: a link never outlives the join deadline)' : ''}.
               </p>
             </div>
           )}

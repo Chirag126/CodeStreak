@@ -6,8 +6,9 @@ import { useEffect, useRef } from 'react';
 /** Re-reads the page's server data when the tab comes back into view (at most every 15 s). */
 export function RefreshOnFocus() {
   const router = useRouter();
-  const last = useRef(Date.now());
+  const last = useRef(0);
   useEffect(() => {
+    last.current = Date.now();
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || Date.now() - last.current < 15_000) return;
       last.current = Date.now();
