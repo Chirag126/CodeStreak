@@ -2,7 +2,7 @@
 // web app, so both store and read exactly the same shape).
 import { agoToSeconds, parseLeetcodeProfile } from './leetcode.js';
 import type { LeetcodeSnapshotRecord } from './leetcode-day.js';
-import type { ProfileScrape } from './leetcode-fetch.js';
+import { scrapeLeetcodeProfile, type ProfileScrape } from './leetcode-fetch.js';
 
 export interface SnapshotRow {
   profile_id: string;
@@ -30,6 +30,12 @@ export function snapshotRowFromScrape(scrape: ProfileScrape, profileId: string, 
     return { ...base, readable: false, error: 'the page is not this user’s LeetCode profile' };
   }
   const p = parseLeetcodeProfile(scrape.markdown);
+  // LeetCode fills "Recent AC" after the counts: a page read too early shows solved > 0 with no
+  // submissions. That page says nothing about which problems were solved, so it must not count
+  // (it would hide a real solve, or look like withdrawn evidence).
+  if (p.hasRecentAcSection && (p.solved ?? 0) > 0 && p.recentAccepted.length === 0) {
+    return { ...base, readable: false, error: 'the recent submissions list had not loaded' };
+  }
   return {
     ...base,
     readable: true,
@@ -59,4 +65,20 @@ export function snapshotRecordFromRow(row: Omit<SnapshotRow, 'profile_id' | 'sou
       recentAccepted: (row.recent ?? []).map((r) => ({ submissionId: r.id, title: r.title, ago: r.ago, approxAgeSeconds: agoToSeconds(r.ago) })),
     },
   };
+}
+
+/**
+ * Reads a profile live and returns the row to store. A page whose recent submissions hadn't loaded
+ * is read once more, waiting longer, before it is stored as unreadable.
+ */
+export async function readLeetcodeSnapshot(
+  apiKey: string,
+  profileId: string,
+  handle: string,
+  source: SnapshotRow['source'],
+  fetchImpl: typeof fetch = fetch,
+): Promise<SnapshotRow> {
+  const first = snapshotRowFromScrape(await scrapeLeetcodeProfile(apiKey, handle, fetchImpl), profileId, handle, source);
+  if (first.readable || first.error !== 'the recent submissions list had not loaded') return first;
+  return snapshotRowFromScrape(await scrapeLeetcodeProfile(apiKey, handle, fetchImpl, { waitForMs: 9000 }), profileId, handle, source);
 }

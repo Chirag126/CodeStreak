@@ -102,21 +102,26 @@ const VERDICT = {
  * What the rules engine would decide if the day ended at the last check: the providers combined
  * under the challenge's ANY/ALL rule, gated by confidence (the same code builds the final receipt).
  */
-export function DayVerdictView({ logs, rule, providers }: { logs: DayLog[]; rule: ProviderRule; providers: RuleProvider[] }) {
+export function DayVerdictView({ logs, rule, providers, dayEndsAt }: { logs: DayLog[]; rule: ProviderRule; providers: RuleProvider[]; dayEndsAt?: number }) {
   const scored = providers.map((p) => {
     const l = logs.find((x) => x.provider === p);
     return { provider: p, outcome: l?.engineOutcome ?? ('unknown' as const), confidence: l?.confidence ?? 0 };
   });
   const v = combineDay(rule, scored);
+  // While the day still runs (at the last check), a shortfall isn't a failure yet: say "not done yet".
+  const checkedAt = Math.max(0, ...logs.map((l) => Date.parse(l.checkedAt) / 1000));
+  const running = dayEndsAt !== undefined && checkedAt < dayEndsAt;
+  const shown = running && v.verdict === 'failed' ? { label: 'Not done yet', variant: 'warning' as const } : VERDICT[v.verdict];
   return (
     <div className="space-y-1 rounded-lg border border-border bg-muted/40 p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-muted-foreground">If the day ended at this check:</span>
-        <Badge variant={VERDICT[v.verdict].variant}>{VERDICT[v.verdict].label}</Badge>
+        <span className="text-muted-foreground">{running ? 'So far today:' : 'Day result at this check:'}</span>
+        <Badge variant={shown.variant}>{shown.label}</Badge>
         <span className="text-xs text-muted-foreground">confidence {v.confidence}%</span>
       </div>
       <p className="text-xs text-muted-foreground">
-        {VERDICT_REASON_TEXT[v.reason]} {providers.length > 1 && (rule === 'all' ? 'This challenge needs every provider.' : 'This challenge needs any one provider.')} A day fails only at
+        {running && v.verdict === 'failed' ? 'If the day ended now, it would fail. ' : VERDICT_REASON_TEXT[v.reason] + ' '}
+        {providers.length > 1 && (rule === 'all' ? 'This challenge needs every provider.' : 'This challenge needs any one provider.')} A day fails only at
         confidence {CONFIDENCE.failMin}%+ and is verified at {CONFIDENCE.verifyMin}%+.
       </p>
     </div>

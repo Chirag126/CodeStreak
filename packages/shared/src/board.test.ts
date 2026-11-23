@@ -81,3 +81,17 @@ describe('checkable day', () => {
     expect(checkableDay({ ...times, state: 'cancelled' }, START + 5)).toEqual({ ok: false, reason: 'cancelled' });
   });
 });
+
+describe('done today', () => {
+  it('counts a goal met at the latest check, by the ANY/ALL rule', async () => {
+    const { goalMetAtCheck } = await import('./board.js');
+    const checks = [{ day: 0, counted: 1, considered: 1, providers: ['github', 'leetcode'], progress: [
+      { provider: 'github' as const, value: 20, goal: 15, outcome: 'met' as const },
+      { provider: 'leetcode' as const, value: 0, goal: 1, outcome: 'not_met' as const },
+    ] }];
+    expect(goalMetAtCheck({ checks }, 0, { providers: ['github', 'leetcode'], rule: 'any' })).toBe(true);
+    expect(goalMetAtCheck({ checks }, 0, { providers: ['github', 'leetcode'], rule: 'all' })).toBe(false);
+    expect(goalMetAtCheck({ checks }, 1, { providers: ['github'], rule: 'any' })).toBe(false);
+    expect(goalMetAtCheck({}, 0, { providers: ['github'], rule: 'any' })).toBe(false);
+  });
+});

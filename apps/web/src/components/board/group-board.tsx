@@ -93,7 +93,7 @@ export function GroupBoard({ address, initial, initialNow, decimals, symbol }: {
   const { payload, live, refetch } = useLiveBoard(address, initial.challengeId, initial);
   const now = useNowSecs(initialNow);
   const board = buildBoard(payload.input, now);
-  usePageSync(`${payload.input.poolTotal}|${payload.input.memberCount}|${payload.input.times.state}|${board.statusLabel}`);
+  usePageSync(`${payload.input.poolTotal}|${payload.input.memberCount}|${payload.input.times.state}|${board.statusLabel}|${board.day}`);
   const { input, viewer } = payload;
   const toast = useToast();
   const [busy, start] = useTransition();
@@ -145,6 +145,13 @@ export function GroupBoard({ address, initial, initialNow, decimals, symbol }: {
       </CardHeader>
 
       <CardContent className="space-y-6">
+        {(board.phase === 'verifying' || board.phase === 'disputeWindow' || board.phase === 'awaitingSettlement') &&
+          !input.members.some((m) => m.results.length > 0) && (
+            <p role="status" className="rounded-lg border border-warning-400/40 bg-warning-400/10 p-3 text-sm">
+              All days are over. Day results haven&apos;t been recorded on-chain yet, so nobody is marked as passed or failed and every
+              stake stays locked in the challenge&apos;s on-chain escrow. Payouts and refunds open once the results are recorded.
+            </p>
+          )}
         <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
           <div><dt className="text-muted-foreground">Pool</dt><dd className="font-mono">{formatAmount(BigInt(input.poolTotal), decimals)} {symbol}</dd></div>
           <div><dt className="text-muted-foreground">Players</dt><dd>{board.memberCount} / {input.maxParticipants} <span className="text-muted-foreground">(min {input.minParticipants})</span></dd></div>

@@ -12,10 +12,9 @@ import {
   explainLeetcodeDay,
   githubRulesFromDocument,
   leetcodeRulesFromDocument,
-  scrapeLeetcodeProfile,
+  readLeetcodeSnapshot,
   SKIP_REASON_TEXT,
   snapshotRecordFromRow,
-  snapshotRowFromScrape,
   type GithubRulesDocument,
   type LeetcodeRulesDocument,
   type SnapshotRow,
@@ -60,7 +59,9 @@ async function saveDay(admin: Admin, input: { membershipId: string; day: number;
   const { membershipId, day, provider } = input;
   await admin.from('evidence').delete().eq('membership_id', membershipId).eq('provider', provider).eq('day', day);
   if (input.evidence.length) {
-    const { error } = await admin.from('evidence').insert(
+    // A commit or submission is recorded once per member (never on two days). Skip items already
+    // recorded on another day instead of failing the whole batch (which lost the day's evidence).
+    const { error } = await admin.from('evidence').upsert(
       input.evidence.slice(0, 200).map((e) => ({
         membership_id: membershipId,
         run_id: input.runId,
@@ -74,6 +75,7 @@ async function saveDay(admin: Admin, input: { membershipId: string; day: number;
         reason: e.reason.slice(0, 200),
         details: e.details,
       })),
+      { onConflict: 'membership_id,provider,external_id', ignoreDuplicates: true },
     );
     if (error) console.error(`[check] ${provider} evidence write failed:`, error.message);
   }
@@ -156,7 +158,7 @@ export async function takeLeetcodeSnapshot(profileId: string, source: 'join' | '
   const { data: account } = await admin.from('linked_accounts').select('provider_user_id').eq('profile_id', profileId).eq('provider', 'leetcode').maybeSingle();
   if (!apiKey || !account) return null;
   const handle = account.provider_user_id as string;
-  const row = snapshotRowFromScrape(await scrapeLeetcodeProfile(apiKey, handle), profileId, handle, source);
+  const row = await readLeetcodeSnapshot(apiKey, profileId, handle, source);
   const { data, error } = await admin.from('leetcode_snapshots').insert(row).select('observed_at').single();
   if (error) {
     console.error('[leetcode] snapshot write failed:', error.message);
