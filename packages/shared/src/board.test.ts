@@ -85,7 +85,7 @@ describe('checkable day', () => {
 describe('done today', () => {
   it('counts a goal met at the latest check, by the ANY/ALL rule', async () => {
     const { goalMetAtCheck } = await import('./board.js');
-    const checks = [{ day: 0, counted: 1, considered: 1, providers: ['github', 'leetcode'], progress: [
+    const checks: import('./board.js').BoardCheck[] = [{ day: 0, counted: 1, considered: 1, providers: ['github', 'leetcode'], progress: [
       { provider: 'github' as const, value: 20, goal: 15, outcome: 'met' as const },
       { provider: 'leetcode' as const, value: 0, goal: 1, outcome: 'not_met' as const },
     ] }];
