@@ -111,7 +111,7 @@ export async function verifyLeetcodeBinding(profileId: string): Promise<Result<{
   const left = LEETCODE_LIMITS.attemptsPerCode - attempts - 1;
   if (!check.ok) {
     const tail = left > 0 ? ` ${left} attempt${left === 1 ? '' : 's'} left for this code.` : ' Ask for a new code.';
-    if (check.reason === 'no_profile') return { ok: false, error: `There is no LeetCode profile at leetcode.com/u/${handle}. Check the username.${tail}` };
+    if (check.reason === 'no_profile') return { ok: false, error: `There is no LeetCode profile at leetcode.com/u/${handle}. Use your LeetCode username (the part after leetcode.com/u/ in your profile’s address), not your display name.${tail}` };
     if (check.reason === 'unreadable') return { ok: false, error: `LeetCode's page for ${handle} didn't load properly. Try again in a minute.${tail}` };
     return {
       ok: false,
