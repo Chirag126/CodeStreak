@@ -709,3 +709,26 @@ Real case: a push to `Chirag126/trust-dependency-mapper` at 12:37 UTC (branch `f
 **Explanations are shared** (`explainGithubDay`, `SKIP_REASON_TEXT`) by the app and the command, so they always agree. Fixed: commits written by another GitHub account were described as "your git email isn't on your account"; now `author-mismatch` (another account) and `author-unlinked` (email on no account) are separate, with correct grammar.
 
 **Tests:** explanations for the real 23 Nov day (14 other-account commits, 9 merges, 1 no-code commit, 13 lines needed), no-push cases, goal reached, incomplete data, a sentence for every reason; author-unlinked vs author-mismatch; checkable day (not started, running, final checks, over, cancelled). SQL: outcome/goal/hints constraints; outsider sees only shared checks; a member sees their own hidden details; even the creator can't see hidden details; players-only hides checks from outsiders but not from players or the creator; users can't write checks; checks bump the live board.
+
+---
+
+## Phase 26: LeetCode binding (S)
+
+**Goal:** link a real LeetCode profile to a CodeStreak account, safely.
+
+**Why it differs from GitHub:** LeetCode has no OAuth and no public numeric user id, so ownership is proved by **a one-time code placed in the profile summary**, which only the owner can edit; CodeStreak reads the public profile **live** through Firecrawl (`maxAge: 0`, never a cached page) and checks it deterministically (no AI extraction).
+
+**Flow (Settings → LeetCode):** enter a username (plain, `@name` or a pasted `leetcode.com/u/name` link; leetcode.cn and other sites refused) → **Get a code** (`CS-LC-XXXXXXXXXX`) → paste it into LeetCode Edit Profile → Summary → **Verify**. Linked: profile link, date, lock badge, Unlink.
+
+**Loopholes closed**
+- *Reusing a code:* random, bound to this account and this handle, expires in 15 minutes, consumed atomically on success; one live code per person (asking again cancels the old one). A code left on a profile is useless later.
+- *Wrong code:* only the exact code, as a standalone token, counts (an old/other code, or the code inside a longer word/link, fails).
+- *Wrong page:* the scraped page must load (HTTP 200) and be that user's profile: LeetCode titles it "<handle> - LeetCode Profile" (checked live on a real profile; the handle also appears inside sign-in links, which don't count). Missing profiles, error pages and other pages fail, each with its own message.
+- *Duplicate handle:* handles are stored lower-cased and unique: `Alice` and `alice` can't be linked to two accounts (database), refused early with a clear message. One LeetCode per CodeStreak account.
+- *Handle from the browser:* the server verifies the handle stored with the code, never one sent at verify time.
+- *Credit burning:* 5 codes per hour, 5 verify attempts per code (counted before scraping, with an optimistic lock so parallel clicks can't exceed it).
+- *Shared rules:* locked during open challenges, 30-day cooldown before a released handle moves to another account (database triggers from Phase 23); joining requires LeetCode when the rules count it (only LeetCode: linked LeetCode; GitHub or LeetCode: either).
+
+**Residual risk (documented):** LeetCode usernames are the only public identity; if LeetCode ever let a user rename and someone else took the old name, the stored handle would point to the new owner. The per-challenge lock limits this to between challenges.
+
+**Tests:** handle parsing (names, @names, profile links; other sites, paths, bad characters refused); binding check (exact code, old/other code, code inside a word, someone else's page, missing profile, unreadable page, the real lee215 page shape); Firecrawl client (live fetch, Firecrawl error, network error). SQL: one live code per person, ≤ 15-minute codes, malformed code, bad handle, attempt cap, used code frees the slot, capitalised handle, same handle on a second account, users can't read codes.

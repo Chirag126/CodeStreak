@@ -32,3 +32,25 @@ describe('provider requirements', () => {
     expect(missingProviders(null, [])).toEqual({ ok: true });
   });
 });
+
+describe('LeetCode handles', () => {
+  it('accepts plain names and pasted profile links', async () => {
+    const { normalizeLeetcodeHandle } = await import('./accounts.js');
+    for (const [input, out] of [
+      ['alice_99', 'alice_99'],
+      ['@Alice-99', 'Alice-99'],
+      ['https://leetcode.com/u/Alice/', 'Alice'],
+      ['leetcode.com/alice', 'alice'],
+      ['https://www.leetcode.com/u/bob/?tab=x', 'bob'],
+    ] as const) {
+      expect(normalizeLeetcodeHandle(input)).toBe(out);
+    }
+  });
+
+  it('rejects other sites, paths and bad characters', async () => {
+    const { normalizeLeetcodeHandle } = await import('./accounts.js');
+    for (const bad of ['https://leetcode.cn/u/alice/', 'https://github.com/alice', 'alice/../x', 'al ice', 'ali$ce', '', 'a'.repeat(41)]) {
+      expect(normalizeLeetcodeHandle(bad)).toBeNull();
+    }
+  });
+});

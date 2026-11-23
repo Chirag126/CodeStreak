@@ -74,3 +74,21 @@ export function diffLeetcodeSnapshots(before: LeetcodeSnapshot, after: LeetcodeS
   const solvedDelta = before.solved !== null && after.solved !== null ? after.solved - before.solved : null;
   return { newAccepted, solvedDelta, qualifies: newAccepted.length > 0 && solvedDelta !== null && solvedDelta > 0 };
 }
+
+// ---------------------------------------------------------------- binding (Phase 26)
+
+export type BindingPageCheck = { ok: true } | { ok: false; reason: 'unreadable' | 'no_profile' | 'code_missing' };
+
+/**
+ * Does a freshly scraped page prove that `handle` placed `code` on their profile?
+ *  - the page loaded (HTTP 200) and is that user's profile: LeetCode titles it
+ *    "<handle> - LeetCode Profile" (checked live on a real profile, Phase 26);
+ *  - the exact code appears as a standalone token (not inside a longer word or link).
+ * Only the profile owner can put text on their own profile page.
+ */
+export function checkBindingPage(input: { pageStatus: number | null | undefined; title: string | null | undefined; markdown: string; handle: string; code: string }): BindingPageCheck {
+  if (input.pageStatus === 404) return { ok: false, reason: 'no_profile' };
+  if (input.pageStatus !== 200 || !input.markdown.trim()) return { ok: false, reason: 'unreadable' };
+  if ((input.title ?? '').trim().toLowerCase() !== `${input.handle.toLowerCase()} - leetcode profile`) return { ok: false, reason: 'no_profile' };
+  return containsVerificationCode(input.markdown, input.code) ? { ok: true } : { ok: false, reason: 'code_missing' };
+}

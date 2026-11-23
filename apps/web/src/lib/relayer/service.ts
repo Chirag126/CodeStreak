@@ -89,8 +89,8 @@ export async function rulesMatchChain(challengeAddress: string, onChainHashHex: 
   return Buffer.from(await rulesHash(data.rules)).toString('hex') === onChainHashHex;
 }
 
-/** Providers that can be linked today; the others are not required yet (LeetCode linking comes later). */
-const LINKABLE = new Set(['github']);
+/** Providers that can be linked (both, since Phase 26). */
+const LINKABLE = new Set(['github', 'leetcode']);
 
 /** A message if the challenge's rules need accounts the profile hasn't linked, else null. */
 async function joinRequirement(profileId: string, challengeAddress: string): Promise<string | null> {
@@ -103,7 +103,7 @@ async function joinRequirement(profileId: string, challengeAddress: string): Pro
   if (check.rule === 'all') {
     return `This challenge counts ${check.need.map((p) => PROVIDER_LABELS[p]).join(' and ')} activity, and your ${check.need.map((p) => PROVIDER_LABELS[p]).join(' and ')} account isn't linked yet. Link it in Dashboard → Settings, then join.`;
   }
-  return `This challenge counts ${check.need.map((p) => PROVIDER_LABELS[p]).join(' or ')} activity, and you haven't linked any of them yet. Link GitHub in Dashboard → Settings, then join.`;
+  return `This challenge counts ${check.need.map((p) => PROVIDER_LABELS[p]).join(' or ')} activity, and you haven't linked either yet. Link one of them in Dashboard → Settings, then join.`;
 }
 
 /** Joining a private group answers its pending invitation. */
