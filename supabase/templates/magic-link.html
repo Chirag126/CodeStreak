@@ -1,0 +1,12 @@
+<!--
+  Supabase → Authentication → Emails → "Magic link" (needs custom SMTP on the free plan).
+  Subject: Your CodeStreak sign-in link
+  The link opens CodeStreak's own page, which signs in only when the person presses Continue,
+  so link previews (WhatsApp, Slack, Teams) and mail scanners can't use it up.
+  {{ .RedirectTo }} is /auth/confirm?next=… (set by the app), so the token is appended with &.
+-->
+<h2>Sign in to CodeStreak</h2>
+<p>Open this link on the device you want to sign in on. It works once and expires in 1 hour.</p>
+<p><a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=magiclink">Sign in to CodeStreak</a></p>
+<p>Please don't forward or share this link: anyone who opens it can sign in as you.</p>
+<p>If you didn't ask to sign in, you can ignore this email.</p>

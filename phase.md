@@ -829,3 +829,14 @@ single hidden snapshot, layout change, stale anchor); SQL tests for every receip
 
 **Next (Phase 28):** the worker builds the receipt after each day, writes `day_results` + `day_receipts`
 in one transaction and records the hash on-chain with `record_verification`.
+
+### Fix: sign-in links used up by link previews
+
+Testing found both sign-in links "expired" on first open. Supabase's session log showed both were
+spent seconds after sending by `WhatsApp/2.23.20.0`: the link was shared in WhatsApp, whose preview
+bot fetched it first (Slack, Teams, Telegram and Outlook Safe Links do the same).
+- `/auth/confirm` now accepts `?token_hash=&type=` and spends it only when the person presses
+  **Continue** (bots fetch pages, never press buttons); `/auth/callback` no longer spends a token on GET.
+- Templates in `supabase/templates/` link to that page. Supabase only allows custom templates with
+  custom SMTP on the free plan, so they take effect once SMTP is configured (see render.md).
+- Until then the expired-link message names the cause: open the link straight from the email.
