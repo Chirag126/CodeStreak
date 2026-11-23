@@ -779,3 +779,53 @@ difficulty; solve before the day; no anchor; old rules documents; snapshot round
 
 **Test it:** create a challenge with LeetCode (1 new problem), join with a linked LeetCode account, solve a
 problem you have never solved on leetcode.com, then press **Check now** on the challenge page.
+
+## Phase 27: Rules engine and receipts (M)
+
+`packages/shared/src/rules-engine.ts` (isomorphic) + `verification/day-evaluation.ts` (provider adapters).
+
+**Flow:** each provider reports an outcome (`met`, `not_met`, `failed` = a rule broken, `unknown` = not
+readable), progress, evidence and data **quality** → a **confidence score** → the challenge's **ANY/ALL**
+rule combines them → the confidence gate → a **receipt** whose SHA-256 is the evidence hash.
+
+**Confidence (0-100, integers only):** `(complete ? 100 : 60) × coverage% − min(30, 10 × gaps)`; unreadable = 0.
+- GitHub: incomplete read → 60; each file GitHub returned without a patch is a gap.
+- LeetCode, by what the outcome depends on: *met* → anchor age (≤1 h 100, ≤6 h 90, older 75) and
+  unreadable snapshots in the day; *not met* → whether a snapshot reaches the end of the day (100, last
+  30 min 85, earlier 50); *hidden history* → 100 only when two hidden snapshots 25+ min apart confirm it
+  (one alone could be a glitch: 70); a page with no solved count is a layout problem → unknown.
+
+**ANY / ALL**
+- ANY: verified if one provider met its goal (most confident decides); failed only if every provider was
+  read and none met it; otherwise indeterminate.
+- ALL: verified only if all met (least confident decides); failed as soon as one is definitely short.
+- **Gate:** failed needs confidence ≥ 80, verified ≥ 50; below that the day is indeterminate (never costs
+  a stake). Shaky data can't fail an honest player or pass a cheat.
+
+**Receipt** (`buildReceipt` → `sealReceipt`): canonical JSON (keys sorted, NFC text, evidence de-duplicated
+and sorted, integers only, max 200 evidence items with the rest counted) of: version, engine id, challenge,
+wallet, day, window, rules fingerprint, rule, verdict, confidence, reason, and per provider outcome, value,
+goal, confidence, quality and evidence (ids + reason codes, never display text or check times). Same facts
+in any order → same bytes → same hash; `verifyReceipt` re-checks a stored one.
+
+**Database** (`day_receipts`): the receipt text must hash to its `evidence_hash`, name the same day and
+engine, and (checked at commit) match its `day_results` row: same hash, same verdict, same wallet and
+challenge. Changing a result without a new receipt is rejected. Receipts list commit SHAs and submission
+ids, so they follow the member's "share check details"; `day_results` keeps only the hash.
+`member_day_checks.confidence` stores each preview check's confidence.
+
+**Phase 26 gap fixed:** a LeetCode solve in a day's last ~30 minutes was missed (snapshots after the end
+were ignored). The final check now also uses snapshots up to 45 min after the end, and excludes solves
+dated after the end (`after-the-day`, counted for the next day; the minute estimate leans to the player).
+
+**In the app:** "Check now" stores the engine outcome + confidence per provider, and the day card shows
+*"If the day ended at this check: Verified / Failed / Can't be decided · confidence N%"* with the reason.
+
+**Tests:** ANY/ALL matrix; score boundaries 49/50 (verify) and 79/80 (fail), directly and through quality;
+same input in any order → same hash; a golden hash cross-checked with an independent implementation
+(Python) and with Postgres `sha256`; every field change changes the hash; NFC; duplicates; malformed input
+with specific errors; LeetCode/GitHub through the engine (last-minute solve, after-the-day, confirmed vs
+single hidden snapshot, layout change, stale anchor); SQL tests for every receipt guard.
+
+**Next (Phase 28):** the worker builds the receipt after each day, writes `day_results` + `day_receipts`
+in one transaction and records the hash on-chain with `record_verification`.

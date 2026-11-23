@@ -83,3 +83,4 @@ new deploy (not just a restart).
 | Day checks | **`GITHUB_API_TOKEN` on the web service is now required** for "Check now" (each check uses ~5–15 GitHub requests; without a token GitHub allows 60 per hour per server). Migration `member_day_checks` applied. |
 | 25 | **`FIRECRAWL_API_KEY` on the web service** (LeetCode Verify reads the profile through Firecrawl; ~1 credit per attempt). Migration `leetcode_binding` applied. |
 | 26 | **`FIRECRAWL_API_KEY` on the worker too** (scheduled LeetCode snapshots, ~1 credit per profile per 30 min while a LeetCode challenge runs). pg_cron job `codestreak-leetcode-snapshots` (`:15`/`:45`) → `/jobs/leetcode-snapshots`. Migration `leetcode_snapshots` applied. |
+| 27 | No new settings. Migration `day_receipts` applied (receipts table, `member_day_checks.confidence`). |

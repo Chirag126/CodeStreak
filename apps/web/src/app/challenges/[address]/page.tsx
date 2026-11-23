@@ -296,7 +296,13 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
         </Card>
       </div>
 
-      {myDay && <MyDayCard address={address} day={myDay.day} initial={myDay.logs} />}
+      {myDay && <MyDayCard
+          address={address}
+          day={myDay.day}
+          initial={myDay.logs}
+          rule={((row?.rules ?? {}) as Rules).providerRule === 'all' ? 'all' : 'any'}
+          providers={(['github', 'leetcode'] as const).filter((p) => Boolean(((row?.rules ?? {}) as Rules)[p]))}
+        />}
 
       <SponsorLeaderboard
         sponsors={sponsors}

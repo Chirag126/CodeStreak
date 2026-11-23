@@ -1,11 +1,13 @@
 import 'server-only';
 
-import { checkableDay } from '@codestreak/shared';
+import { checkableDay, providerConfidence, type ProviderOutcome } from '@codestreak/shared';
 import {
   collectGithubCommits,
   createGithubGet,
   evaluateGithubDay,
-  evaluateLeetcodeDay,
+  githubEvaluation,
+  LEETCODE_FINAL_GRACE_SECS,
+  leetcodeEvaluation,
   explainGithubDay,
   explainLeetcodeDay,
   githubRulesFromDocument,
@@ -32,6 +34,9 @@ type Window = { startSec: number; endSec: number };
 const secs = (iso: string) => Math.floor(Date.parse(iso) / 1000);
 
 interface Summary {
+  /** The engine's view (rules-engine.ts): outcome and confidence, as the final receipt will use them. */
+  engineOutcome: ProviderOutcome;
+  confidence: number;
   lines: number;
   goal: number;
   outcome: 'met' | 'not_met' | 'unknown';
@@ -81,7 +86,8 @@ async function saveDay(admin: Admin, input: { membershipId: string; day: number;
       run_id: input.runId,
       lines: s.lines,
       goal: s.goal,
-      breakdown: s.breakdown,
+      breakdown: { ...s.breakdown, engineOutcome: s.engineOutcome },
+      confidence: s.confidence,
       outcome: s.outcome,
       complete: s.complete,
       pushes: s.pushes,
@@ -117,6 +123,7 @@ async function checkGithub(admin: Admin, a: { profileId: string; membershipId: s
       .filter((x) => x.reason !== 'outside-day' && !seen.shas.has(x.sha))
       .map((x) => ({ id: x.sha, counted: false, reason: SKIP_REASON_TEXT[x.reason], occurredAt: pushedAt.get(x.sha) ?? new Date().toISOString(), diffHash: null, details: { repo: x.repo, lines: 0, code: x.reason } })),
   ];
+  const engine = githubEvaluation(day, data, rules.minMeaningfulLines);
   const { error } = await saveDay(admin, {
     membershipId: a.membershipId,
     day: a.day,
@@ -125,6 +132,8 @@ async function checkGithub(admin: Admin, a: { profileId: string; membershipId: s
     profileId: a.profileId,
     evidence,
     summary: {
+      engineOutcome: engine.outcome,
+      confidence: providerConfidence(engine.outcome, engine.quality),
       lines: day.meaningfulLines,
       goal: rules.minMeaningfulLines,
       outcome: day.meetsThreshold ? 'met' : data.complete && day.missingPatches === 0 ? 'not_met' : 'unknown',
@@ -165,7 +174,8 @@ async function checkLeetcode(admin: Admin, a: { profileId: string; membershipId:
 
   const cols = 'observed_at, handle, readable, solved, easy, medium, hard, has_history, recent, error';
   const startIso = new Date(a.window.startSec * 1000).toISOString();
-  const endIso = new Date(a.window.endSec * 1000).toISOString();
+  // Up to 45 min after the day ends too: the final check must see a solve in the day's last minutes.
+  const endIso = new Date((a.window.endSec + LEETCODE_FINAL_GRACE_SECS) * 1000).toISOString();
   // The anchor: the newest readable snapshot of THIS handle taken at or before the day started.
   const [{ data: anchorRow }, { data: dayRows }] = await Promise.all([
     admin.from('leetcode_snapshots').select(cols).eq('profile_id', a.profileId).eq('handle', handle).eq('readable', true).lte('observed_at', startIso).order('observed_at', { ascending: false }).limit(1).maybeSingle(),
@@ -173,11 +183,12 @@ async function checkLeetcode(admin: Admin, a: { profileId: string; membershipId:
   ]);
   type Row = Parameters<typeof snapshotRecordFromRow>[0];
   const rules = leetcodeRulesFromDocument(a.doc);
-  const result = evaluateLeetcodeDay({
+  const { result, evaluation: engine } = leetcodeEvaluation({
     anchor: anchorRow ? snapshotRecordFromRow(anchorRow as unknown as Row) : null,
     daySnapshots: (dayRows ?? []).map((r) => snapshotRecordFromRow(r as unknown as Row)),
     window: a.window,
     rules,
+    graceSecs: LEETCODE_FINAL_GRACE_SECS,
   });
   const at = new Date().toISOString();
   const link = (id: string) => ({ url: `https://leetcode.com/submissions/detail/${id}/` });
@@ -193,7 +204,7 @@ async function checkLeetcode(admin: Admin, a: { profileId: string; membershipId:
     ...result.ignored.map((s) => ({
       id: s.submissionId,
       counted: false,
-      reason: s.reason === 'already-solved-recently' ? 'A re-solve of a problem you had already solved.' : 'Solved before the day started.',
+      reason: { 'already-solved-recently': 'A re-solve of a problem you had already solved.', 'before-the-day': 'Solved before the day started.', 'after-the-day': 'Solved after the day ended (counts for the next day).' }[s.reason],
       occurredAt: at,
       diffHash: null,
       details: { title: s.title, ...link(s.submissionId), code: s.reason },
@@ -216,6 +227,8 @@ async function checkLeetcode(admin: Admin, a: { profileId: string; membershipId:
     profileId: a.profileId,
     evidence,
     summary: {
+      engineOutcome: engine.outcome,
+      confidence: providerConfidence(engine.outcome, engine.quality),
       lines: result.creditedAtLevel,
       goal: rules.minNewSolves,
       outcome: result.meetsThreshold ? 'met' : known ? 'not_met' : 'unknown',
@@ -323,6 +336,9 @@ export interface DayLog {
   goal: number;
   unit: string;
   outcome: 'met' | 'not_met' | 'unknown';
+  /** The rules engine's outcome and confidence (null for checks made before Phase 27). */
+  engineOutcome: ProviderOutcome | null;
+  confidence: number | null;
   complete: boolean;
   pushes: number;
   hints: string[];
@@ -338,7 +354,7 @@ export interface DayLog {
 export async function readDayLogs(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, membershipId: string, day: number): Promise<DayLog[]> {
   const { data: summaries } = await supabase
     .from('member_day_checks')
-    .select('provider, day, lines, goal, outcome, complete, pushes, hints, notes, checked_at')
+    .select('provider, day, lines, goal, outcome, confidence, breakdown, complete, pushes, hints, notes, checked_at')
     .eq('membership_id', membershipId)
     .eq('day', day);
   if (!summaries?.length) return [];
@@ -360,6 +376,8 @@ export async function readDayLogs(supabase: Awaited<ReturnType<typeof createSupa
         goal: s.goal as number,
         unit: provider === 'github' ? 'meaningful lines' : 'new problems',
         outcome: s.outcome as DayLog['outcome'],
+        engineOutcome: ((s.breakdown as { engineOutcome?: ProviderOutcome } | null)?.engineOutcome ?? null),
+        confidence: (s.confidence as number | null) ?? null,
         complete: s.complete as boolean,
         pushes: s.pushes as number,
         hints: (s.hints as string[]) ?? [],

@@ -1,3 +1,4 @@
+import { combineDay, CONFIDENCE, VERDICT_REASON_TEXT, type ProviderRule, type RuleProvider } from '@codestreak/shared';
 import { Badge } from '@/components/ui/badge';
 import type { DayLog } from '@/lib/verification/day-check';
 import { cn } from '@/lib/utils';
@@ -87,6 +88,37 @@ export function DayLogsView({ logs, preview = true }: { logs: DayLog[]; preview?
       {logs.map((l) => (
         <DayLogView key={l.provider} log={l} preview={preview} />
       ))}
+    </div>
+  );
+}
+
+const VERDICT = {
+  verified: { label: 'Verified', variant: 'success' },
+  failed: { label: 'Failed', variant: 'warning' },
+  indeterminate: { label: "Can't be decided", variant: 'default' },
+} as const;
+
+/**
+ * What the rules engine would decide if the day ended at the last check: the providers combined
+ * under the challenge's ANY/ALL rule, gated by confidence (the same code builds the final receipt).
+ */
+export function DayVerdictView({ logs, rule, providers }: { logs: DayLog[]; rule: ProviderRule; providers: RuleProvider[] }) {
+  const scored = providers.map((p) => {
+    const l = logs.find((x) => x.provider === p);
+    return { provider: p, outcome: l?.engineOutcome ?? ('unknown' as const), confidence: l?.confidence ?? 0 };
+  });
+  const v = combineDay(rule, scored);
+  return (
+    <div className="space-y-1 rounded-lg border border-border bg-muted/40 p-3 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-muted-foreground">If the day ended at this check:</span>
+        <Badge variant={VERDICT[v.verdict].variant}>{VERDICT[v.verdict].label}</Badge>
+        <span className="text-xs text-muted-foreground">confidence {v.confidence}%</span>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {VERDICT_REASON_TEXT[v.reason]} {providers.length > 1 && (rule === 'all' ? 'This challenge needs every provider.' : 'This challenge needs any one provider.')} A day fails only at
+        confidence {CONFIDENCE.failMin}%+ and is verified at {CONFIDENCE.verifyMin}%+.
+      </p>
     </div>
   );
 }

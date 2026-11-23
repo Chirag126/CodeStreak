@@ -6,3 +6,4 @@ export * from './leetcode.js';
 export * from './leetcode-fetch.js';
 export * from './leetcode-day.js';
 export * from './leetcode-snapshot.js';
+export * from './day-evaluation.js';

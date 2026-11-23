@@ -8,10 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { checkMyDayAction } from '@/app/challenges/[address]/check-actions';
 import { useCountdown } from '@/app/sign-in/use-countdown';
 import type { DayLog } from '@/lib/verification/day-check';
-import { DayLogsView } from './day-log';
+import type { ProviderRule, RuleProvider } from '@codestreak/shared';
+import { DayLogsView, DayVerdictView } from './day-log';
 
 /** A player's own day: check every provider now and see exactly what counted and why. */
-export function MyDayCard({ address, day, initial }: { address: string; day: number; initial: DayLog[] }) {
+export function MyDayCard({ address, day, initial, rule, providers }: { address: string; day: number; initial: DayLog[]; rule: ProviderRule; providers: RuleProvider[] }) {
   const toast = useToast();
   const [logs, setLogs] = useState<DayLog[]>(initial);
   const [busy, start] = useTransition();
@@ -45,7 +46,10 @@ export function MyDayCard({ address, day, initial }: { address: string; day: num
         </div>
         <CardDescription>Reads today’s GitHub pushes and/or LeetCode profile (whatever this challenge counts) and shows what counts. Push or solve, then check.</CardDescription>
       </CardHeader>
-      <CardContent>{logs.length ? <DayLogsView logs={logs} /> : <p className="text-sm text-muted-foreground">Not checked yet today.</p>}</CardContent>
+      <CardContent className="space-y-4">
+        {logs.length > 0 && <DayVerdictView logs={logs} rule={rule} providers={providers} />}
+        {logs.length ? <DayLogsView logs={logs} /> : <p className="text-sm text-muted-foreground">Not checked yet today.</p>}
+      </CardContent>
     </Card>
   );
 }
