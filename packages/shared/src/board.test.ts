@@ -68,3 +68,14 @@ describe('board', () => {
     expect(formatCountdown(-5)).toBe('0s');
   });
 });
+
+describe('checkable day', () => {
+  it('is the running day, then the last day during final checks, then nothing', async () => {
+    const { checkableDay } = await import('./board.js');
+    expect(checkableDay(times, START - 1)).toEqual({ ok: false, reason: 'not_started' });
+    expect(checkableDay(times, START + DAY + 5)).toEqual({ ok: true, day: 1, window: { startSec: START + DAY, endSec: START + 2 * DAY } });
+    expect(checkableDay(times, START + 3 * DAY + 60)).toMatchObject({ ok: true, day: 2 });
+    expect(checkableDay(times, START + 3 * DAY + 3600)).toEqual({ ok: false, reason: 'over' });
+    expect(checkableDay({ ...times, state: 'cancelled' }, START + 5)).toEqual({ ok: false, reason: 'cancelled' });
+  });
+});

@@ -86,6 +86,7 @@ export type GithubSkipReason =
   | 'outside-day'
   | 'merge-commit'
   | 'author-mismatch'
+  | 'author-unlinked'
   | 'pushed-by-other'
   | 'other-repo'
   | 'fork'
@@ -251,6 +252,8 @@ export function evaluateGithubDay(input: {
 
     if (!(pushedSec >= input.window.startSec && pushedSec < input.window.endSec)) { skip('outside-day'); continue; }
     if (c.parentShas.length > 1) { skip('merge-commit'); continue; }
+    // null: the git email isn't on any GitHub account; another id: someone else's account.
+    if (c.authorId === null) { skip('author-unlinked'); continue; }
     if (c.authorId !== input.userGithubId) { skip('author-mismatch'); continue; }
     // Unknown pusher (undefined) only in old records; a known other pusher never counts.
     if (c.pusherId !== undefined && c.pusherId !== input.userGithubId) { skip('pushed-by-other'); continue; }

@@ -13,6 +13,10 @@ export interface BoardCheck {
   counted: number;
   considered: number;
   providers: ('github' | 'leetcode')[];
+  /** Latest day check: meaningful lines toward the goal (absent until someone checks). */
+  lines?: number;
+  goal?: number;
+  outcome?: 'met' | 'not_met' | 'unknown';
 }
 
 export interface BoardMemberInput {
@@ -170,4 +174,20 @@ export function formatCountdown(secs: number): string {
   if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
   if (m > 0) return `${m}m ${String(r).padStart(2, '0')}s`;
   return `${r}s`;
+}
+
+/**
+ * Which day a member can check now: the running day, or the last day while its final checks are
+ * still open. Before the start and once results are final there is nothing to check.
+ */
+export function checkableDay(t: ChallengeTimes, now: number): { ok: true; day: number; window: { startSec: number; endSec: number } } | { ok: false; reason: 'not_started' | 'over' | 'cancelled' } {
+  if (t.state === 'cancelled') return { ok: false, reason: 'cancelled' };
+  if (now < t.startTs) return { ok: false, reason: 'not_started' };
+  const end = endTs(t);
+  let day: number;
+  if (now < end) day = Math.floor((now - t.startTs) / t.dayLengthSecs);
+  else if (now < verifyEndTs(t) && t.state !== 'settled') day = t.numDays - 1;
+  else return { ok: false, reason: 'over' };
+  const startSec = t.startTs + day * t.dayLengthSecs;
+  return { ok: true, day, window: { startSec, endSec: startSec + t.dayLengthSecs } };
 }

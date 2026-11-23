@@ -81,8 +81,10 @@ describe('day evaluation', () => {
 
   it('PHASE 2 FINDING: commits from an email not linked to the user do not count', () => {
     const r = run([commit({ sha: '695c738', authorId: null })]);
-    expect(r.skipped[0]?.reason).toBe('author-mismatch');
+    expect(r.skipped[0]?.reason).toBe('author-unlinked');
     expect(r.meetsThreshold).toBe(false);
+    // Written by someone else's GitHub account: a different reason, with a different explanation.
+    expect(run([commit({ sha: 'other', authorId: 81847 })]).skipped[0]?.reason).toBe('author-mismatch');
   });
 
   it('backdated commits are judged by push time, not author date', () => {

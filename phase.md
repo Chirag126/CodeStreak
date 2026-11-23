@@ -693,3 +693,19 @@ Real case: a push to `Chirag126/trust-dependency-mapper` at 12:37 UTC (branch `f
 **Clearer messages:** `verify:github` lists each repository read and explains from what it saw (no public repo pushed that day; pushed by others; author email not on the account; merges; re-indents; lines still needed; incomplete data). The join requirement says exactly which account to link.
 
 **Tests:** collector with a fake GitHub (unlisted-in-feed pushes found, pr_merge not read, spoofed author pushed by another account, selected repos by id, private/deleted selected repo → indeterminate, branch creation and force push, rate limit, network error, commit cap, no pushes, deleted account); repo list parsing.
+
+### Phase 24 follow-up: day checks in the app
+
+**Why:** the only way to see a verification was `pnpm verify:github` in a terminal. Players, creators and sponsors need it in the app.
+
+**Your day (players of GitHub challenges):** a card on the challenge page with **Check now** (once a minute per player, protecting the GitHub budget). It reads the player's pushes on GitHub for the running day (or the last day during final checks) and shows progress (lines of the goal), a status (goal reached / not yet / couldn't be fully checked), plain explanations, and every commit with a link to GitHub, its lines and why it did or didn't count. Labelled as a preview: the final result is recorded after the day ends.
+
+**Group board:** each member shows "x/goal lines today" and **View checks** opens their log. Every check updates open boards live.
+
+**Storage:** `member_day_checks` (latest summary per member, day, provider) and `evidence` (one row per commit, with the reason in words); each check is a `verification_runs` row (`manual`). A re-check replaces that day's evidence (force pushes can remove commits); commits considered on earlier days never count again.
+
+**Privacy fixed in the database:** "Show my check details" (Phase 21) and the creator's "players only" were only applied by the app; anyone who could see a challenge could read every member's evidence through the API. `private.can_view_member_checks` now enforces both on `evidence` and `member_day_checks`: hidden details are visible only to their owner (not even the creator); "players only" hides checks from non-players.
+
+**Explanations are shared** (`explainGithubDay`, `SKIP_REASON_TEXT`) by the app and the command, so they always agree. Fixed: commits written by another GitHub account were described as "your git email isn't on your account"; now `author-mismatch` (another account) and `author-unlinked` (email on no account) are separate, with correct grammar.
+
+**Tests:** explanations for the real 23 Nov day (14 other-account commits, 9 merges, 1 no-code commit, 13 lines needed), no-push cases, goal reached, incomplete data, a sentence for every reason; author-unlinked vs author-mismatch; checkable day (not started, running, final checks, over, cancelled). SQL: outcome/goal/hints constraints; outsider sees only shared checks; a member sees their own hidden details; even the creator can't see hidden details; players-only hides checks from outsiders but not from players or the creator; users can't write checks; checks bump the live board.
