@@ -25,6 +25,9 @@ export function GithubCard({ account, locked, notice }: { account: GithubView | 
   const toast = useToast();
   const [busy, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // Shown as unlinked as soon as the server confirms, not when the page refresh lands seconds later.
+  const [unlinked, setUnlinked] = useState(false);
+  const shown = unlinked ? null : account;
 
   function link() {
     setError(null);
@@ -49,6 +52,7 @@ export function GithubCard({ account, locked, notice }: { account: GithubView | 
       const { data } = await supabase.auth.getUserIdentities();
       const identity = data?.identities.find((i) => i.provider === 'github');
       if (identity) await supabase.auth.unlinkIdentity(identity);
+      setUnlinked(true);
       toast({ kind: 'info', title: 'GitHub unlinked' });
       router.refresh();
     });
@@ -59,29 +63,29 @@ export function GithubCard({ account, locked, notice }: { account: GithubView | 
       <CardHeader>
         <div className="flex flex-wrap items-center gap-2">
           <CardTitle>GitHub</CardTitle>
-          {account ? <Badge variant="success">Linked</Badge> : <Badge variant="outline">Not linked</Badge>}
-          {locked && account && <Badge variant="warning">Locked during your challenge</Badge>}
+          {shown ? <Badge variant="success">Linked</Badge> : <Badge variant="outline">Not linked</Badge>}
+          {locked && shown && <Badge variant="warning">Locked during your challenge</Badge>}
         </div>
         <CardDescription>Used to verify your coding days. CodeStreak reads only your public activity; it never gets access to your code or private repos.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {account ? (
+        {shown ? (
           <dl className="grid gap-2 text-sm sm:grid-cols-3">
             <div>
               <dt className="text-muted-foreground">Account</dt>
               <dd>
-                <a className="underline underline-offset-4" href={`https://github.com/${account.username}`} target="_blank" rel="noreferrer">
-                  @{account.username} ↗
+                <a className="underline underline-offset-4" href={`https://github.com/${shown.username}`} target="_blank" rel="noreferrer">
+                  @{shown.username} ↗
                 </a>
               </dd>
             </div>
             <div>
               <dt className="text-muted-foreground">GitHub ID</dt>
-              <dd className="font-mono">{account.id}</dd>
+              <dd className="font-mono">{shown.id}</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">Linked</dt>
-              <dd>{new Date(account.linkedAt).toUTCString().slice(5, 16)}</dd>
+              <dd>{new Date(shown.linkedAt).toUTCString().slice(5, 16)}</dd>
             </div>
           </dl>
         ) : (
@@ -97,8 +101,8 @@ export function GithubCard({ account, locked, notice }: { account: GithubView | 
             {error}
           </p>
         )}
-        {account ? (
-          <Button variant="ghost" onClick={unlink} disabled={busy || locked} title={locked ? 'You can unlink after your open challenges end.' : undefined}>
+        {shown ? (
+          <Button variant="outline" onClick={unlink} loading={busy} disabled={busy || locked} title={locked ? 'You can unlink after your open challenges end.' : undefined}>
             Unlink GitHub
           </Button>
         ) : (
@@ -106,7 +110,7 @@ export function GithubCard({ account, locked, notice }: { account: GithubView | 
             Link GitHub
           </Button>
         )}
-        {locked && account && <p className="text-xs text-muted-foreground">To keep results fair, your GitHub can&apos;t be changed or unlinked until your open challenges end.</p>}
+        {locked && shown && <p className="text-xs text-muted-foreground">To keep results fair, your GitHub can&apos;t be changed or unlinked until your open challenges end.</p>}
       </CardContent>
     </Card>
   );

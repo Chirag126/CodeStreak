@@ -141,7 +141,8 @@ export function buildBoard(input: BoardInput, now: number): Board {
       const { results: _r, shieldDays, ...rest } = m;
       return {
         ...rest,
-        state: memberState(m),
+        // A cancelled challenge refunds everyone still in it.
+        state: t.state === 'cancelled' && m.status === 'active' ? 'voided' : memberState(m),
         cells,
         today: day === null ? null : cells[day]!,
         verifiedDays: cells.filter((c) => c === 'verified').length,

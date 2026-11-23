@@ -12,14 +12,19 @@ const toBase64 = (b: Uint8Array) => btoa(Array.from(b, (x) => String.fromCharCod
  * Sign in with a wallet already linked to a CodeStreak account: the server issues a one-time
  * message, the wallet signs it (no transaction, no fees), and the server signs this browser in.
  */
-export function WalletSignIn({ next }: { next: string }) {
+export function WalletSignIn({ next, onStart }: { next: string; onStart?: () => void }) {
   const wallets = useSolanaWallets();
   const [busy, start] = useTransition();
+  // The wallet in use (only its button spins) and whether we're leaving for the next page (all stay off).
+  const [active, setActive] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
   function signIn(wallet: Wallet) {
     setError(null);
+    setActive(wallet.name);
+    onStart?.();
     start(async () => {
       let account;
       try {
@@ -53,6 +58,7 @@ export function WalletSignIn({ next }: { next: string }) {
         return setError(result.error);
       }
       // Full navigation so the server sees the new session cookies (and routes to username if needed).
+      setLeaving(true);
       window.location.assign(result.next);
     });
   }
@@ -67,7 +73,14 @@ export function WalletSignIn({ next }: { next: string }) {
       </div>
       <div className="flex flex-col gap-2">
         {wallets.map((w) => (
-          <Button key={w.name} variant="secondary" onClick={() => signIn(w)} loading={busy} className="w-full">
+          <Button
+            key={w.name}
+            variant="secondary"
+            onClick={() => signIn(w)}
+            loading={(busy || leaving) && active === w.name}
+            disabled={busy || leaving}
+            className="w-full"
+          >
             Sign in with {w.name}
           </Button>
         ))}

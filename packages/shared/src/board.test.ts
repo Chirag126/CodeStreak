@@ -59,6 +59,8 @@ describe('board', () => {
     expect(buildBoard(input([]), START + 3 * DAY + 3605).countdown?.label).toBe('Disputes close');
     expect(buildBoard(input([]), START + 3 * DAY + 7300).countdown).toBeNull();
     expect(buildBoard({ ...input([]), times: { ...times, state: 'cancelled' } }, START).statusLabel).toBe('Cancelled');
+    // players of a cancelled challenge are refunded, not "still in"
+    expect(buildBoard({ ...input([member({})]), times: { ...times, state: 'cancelled' } }, START).members[0]!.state).toBe('voided');
   });
 
   it('formats countdowns', () => {

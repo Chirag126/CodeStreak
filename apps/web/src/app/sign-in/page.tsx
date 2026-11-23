@@ -1,8 +1,7 @@
 import type { Metadata } from 'next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { safeNext } from '@/lib/auth/routes';
-import { SignInForm } from './sign-in-form';
-import { WalletSignIn } from './wallet-sign-in';
+import { SignInMethods } from './sign-in-methods';
 
 export const metadata: Metadata = { title: 'Sign in' };
 
@@ -16,8 +15,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
           <CardDescription>We&apos;ll email you a one-time sign-in link, or sign in with a wallet you linked.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <SignInForm next={safeNext(next)} linkError={error === 'link'} />
-          <WalletSignIn next={safeNext(next)} />
+          <SignInMethods next={safeNext(next)} linkError={error === 'link'} />
         </CardContent>
       </Card>
     </div>

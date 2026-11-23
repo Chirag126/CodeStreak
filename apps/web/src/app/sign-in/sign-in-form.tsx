@@ -10,7 +10,7 @@ import { variants } from '@/lib/motion';
 import { requestCode, verifyCode, type SignInState } from './actions';
 import { useCountdown } from './use-countdown';
 
-export function SignInForm({ next, linkError }: { next: string; linkError?: boolean }) {
+export function SignInForm({ next, linkError, hideError, onEmailStart }: { next: string; linkError?: boolean; hideError?: boolean; onEmailStart?: () => void }) {
   const [emailState, sendCode, sending] = useActionState(requestCode, { step: 'email' } as SignInState);
   const [codeState, checkCode, checking] = useActionState(verifyCode, { step: 'email' } as SignInState);
 
@@ -26,12 +26,12 @@ export function SignInForm({ next, linkError }: { next: string; linkError?: bool
   const sendWait = useCountdown(emailState.retryAt);
   const codeWait = useCountdown(codeState.step === 'code' ? codeState.retryAt : undefined);
   const waiting = codeEmail ? codeWait : sendWait;
-  const shownError = waiting > 0 || !(codeEmail ? codeState.retryAt : emailState.retryAt) ? error : undefined;
+  const shownError = hideError ? undefined : waiting > 0 || !(codeEmail ? codeState.retryAt : emailState.retryAt) ? error : undefined;
 
   return (
     <AnimatePresence mode="wait" initial={false}>
       {!codeEmail ? (
-        <motion.form key="email" action={sendCode} className="space-y-4" variants={variants.fadeUp} initial="hidden" animate="show" exit="hidden">
+        <motion.form key="email" action={sendCode} onSubmit={onEmailStart} className="space-y-4" variants={variants.fadeUp} initial="hidden" animate="show" exit="hidden">
           <input type="hidden" name="next" value={next} />
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
@@ -42,8 +42,8 @@ export function SignInForm({ next, linkError }: { next: string; linkError?: bool
               autoComplete="email"
               required
               defaultValue={emailState.step === 'email' ? emailState.email : undefined}
-              aria-invalid={Boolean(error) || undefined}
-              aria-describedby={error ? 'sign-in-error' : undefined}
+              aria-invalid={Boolean(shownError) || undefined}
+              aria-describedby={shownError ? 'sign-in-error' : undefined}
             />
           </div>
           {shownError && (

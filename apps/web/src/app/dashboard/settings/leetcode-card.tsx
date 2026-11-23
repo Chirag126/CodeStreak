@@ -15,8 +15,8 @@ import type { LeetcodeStatus } from '@/lib/accounts/leetcode';
 import { cancelLeetcodeAction, startLeetcodeAction, unlinkLeetcodeAction, verifyLeetcodeAction } from './actions';
 
 /**
- * LeetCode has no "sign in with": ownership is proved by putting a one-time code in the profile
- * summary, which only the owner can edit. CodeStreak reads the public profile live to confirm.
+ * LeetCode has no "sign in with": ownership is proved by putting a one-time code in a public profile
+ * field (e.g. ReadMe), which only the owner can edit. CodeStreak reads the public profile live to confirm.
  */
 export function LeetcodeCard({ status }: { status: LeetcodeStatus }) {
   const router = useRouter();
@@ -64,8 +64,8 @@ export function LeetcodeCard({ status }: { status: LeetcodeStatus }) {
                 <dd>{new Date(status.account.linkedAt).toUTCString().slice(5, 16)}</dd>
               </div>
             </dl>
-            <p className="text-xs text-muted-foreground">You can remove the code from your LeetCode summary now.</p>
-            <Button variant="ghost" disabled={busy || status.locked} onClick={() => run(unlinkLeetcodeAction, 'LeetCode unlinked')}>
+            <p className="text-xs text-muted-foreground">Linked. You can remove the verification code from your LeetCode profile (ReadMe) now.</p>
+            <Button variant="outline" disabled={busy || status.locked} onClick={() => run(unlinkLeetcodeAction, 'LeetCode unlinked')}>
               Unlink LeetCode
             </Button>
             {status.locked && <p className="text-xs text-muted-foreground">To keep results fair, it can&apos;t be changed or unlinked until your open challenges end.</p>}

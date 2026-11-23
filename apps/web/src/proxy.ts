@@ -2,20 +2,22 @@
 // and applies the route guard (lib/auth/routes.ts).
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { appOrigin } from '@/lib/app-origin';
 import { isProtected, routeDecision, SIGN_IN_PATH, USERNAME_PATH, type ViewerState } from '@/lib/auth/routes';
 
 export async function proxy(request: NextRequest) {
+  const origin = appOrigin(request.nextUrl.origin);
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !key) {
     // Misconfigured deployment: fail closed for protected pages.
-    return isProtected(request.nextUrl.pathname) ? NextResponse.redirect(new URL('/', request.url)) : NextResponse.next();
+    return isProtected(request.nextUrl.pathname) ? NextResponse.redirect(new URL('/', origin)) : NextResponse.next();
   }
 
   // Safety net for old PKCE links that fell back to the Site URL: finish them on the callback.
   const stray = request.nextUrl.searchParams.get('code');
   if (stray && request.nextUrl.pathname !== '/auth/callback') {
-    const to = new URL('/auth/callback', request.url);
+    const to = new URL('/auth/callback', origin);
     to.searchParams.set('code', stray);
     to.searchParams.set('next', request.nextUrl.pathname === '/' ? '/dashboard' : request.nextUrl.pathname);
     return NextResponse.redirect(to);
@@ -55,7 +57,7 @@ export async function proxy(request: NextRequest) {
 
   const target = routeDecision(pathname, search, viewer);
   if (!target) return response;
-  const redirect = NextResponse.redirect(new URL(target, request.url));
+  const redirect = NextResponse.redirect(new URL(target, origin));
   for (const cookie of response.cookies.getAll()) redirect.cookies.set(cookie);
   return redirect;
 }

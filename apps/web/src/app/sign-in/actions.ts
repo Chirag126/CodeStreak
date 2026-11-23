@@ -25,6 +25,12 @@ function friendly(message: string): string {
 const TOO_MANY_SENDS = `You've asked for ${SIGN_IN_LIMITS.maxSends} sign-in emails. Use the newest one, or wait for the timer to request another.`;
 const TOO_MANY_CODES = `${SIGN_IN_LIMITS.maxBadCodes} wrong codes. Wait for the timer, then try again or request a new email.`;
 const PROVIDER_BUSY = 'Our email service is sending too many emails right now. Wait for the timer, then try again.';
+const EMAIL_SEND_FAILED = "We couldn't send the sign-in email: our email service refused it (a CodeStreak setup problem, not your address). Sign in with your wallet below, or try again later.";
+
+/** The email provider (SMTP) failed: Supabase answers 5xx / unexpected_failure / "Error sending … email". */
+export function isEmailSendFailure(error: { message: string; code?: string; status?: number }): boolean {
+  return (error.status ?? 0) >= 500 || error.code === 'unexpected_failure' || /error sending .*email|smtp/i.test(error.message);
+}
 
 /** Absolute URL of the email link's landing page (APP_URL on Render; the request origin locally). */
 async function confirmUrl(next: string): Promise<string> {
@@ -63,6 +69,10 @@ export async function requestCode(_prev: SignInState, form: FormData): Promise<S
     if (wait) {
       const perAddress = /after \d+ seconds?/i.test(error.message);
       return { step: 'email', error: perAddress ? 'An email was just sent. Wait for the timer to request another.' : PROVIDER_BUSY, email, retryAt: Date.now() + wait * 1000 };
+    }
+    if (isEmailSendFailure(error)) {
+      console.error('[sign-in] email send failed:', error.status, error.code, error.message);
+      return { step: 'email', error: EMAIL_SEND_FAILED, email };
     }
     return { step: 'email', error: friendly(error.message), email };
   }
