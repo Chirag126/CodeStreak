@@ -157,6 +157,18 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
   }
   const title = (row?.title as string | undefined) ?? `Challenge ${address.slice(0, 4)}…${address.slice(-4)}`;
 
+  // After the end: the viewer's own outcome and the payout the worker sent (Phase 28).
+  let myOutcome: string | null = null;
+  if (viewer && row && (phase === 'settled' || phase === 'cancelled')) {
+    const { data: mine } = await supabase
+      .from('memberships')
+      .select('status, payout, claimed_at')
+      .eq('challenge_id', row.id as string)
+      .eq('profile_id', viewer.userId)
+      .maybeSingle();
+    if (mine) myOutcome = describeOutcome(phase, mine.status as string, mine.payout as string | null, mine.claimed_at as string | null, fmt, isSol);
+  }
+
   // A player's own day: the latest check per provider for the day that can be checked now.
   const myMembershipId = board?.viewer.membershipId ?? null;
   const slot = checkableDay(times, now);
@@ -222,8 +234,15 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
                 : `Minimum of ${account.minParticipants} reached: it starts ${when(times.startTs)}.`}
             </p>
           )}
+          {myOutcome && (
+            <p role="status" className="rounded-lg border border-border bg-muted/40 p-3 text-sm">
+              {myOutcome}
+            </p>
+          )}
           {phase === 'cancelled' ? (
-            <p className="text-sm text-muted-foreground">Cancelled: fewer than {account.minParticipants} players joined. Every stake can be claimed back in full from the on-chain escrow.</p>
+            <p className="text-sm text-muted-foreground">
+              Cancelled: fewer than {account.minParticipants} players joined. Every stake and sponsorship is refunded automatically to the wallet it came from.
+            </p>
           ) : phase !== 'joining' ? (
             <p className="text-sm text-muted-foreground">Joining is closed.</p>
           ) : viewerJoined ? (
@@ -370,4 +389,15 @@ function PrivateNotice({ address, signedIn }: { address: string; signedIn: boole
       </Card>
     </div>
   );
+}
+
+/** One line about the viewer's result and payout, in plain words. */
+function describeOutcome(phase: 'settled' | 'cancelled', status: string, payout: string | null, claimedAt: string | null, fmt: (v: { toString(): string }) => string, isSol: boolean): string {
+  const wsol = isSol ? ' SOL arrives as Wrapped SOL (wSOL): your wallet lists it as a token, and unwrapping it there gives plain SOL.' : '';
+  const sent = (what: string) => (claimedAt ? `${what} of ${payout ? fmt(payout) : 'your funds'} was sent to your wallet.${wsol}` : `${what} is being sent to your wallet (this takes a few minutes).`);
+  if (phase === 'cancelled') return sent('Your refund');
+  if (status === 'survived') return `You kept your streak. ${sent('Your reward')}`;
+  if (status === 'voided') return `Some of your days could not be verified, so your stake is returned. ${sent('Your refund')}`;
+  if (status === 'failed') return claimedAt ? `Nobody kept their streak, so everyone is refunded. ${sent('Your refund')}` : 'You missed a day, so your stake went to the players who kept their streak.';
+  return 'Your result is being finalized.';
 }
