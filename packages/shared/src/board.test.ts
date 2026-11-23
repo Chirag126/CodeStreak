@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildBoard, cellState, formatCountdown, memberState, type BoardInput, type BoardMemberInput } from './board.js';
+import { buildBoard, cellState, formatCountdown, memberState, type BoardCheck, type BoardInput, type BoardMemberInput } from './board.js';
 
 const START = 1_800_000_000;
 const DAY = 86_400;
@@ -85,7 +85,7 @@ describe('checkable day', () => {
 describe('done today', () => {
   it('counts a goal met at the latest check, by the ANY/ALL rule', async () => {
     const { goalMetAtCheck } = await import('./board.js');
-    const checks: import('./board.js').BoardCheck[] = [{ day: 0, counted: 1, considered: 1, providers: ['github', 'leetcode'], progress: [
+    const checks: BoardCheck[] = [{ day: 0, counted: 1, considered: 1, providers: ['github', 'leetcode'], progress: [
       { provider: 'github' as const, value: 20, goal: 15, outcome: 'met' as const },
       { provider: 'leetcode' as const, value: 0, goal: 1, outcome: 'not_met' as const },
     ] }];
