@@ -1,4 +1,4 @@
-import { formatAmount, GITHUB_OPTION_LIMITS, SOL_DECIMALS, survivalRate, USDC_DECIMALS, WSOL_MINT } from '@codestreak/shared';
+import { checkableDay, formatAmount, GITHUB_OPTION_LIMITS, SOL_DECIMALS, survivalRate, USDC_DECIMALS, WSOL_MINT } from '@codestreak/shared';
 import { challengePhase, challengeTimes, createProgram, explorerAddressUrl, rulesHash } from '@codestreak/shared/program';
 import { isSolanaAddress } from '@codestreak/shared/wallet';
 import { PublicKey } from '@solana/web3.js';
@@ -19,6 +19,8 @@ import { SponsorLeaderboard } from '@/components/sponsor/sponsor-leaderboard';
 import { SponsorLinkPanel } from '@/components/sponsor/sponsor-link-panel';
 import { listSponsors } from '@/lib/sponsor/load';
 import { loadBoard } from '@/lib/board/load';
+import { MyDayCard } from '@/components/checks/my-day-card';
+import { readDayLog } from '@/lib/verification/day-check';
 import { listGroupInvites } from '@/lib/groups/invites';
 import { JoinButton } from './join-button';
 
@@ -131,6 +133,12 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
     sponsorLinkActive = Boolean(data?.sponsor_link_created_at);
   }
   const title = (row?.title as string | undefined) ?? `Challenge ${address.slice(0, 4)}…${address.slice(-4)}`;
+
+  // A player's own day (GitHub challenges): the latest check of the day that can be checked now.
+  const myMembershipId = board?.viewer.membershipId ?? null;
+  const slot = checkableDay(times, now);
+  const countsGithub = Boolean(((row?.rules ?? {}) as Rules).github);
+  const myDay = myMembershipId && slot.ok && countsGithub ? { day: slot.day, log: await readDayLog(supabase, myMembershipId, slot.day) } : null;
 
   // Rules integrity: what CodeStreak shows must hash to the on-chain fingerprint.
   const onChainRulesHash = Buffer.from(account.rulesHash).toString('hex');
@@ -270,6 +278,8 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
           </CardContent>
         </Card>
       </div>
+
+      {myDay && <MyDayCard address={address} day={myDay.day} initial={myDay.log} />}
 
       <SponsorLeaderboard
         sponsors={sponsors}

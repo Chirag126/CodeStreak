@@ -44,10 +44,11 @@ export async function loadBoard(address: string): Promise<BoardPayload | null> {
   let members: BoardMemberInput[] = [];
   if (membersVisible && rows.length) {
     const ids = rows.map((m) => m.id as string);
-    const [{ data: results }, { data: shields }, { data: evidence }] = await Promise.all([
+    const [{ data: results }, { data: shields }, { data: evidence }, { data: dayChecks }] = await Promise.all([
       admin.from('day_results').select('membership_id, day, result').in('membership_id', ids).limit(60_000),
       admin.from('shields').select('membership_id, day').in('membership_id', ids).limit(5_000),
       admin.from('evidence').select('membership_id, day, provider, counted').in('membership_id', ids).limit(20_000),
+      admin.from('member_day_checks').select('membership_id, day, lines, goal, outcome').in('membership_id', ids).limit(60_000),
     ]);
 
     members = rows.map((m) => {
@@ -67,6 +68,12 @@ export async function loadBoard(address: string): Promise<BoardPayload | null> {
           const provider = e.provider as 'github' | 'leetcode';
           if (!entry.providers.includes(provider)) entry.providers.push(provider);
           byDay.set(day, entry);
+        }
+        for (const d of dayChecks ?? []) {
+          if (d.membership_id !== id) continue;
+          const day = d.day as number;
+          const entry = byDay.get(day) ?? { day, counted: 0, considered: 0, providers: ['github'] };
+          byDay.set(day, { ...entry, lines: d.lines as number, goal: d.goal as number, outcome: d.outcome as 'met' | 'not_met' | 'unknown' });
         }
         checks = [...byDay.values()].sort((a, b) => a.day - b.day);
       }

@@ -3,7 +3,7 @@
 //                         [--allow docs,generated,forks] [--backdate 4] [--repos owner/name,owner/other] [--json]
 // Uses GITHUB_API_TOKEN from .env.local when set (5000 requests/hour instead of 60).
 import { parseFileFilter } from '@codestreak/shared';
-import { collectGithubCommits, createGithubGet, evaluateGithubDay, githubDayOutcome, githubRulesFromDocument } from '@codestreak/shared/verification';
+import { collectGithubCommits, createGithubGet, evaluateGithubDay, explainGithubDay, githubDayOutcome, githubRulesFromDocument, SKIP_REASON_TEXT } from '@codestreak/shared/verification';
 import { loadLocalEnv } from './load-env.js';
 
 function arg(name: string): string | undefined {
@@ -60,35 +60,9 @@ async function main() {
   for (const r of data.repos) console.log(`  repo     ${r.fullName}: ${r.pushes} push${r.pushes === 1 ? '' : 'es'} by you (${r.status})`);
   for (const n of data.notes) console.log(`  note: ${n}`);
   for (const c of day.counted) console.log(`  counted  ${c.sha.slice(0, 8)}  ${c.repo}  ${c.meaningfulLines} lines`);
-  for (const s of day.skipped) console.log(`  skipped  ${s.sha.slice(0, 8)}  ${s.repo}  ${s.reason}`);
+  for (const s of day.skipped) console.log(`  skipped  ${s.sha.slice(0, 8)}  ${s.repo}  ${SKIP_REASON_TEXT[s.reason]}`);
   for (const a of day.anomalies) console.log(`  flagged  ${a.sha.slice(0, 8)}  ${a.detail}`);
-  for (const hint of explain(data, day, rules.minMeaningfulLines, repoIds.length > 0)) console.log(`\n  ${hint}`);
-}
-
-/** Specific explanations from what was actually read (no guessing). */
-function explain(
-  data: { pushes: number; complete: boolean; repos: { fullName: string; status: string }[] },
-  day: { meaningfulLines: number; counted: unknown[]; skipped: { reason: string }[] },
-  goal: number,
-  selected: boolean,
-): string[] {
-  const hints: string[] = [];
-  if (data.pushes === 0 && data.complete) {
-    if (selected) hints.push('You made no pushes to the selected repositories on this day.');
-    else if (data.repos.length === 0) hints.push('None of your public repositories was pushed on this day. Pushes to private repositories are never visible: make the repository public to have it count.');
-    else hints.push(`These repositories were pushed on this day, but not by you: ${data.repos.map((r) => r.fullName).join(', ')}.`);
-  }
-  const count = (reason: string) => day.skipped.filter((s) => s.reason === reason).length;
-  const n = (k: number) => `${k} commit${k === 1 ? '' : 's'}`;
-  if (count('author-mismatch')) hints.push(`${n(count('author-mismatch'))} have an author that isn't your GitHub account: the git email used is not one of your GitHub emails (check \`git config user.email\` against GitHub → Settings → Emails).`);
-  if (count('pushed-by-other')) hints.push(`${n(count('pushed-by-other'))} carry your name but were pushed by another account, so they don't count.`);
-  if (count('backdated')) hints.push(`${n(count('backdated'))} were made before the day started (old work pushed late).`);
-  if (count('merge-commit')) hints.push(`${n(count('merge-commit'))} are merges; merged work counts on the day it was pushed, not when merged.`);
-  if (count('whitespace-only')) hints.push(`${n(count('whitespace-only'))} only re-indent or move existing lines.`);
-  if (count('no-eligible-changes')) hints.push(`${n(count('no-eligible-changes'))} change no countable code (blank lines, braces, comments, docs or config).`);
-  if (day.meaningfulLines < goal && (day.counted.length > 0 || data.pushes > 0)) hints.push(`${goal - day.meaningfulLines} more meaningful lines are needed to reach ${goal}.`);
-  if (!data.complete) hints.push('GitHub could not be read completely, so a day below the goal is "indeterminate": it never costs a stake.');
-  return hints;
+  for (const hint of explainGithubDay(data, day, rules.minMeaningfulLines, { selectedRepos: repoIds.length > 0 })) console.log(`\n  ${hint}`);
 }
 
 main().catch((e: unknown) => {

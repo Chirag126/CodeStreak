@@ -15,6 +15,7 @@ import { LIVE_LABELS } from '@/lib/board/live';
 import { springs } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { useLiveBoard, useNowSecs } from './use-live-board';
+import { ViewChecks } from './view-checks';
 
 const CELL_STYLE: Record<CellState, string> = {
   verified: 'bg-electric-400',
@@ -46,10 +47,11 @@ const STATE_BADGE = {
 const LIVE_DOT = { live: 'bg-electric-400', connecting: 'bg-muted-foreground', reconnecting: 'bg-warning-400 animate-pulse', offline: 'bg-danger-400' } as const;
 
 function checksText(m: BoardMember, day: number | null): string | null {
-  if (!m.checks) return m.isViewer ? null : 'details private';
+  if (!m.checks) return m.isViewer ? null : 'check details private';
   const today = day === null ? undefined : m.checks.find((c) => c.day === day);
-  if (!today) return null;
-  return `${today.counted}/${today.considered} counted · ${today.providers.join(' + ')}`;
+  if (!today) return day === null ? null : 'not checked today';
+  if (today.lines !== undefined && today.goal) return `${today.lines}/${today.goal} lines today${today.outcome === 'met' ? ' ✓' : ''}`;
+  return `${today.counted}/${today.considered} commits counted`;
 }
 
 export function GroupBoard({ address, initial, initialNow, decimals, symbol }: { address: string; initial: BoardPayload; initialNow: number; decimals: number; symbol: string }) {
@@ -165,6 +167,7 @@ export function GroupBoard({ address, initial, initialNow, decimals, symbol }: {
                     ))}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    {m.checks && board.day !== null && m.checks.some((c) => c.day === board.day) && <ViewChecks membershipId={m.membershipId} name={m.name} day={board.day} />}
                     {m.shieldsUsed > 0 && <span>{m.shieldsUsed} Shield{m.shieldsUsed > 1 ? 's' : ''}</span>}
                     <Badge variant={STATE_BADGE[m.state].variant}>{STATE_BADGE[m.state].label}</Badge>
                   </div>
