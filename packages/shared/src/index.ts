@@ -12,6 +12,8 @@ export * from './deadline.js';
 export * from './notifications.js';
 export * from './explain.js';
 export * from './insights.js';
+export * from './dashboard.js';
+export * from './history.js';
 export * from './invites.js';
 export * from './sign-in-limits.js';
 export * from './board.js';
