@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatCountdown, shieldableDays, shieldBlock, shieldWindow, type ShieldChallenge, type ShieldParticipant } from './shield.js';
+import { shieldableDays, shieldBlock, shieldWindow, type ShieldChallenge, type ShieldParticipant } from './shield.js';
 
 // The program's own fixture (rules.rs shield_rules): start 1000, 100 s days, 3 days, 30 s grace, max 2.
 const c: ShieldChallenge = { state: 'open', startTs: 1000, dayLengthSecs: 100, numDays: 3, shieldPrice: 5n, maxShields: 2, shieldGraceSecs: 30 };
@@ -39,11 +39,4 @@ describe('shieldableDays', () => {
   it('keeps over-limit days visible with their reason', () => {
     expect(shieldableDays(c, { ...p, shieldsUsed: 2 }, 1_150)).toMatchObject([{ day: 1, block: 'limit_reached' }]);
   });
-});
-
-it('formats countdowns compactly', () => {
-  expect(formatCountdown(245)).toBe('4m 05s');
-  expect(formatCountdown(3_720)).toBe('1h 02m');
-  expect(formatCountdown(183_600)).toBe('2d 3h');
-  expect(formatCountdown(-5)).toBe('0m 00s');
 });

@@ -92,15 +92,3 @@ export function shieldableDays(c: ShieldChallenge, p: ShieldParticipant, now: nu
   }
   return out;
 }
-
-/** "4m 05s", "1h 02m", "2d 3h": a compact countdown. */
-export function formatCountdown(secs: number): string {
-  const s = Math.max(0, Math.floor(secs));
-  const d = Math.floor(s / 86_400);
-  const h = Math.floor((s % 86_400) / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const r = s % 60;
-  if (d > 0) return `${d}d ${h}h`;
-  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
-  return `${m}m ${String(r).padStart(2, '0')}s`;
-}
