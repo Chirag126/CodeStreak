@@ -38,6 +38,7 @@ describe('program id and IDL', () => {
       'initialize_config',
       'initialize_pool',
       'join_pool',
+      'mint_badge',
       'record_verification',
       'settle_challenge',
       'sponsor_pool',
