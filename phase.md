@@ -1012,3 +1012,49 @@ database copy of a Challenge account, used by both the web sync and the worker.
 
 Worker (`reconcile/run.test.ts`): day maps, the payouts-pending rule, missing-on-chain warnings, retry,
 and the fallback listing. The verify job's tests check that every run reconciles.
+
+## Phase 30: Claim center (M)
+
+Payouts are still pushed automatically by the worker (Phase 28). The claim center is where a player sees
+them, and the fallback when the worker hasn't paid yet. **Dashboard → Payouts** (`/dashboard/claims`) and
+a payout card on each settled or cancelled challenge page.
+
+**What it shows** (read from devnet, not the database):
+- **Animated totals**: received, ready to claim, and wrapped SOL waiting to be unwrapped.
+- **One card per challenge you played or sponsored**: outcome, amount, state (paid with an Explorer link,
+  ready to claim, not settled yet with when it settles, finalizing, nothing to claim) and a
+  **line-by-line breakdown**. For a survivor: stake back plus a share of the pool, split into missed
+  stakes, sponsorships and Shields per survivor. For a voided player: stake back; Shields stay in the
+  pool. For a cancellation or full refund: stake and Shields back. For a failed player: where the stake
+  went. For a sponsor: refunded, or paid to the survivors.
+
+**Claim now** (survivors, voided players, refunds, sponsor refunds): the server sends the claim itself.
+Claims need no signature from you, and the relayer pays the fee (and creates your token account if
+missing). It is paid only to your own token account.
+
+**Unwrap SOL**: SOL payouts arrive as Wrapped SOL. Unwrap closes your own wSOL account into plain SOL in
+the same wallet, including its small rent deposit. You approve in your wallet; the relayer pays the fee.
+
+**Loopholes closed**
+- **Claim before settlement:** refused by the server with the settle time (and by the program). The
+  card shows "Not settled yet" with no button. Finalizing players are refused too.
+- **Double claim:** one fixed request key per player or sponsor and challenge is the lock. A claim
+  already on its way is refused; a stuck one is retaken after 2 minutes. The program's `claimed` flag is
+  final. If the worker paid a moment earlier, the user sees "Already paid", not an error, and the payout
+  is mirrored.
+- **Claiming for someone else, or to another account:** only your own membership or sponsorship, paid
+  only to the owner's own token account, which the server builds.
+- **Unwrap abuse:** only from one of your own verified wallets. A dedicated relayer policy
+  (`checkUnwrapTransaction`) allows exactly compute budget plus one CloseAccount of your own wSOL
+  account, to you, signed by you. No transfers, no other accounts, no other signers, no other fee
+  payer. It is checked at prepare and again at submit.
+- **Relayer drain:** the per-user rate limit and the relayer's minimum balance apply to claims and unwraps.
+- **Amounts** come from one shared function, `claimable()` in `packages/shared/src/payout.ts`, which
+  mirrors `rules.rs`. The worker uses it too.
+
+**Tests:**
+- shared: `claimable`, `claimBlock` and `payoutBreakdown` against the program's own settlement
+  fixtures (survivor 25 and the last one 26, voided, cancelled, full refund, failed, blocked states);
+- the unwrap policy (accepts your own close; rejects another destination, another account, extra
+  instructions, a second close, another fee payer);
+- SQL `99f_claim_center_test.sql`: only unwrap requests may have no challenge.

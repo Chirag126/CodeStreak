@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { challengeStatus, computeSettlement, estimateReward, survivalRate } from './payout.js';
+import { challengeStatus, claimable, claimBlock, computeSettlement, estimateReward, payoutBreakdown, survivalRate, type ClaimChallenge, type ClaimParticipant } from './payout.js';
 
 // Fixtures are the program's own: programs/codestreak/src/rules.rs (settlement_math) and
 // programs/codestreak/tests/settlement.rs (case 1..5), with the numbers the program produced.
@@ -71,5 +71,64 @@ describe('stats', () => {
     expect([50, 150, 250, 300].map((t) => challengeStatus(c, t))).toEqual(['joining', 'starting', 'running', 'finished']);
     expect(challengeStatus({ ...c, poolState: 'cancelled' }, 50)).toBe('cancelled');
     expect(challengeStatus({ ...c, poolState: 'settled' }, 50)).toBe('finished');
+  });
+});
+
+describe('claims (Phase 30)', () => {
+  const c = (o: Partial<ClaimChallenge> = {}): ClaimChallenge => ({
+    state: 'settled',
+    fullRefund: false,
+    buyIn: 10n,
+    totalStake: 50n,
+    totalSponsor: 7n,
+    totalShield: 4n,
+    survivorCount: 2,
+    voidedCount: 1,
+    rewardPerSurvivor: 15n,
+    rewardDust: 1n,
+    survivorsClaimed: 0,
+    ...o,
+  });
+  const p = (o: Partial<ClaimParticipant> = {}): ClaimParticipant => ({
+    deposited: 10n,
+    shieldPaid: 0n,
+    status: 'survived',
+    finalized: true,
+    claimed: false,
+    ...o,
+  });
+
+  it('survivors get stake + share, and the last one the dust (rules.rs settlement_math: 25 + 26)', () => {
+    expect(claimable(c(), p())).toEqual({ kind: 'reward', amount: 25n });
+    expect(claimable(c({ survivorsClaimed: 1 }), p())).toEqual({ kind: 'reward', amount: 26n });
+  });
+  it('voided players get their stake back, without Shields', () => {
+    expect(claimable(c(), p({ status: 'voided', shieldPaid: 4n }))).toEqual({ kind: 'refund', amount: 10n });
+  });
+  it('cancelled or nobody surviving refunds everything, failed players included', () => {
+    expect(claimable(c({ state: 'cancelled' }), p({ status: 'active', finalized: false, shieldPaid: 2n }))).toEqual({ kind: 'refund', amount: 12n });
+    expect(claimable(c({ fullRefund: true }), p({ status: 'failed', shieldPaid: 2n }))).toEqual({ kind: 'refund', amount: 12n });
+  });
+  it('blocks a claim before settlement, before finalizing, after paying, and for failed players', () => {
+    expect(claimBlock(c({ state: 'open' }), p({ finalized: false, status: 'active' }))).toBe('not_settled');
+    expect(claimBlock(c(), p({ finalized: false }))).toBe('not_finalized');
+    expect(claimBlock(c(), p({ claimed: true }))).toBe('already_paid');
+    expect(claimBlock(c(), p({ status: 'failed' }))).toBe('nothing_owed');
+    expect(claimBlock(c(), p())).toBeNull();
+  });
+  it('breaks a reward down by where the pool came from', () => {
+    const b = payoutBreakdown(c(), p());
+    expect(b.total).toBe(25n);
+    expect(b.lines.map((l) => [l.label, l.amount])).toEqual([
+      ['Your stake back', 10n],
+      ['Your share of the pool', 15n],
+      ['· from missed stakes', 10n], // 50 - 3×10 = 20 forfeited, / 2 survivors
+      ['· from sponsorships', 3n],
+      ['· from Shields', 2n],
+    ]);
+    expect(payoutBreakdown(c(), p(), 26n).total).toBe(26n); // the amount actually received wins
+  });
+  it('shows failed players where their stake went', () => {
+    expect(payoutBreakdown(c(), p({ status: 'failed' }))).toMatchObject({ total: 0n, lines: [{ label: 'Your stake', negative: true }] });
   });
 });

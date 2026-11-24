@@ -236,6 +236,40 @@ export function checkRelayedTransaction(tx: Transaction, ctx: PolicyContext): Po
   return errors.length || !found ? { ok: false, errors: errors.length ? errors : ['invalid transaction'] } : { ok: true, instruction: found.name as RelayedInstruction };
 }
 
+// ---------------------------------------------------------------- SOL payouts: unwrap (Phase 30)
+// Payouts arrive as wrapped SOL in the owner's wSOL account. Unwrapping closes that account: every
+// lamport in it (the payout plus its rent) goes to the owner. The relayer only pays the fee.
+
+/** The only transaction the relayer co-signs for unwrapping: compute budget + CloseAccount(owner's wSOL ATA → owner). */
+export function checkUnwrapTransaction(tx: Transaction, ctx: { relayer: PublicKey; user: PublicKey; account: PublicKey }): { ok: true } | { ok: false; errors: string[] } {
+  const errors: string[] = [];
+  if (!tx.feePayer?.equals(ctx.relayer)) errors.push('the relayer must be the fee payer');
+  const budgetSeen = new Set<number>();
+  let closes = 0;
+  for (const ix of tx.instructions) {
+    if (ix.programId.equals(COMPUTE_BUDGET_PROGRAM_ID)) {
+      checkComputeBudget(ix.data, budgetSeen, errors);
+    } else if (ix.programId.equals(TOKEN_PROGRAM_ID) && ix.data.length === 1 && ix.data[0] === 9) {
+      closes++;
+      const [account, destination, owner] = ix.keys;
+      if (ix.keys.length !== 3 || !account || !destination || !owner) errors.push('close: wrong accounts');
+      else {
+        if (!account.pubkey.equals(ctx.account)) errors.push('close: only your own wrapped SOL account');
+        if (!destination.pubkey.equals(ctx.user)) errors.push('close: the SOL must go to your own wallet');
+        if (!owner.pubkey.equals(ctx.user) || !owner.isSigner) errors.push('close: you must sign as the owner');
+      }
+    } else {
+      errors.push(`program ${ix.programId.toBase58()} is not allowed when unwrapping`);
+    }
+  }
+  if (closes !== 1) errors.push('exactly one close instruction');
+  const message = tx.compileMessage();
+  for (const s of message.accountKeys.slice(0, message.header.numRequiredSignatures)) {
+    if (!s.equals(ctx.relayer) && !s.equals(ctx.user)) errors.push(`unexpected signer ${s.toBase58()}`);
+  }
+  return errors.length ? { ok: false, errors } : { ok: true };
+}
+
 export const RATE_LIMITS = { perTenMinutes: 10, perDay: 60 } as const;
 
 /** Per-user limit on relayer requests, from the counts of the user's recent requests. */

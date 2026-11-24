@@ -26,6 +26,7 @@ export default async function DashboardPage() {
   const sections: { title: string; body: string; href?: string; cta?: string }[] = [
     { title: 'Accounts', body: 'Link GitHub and LeetCode so your coding days can be verified.', href: '/dashboard/settings', cta: 'Linked accounts' },
     { title: 'Wallet', body: 'Link Phantom or MetaMask (Solana) and check your devnet balances.', href: '/dashboard/wallet' },
+    { title: 'Payouts', body: 'Rewards and refunds from your challenges, where each amount came from, and unwrapping SOL.', href: '/dashboard/claims', cta: 'Open payouts' },
   ];
 
   return (
