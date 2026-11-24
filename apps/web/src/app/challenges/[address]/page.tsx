@@ -357,7 +357,15 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
       {isCreator && row?.visibility === 'private' && sponsorOpen && <SponsorLinkPanel challengeId={row.id as string} hasLink={sponsorLinkActive} />}
 
       {board ? (
-        <GroupBoard address={address} initial={board} initialNow={now} decimals={decimals} symbol={symbol} />
+        <>
+          <GroupBoard address={address} initial={board} initialNow={now} decimals={decimals} symbol={symbol} />
+          <p className="text-sm text-muted-foreground">
+            <Link className="underline underline-offset-4" href={`/leaderboards?group=${address}`}>
+              Group leaderboard
+            </Link>{' '}
+            · this week, longest streak, most consistent and top earners, live.
+          </p>
+        </>
       ) : (
         <Card>
           <CardHeader>

@@ -5,10 +5,11 @@ export interface NavItem {
   devOnly?: boolean;
 }
 
-// Only routes that exist are listed (no dead links). Later phases add the Leaderboard.
+// Only routes that exist are listed (no dead links).
 const ALL_ITEMS: NavItem[] = [
   { href: '/', label: 'Home' },
   { href: '/challenges', label: 'Challenges' },
+  { href: '/leaderboards', label: 'Leaderboards' },
   { href: '/styleguide', label: 'Style guide', devOnly: true },
 ];
 
