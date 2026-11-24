@@ -87,7 +87,7 @@ export const RULES = [
   },
   {
     id: 'sk-style-api-key',
-    description: 'API key with sk_ prefix (ElevenLabs and others)',
+    description: 'API key with sk_ prefix (Stripe-style and others)',
     regex: /\bsk_[A-Za-z0-9]{32,}\b/g,
   },
   {

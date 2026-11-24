@@ -23,6 +23,7 @@ import { loadBoard } from '@/lib/board/load';
 import { MyDayCard } from '@/components/checks/my-day-card';
 import { DisputePanel } from '@/components/disputes/dispute-panel';
 import { ShieldPanel } from '@/components/shields/shield-panel';
+import { MyDaysExplained } from '@/components/explain/my-days-explained';
 import { readDayLogs } from '@/lib/verification/day-check';
 import { listGroupInvites } from '@/lib/groups/invites';
 import { JoinButton } from './join-button';
@@ -327,6 +328,8 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
       {viewer && myMembershipId && phase !== 'joining' && phase !== 'starting' && phase !== 'settled' && phase !== 'cancelled' && (
         <ShieldPanel address={address} membershipId={myMembershipId} account={account} times={times} />
       )}
+
+      {myMembershipId && <MyDaysExplained membershipId={myMembershipId} />}
 
       {viewer && myMembershipId && phase !== 'joining' && phase !== 'starting' && (
         <DisputePanel address={address} membershipId={myMembershipId} profileId={viewer.userId} disputeEndMs={disputeEndTs(times) * 1000} />

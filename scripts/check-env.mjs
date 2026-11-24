@@ -191,8 +191,6 @@ export const SPEC = [
   // Local only (one-time `pnpm devnet:init-config`); never set on Render.
   { name: 'UPGRADE_AUTHORITY_KEYPAIR_PATH', phase: 9, validate: keypairPath, secret: true, optional: true },
   { name: 'VERIFIER_KEYPAIR_PATH', phase: 28, validate: keypairPath, secret: true, altName: 'VERIFIER_KEYPAIR_JSON' },
-  { name: 'ELEVENLABS_API_KEY', phase: 33, validate: nonEmpty, secret: true },
-  { name: 'ELEVENLABS_VOICE_ID', phase: 33, validate: nonEmpty },
 ];
 
 const KNOWN = new Set(SPEC.flatMap((s) => [s.name, s.altName].filter(Boolean)));

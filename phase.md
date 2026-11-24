@@ -342,9 +342,9 @@ One entry per roadmap phase: what was done, what was added, what was achieved, h
   - `receipts`: every confirmed on-chain money movement (join, sponsor, Shield, reward, refunds), integer amounts, one per transaction;
   - `disputes`: one open dispute per member-day, a real reason (10+ chars), a resolution required to accept/reject;
   - `audit_log`: append-only (update, delete and truncate blocked);
-  - `voice_clips` (ElevenLabs coach), `badge_types` and `badges` (one award per user, badge and challenge; soulbound mint address once minted).
+  - `voice_clips` (planned ElevenLabs coach; removed in Phase 33), `badge_types` and `badges` (one award per user, badge and challenge; soulbound mint address once minted).
 - **Leaderboard views** `challenge_standings` and `leaderboard` with `security_invoker`, so the caller's RLS applies and private groups never leak through a view.
-- **RLS on every table**, one SELECT policy each: challenge data for public challenges or members/creator/invitees; receipts, voice clips and audit entries only your own; badges public. All writes go through the server.
+- **RLS on every table**, one SELECT policy each: challenge data for public challenges or members/creator/invitees; receipts, voice clips (removed in Phase 33) and audit entries only your own; badges public. All writes go through the server.
 - **Advisor fixes for Phase 10:** the visibility helpers moved to a `private` schema the API doesn't expose (no more callable SECURITY DEFINER functions), function search paths pinned, API execute revoked on Supabase's `rls_auto_enable`, indexes on the two unindexed foreign keys.
 - **Applied to Supabase** as migration `schema_b`. **Advisors: 0 security findings; performance shows only INFO "unused index"** notes, expected while the database is empty.
 
@@ -1167,3 +1167,80 @@ stake.
 - relayer: `activate_shield` encodes the day as u16 and passes only for its own kind;
 - worker: a Shield rescues a missed day at settlement; reconcile adds missing Shields;
 - SQL `99h_shield_reconcile_test.sql`.
+
+## Phase 33: Smart alerts & verification intelligence (M)
+
+**Replaces the planned ElevenLabs voice coach.** The unused `voice_clips` placeholder (no rows, no
+storage) and the `ELEVENLABS_*` variables are removed. No voice, no Polar, no paid service: everything
+runs on Supabase (Postgres triggers, pg_cron, Realtime) and the existing app.
+
+**Notification engine (in the database).** `public.notifications` is filled by triggers on the tables
+that already record each event, so web, relayer, worker and reconcile all notify the same way:
+
+| Event | Who is told |
+| --- | --- |
+| invitation by public ID | the invitee |
+| a player joins | the creator (never the joiner) |
+| a sponsorship | the creator and every player (never the sponsor) |
+| a day result recorded on-chain, and again if a dispute upgrades it | the player |
+| a challenge settles or is cancelled | every player |
+| a reward, refund or sponsor refund arrives | its owner |
+| a dispute is approved, rejected, resolved or expires | its owner |
+| a badge is awarded (Phase 34 awards them) | its owner |
+
+Each notification carries a `dedupe_key`, and `unique (profile_id, dedupe_key)` means a retried write
+never creates a second one.
+
+**UTC deadline warnings.** pg_cron `codestreak-deadline-warnings` runs `private.send_deadline_warnings()`
+every minute. It is pure SQL and doesn't wake the worker. A day ends at `start + (day + 1) × length`, in
+UTC. The warning goes out **3 hours** before the end on real (12 h+) days, or a quarter of the day before
+on short demo days (`private.warning_lead_secs`, mirrored in `packages/shared/src/deadline.ts`). It goes
+only to active players whose day is still unverified:
+- no verified result for the day;
+- no Shield;
+- the latest "Check now" didn't meet the goal under the ANY/ALL rule.
+
+There is one warning per player per day, and it says the UTC end time and the minutes left.
+
+**Notification centre.** A bell in the header shows the unread count and the newest notifications. It
+updates in real time through Supabase Realtime (the table is in the publication; RLS sends each user only
+their own rows), and reloads after a reconnect or when the tab comes back. **Dashboard → Notifications**
+has the full list with filters (Deadlines, Results, Money, Groups) and *Mark all read*. Clicking a
+notification marks it read and opens its page. `mark_notifications_read()` changes only `read_at`, and only
+on your own rows. Read notifications older than 60 days are pruned.
+
+**Verification intelligence.** The challenge page has **Your days, explained** (`#my-days`): every recorded
+day, taken from its sealed receipt, with:
+- the verdict;
+- a **confidence meter** marking the thresholds (≥ 50 can pass, ≥ 80 can fail);
+- the reason, and the ANY/ALL rule;
+- what the confidence gate did;
+- for each provider: progress against the goal, its confidence, and how that was reached (for example
+  "Incomplete data (starts at 60) × 100% coverage − 10 for 1 gap = 50");
+- every counted item, and every skipped item with its reason.
+
+`explainReceipt()` recomputes all of it from the receipt's own inputs with the rules engine and flags a
+receipt whose stored numbers don't match.
+
+**Coding insights.** **Dashboard → Insights** shows: recorded days, success rate (verified ÷ decided),
+current and longest streak (a Shield keeps it alive), commits and problems that counted, an 8-week ISO
+summary (Monday to Sunday, UTC: passed / shielded / undecided / failed, plus commits and solves), and
+verified days by weekday. It is computed by `computeInsights()` only from your own on-chain-recorded
+results, Shields and counted evidence. Previews are excluded, and the page says how many days it's based on.
+
+**Tests:**
+- SQL `99i_smart_alerts_test.sql`:
+  - recipients for joins, results, sponsorships, settlement and payouts (and nobody else);
+  - a result notification only once it's on-chain, and once;
+  - the UTC lead (3 h / quarter-day / ≥ 1 min);
+  - warnings only inside the window, only for the unverified player, with the UTC time in the title;
+  - not twice; not for shielded or met days; not after the last day;
+  - Realtime publication membership;
+  - RLS: each user sees only their own; no direct update or insert; mark-read own only and idempotent;
+    anon refused.
+- shared:
+  - `deadline.test.ts`: UTC day ends and windows, edges;
+  - `notifications.test.ts`: Realtime inserts, replayed inserts not duplicated, read-state updates,
+    mark some/all;
+  - `explain.test.ts`: pass, gated-to-undecided, confident fail under ANY, and tampered numbers flagged;
+  - `insights.test.ts`: ISO weeks, streaks with Shields, success rate, weekly and weekday counts.

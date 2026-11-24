@@ -2,7 +2,7 @@
   "name": "@codestreak/worker",
   "version": "0.1.0",
   "private": true,
-  "description": "CodeStreak background worker: verification, settlement crank and voice jobs (Render web service, woken by Supabase pg_cron).",
+  "description": "CodeStreak background worker: verification, settlement crank and reconcile jobs (Render web service, woken by Supabase pg_cron).",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

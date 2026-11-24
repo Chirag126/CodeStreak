@@ -32,7 +32,7 @@ const statusOf = (rows, name) => rows.filter((r) => r.name === name).map((r) => 
 test('a complete Phase 1 env passes; later-phase variables are LATER, not errors', () => {
   const { errors, rows } = validateEnv(validPhase1(), 1);
   assert.equal(errors, 0, JSON.stringify(rows.filter((r) => r.status === 'INVALID' || r.status === 'MISSING')));
-  assert.deepEqual(statusOf(rows, 'ELEVENLABS_API_KEY'), ['LATER']);
+  assert.deepEqual(statusOf(rows, 'VERIFIER_KEYPAIR_PATH'), ['LATER']);
   assert.deepEqual(statusOf(rows, 'NEXT_PUBLIC_CODESTREAK_PROGRAM_ID'), ['LATER']);
 });
 

@@ -67,9 +67,6 @@ insert into public.audit_log (actor_kind, actor_id, action, entity_type, entity_
   ('user', '00000000-0000-0000-0000-00000000000e', 'challenge.join', 'challenge', 'b0000000-0000-0000-0000-00000000000a'),
   ('worker', null, 'verification.run', 'challenge', 'b0000000-0000-0000-0000-00000000000a');
 
-insert into public.voice_clips (profile_id, challenge_id, kind, script, voice_id, storage_path) values
-  ('00000000-0000-0000-0000-00000000000e', 'b0000000-0000-0000-0000-00000000000a', 'morning', 'Good morning! Day 2.', 'voice123', 'clips/e/morning-1.mp3');
-
 insert into public.badge_types (code, name, description) values ('first_streak', 'First streak', 'Survived a first challenge.');
 insert into public.badges (profile_id, badge_code) values ('00000000-0000-0000-0000-00000000000e', 'first_streak');
 
@@ -159,7 +156,7 @@ begin
   assert (select count(*) from public.disputes) = 0, 'outsider: disputes hidden';
   assert (select count(*) from public.challenge_standings where challenge_id = p) = 0, 'outsider: standings view hidden';
   assert (select count(*) from public.receipts) = 1, 'outsider: only own receipt';
-  assert (select count(*) from public.voice_clips) = 0, 'outsider: no one else''s clips';
+  assert (select count(*) from public.notifications) = 0, 'outsider: no one else''s notifications';
   assert (select count(*) from public.audit_log) = 0, 'outsider: no one else''s audit entries';
   -- ...but the public challenge is fully readable.
   assert (select count(*) from public.challenges where id = 'b0000000-0000-0000-0000-00000000000b') = 1, 'public visible';
@@ -186,7 +183,8 @@ begin
           where m.challenge_id = p) = 2, 'member: evidence visible';
   assert (select count(*) from public.disputes) = 0, 'member: another player''s dispute stays hidden (own or admin only)';
   assert (select count(*) from public.challenge_standings where challenge_id = p) = 2, 'member: standings';
-  assert (select count(*) from public.voice_clips) = 1 and (select count(*) from public.audit_log) = 1, 'member: own clips and audit';
+  assert (select count(*) from public.audit_log) = 1, 'member: own audit';
+  assert (select count(*) from public.notifications) = (select count(*) from public.notifications where profile_id = '00000000-0000-0000-0000-00000000000e'), 'member: own notifications only';
   assert (select count(*) from public.receipts) = 1, 'member: own receipt only';
 end $$;
 reset role;
