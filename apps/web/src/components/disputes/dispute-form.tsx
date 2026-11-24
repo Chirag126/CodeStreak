@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { utcAndIst } from '@codestreak/shared';
 import { useState, useTransition } from 'react';
 import { openDisputeAction } from '@/app/challenges/[address]/dispute-actions';
 import { useToast } from '@/components/feedback/toaster';
@@ -56,6 +57,7 @@ export function DisputeForm({ address, membershipId, days, closesAt }: { address
           {days.map((d) => (
             <option key={d.day} value={d.day}>
               Day {d.day + 1} — {d.result === 'failed' ? 'failed' : 'could not verify'}
+              {d.shielded ? ' (covered by a Shield: only corrects the record)' : ''}
             </option>
           ))}
         </select>
@@ -85,7 +87,7 @@ export function DisputeForm({ address, membershipId, days, closesAt }: { address
         <Button type="submit" size="sm" loading={pending} disabled={pending || reason.trim().length < 20}>
           Open dispute
         </Button>
-        <p className="text-xs text-muted-foreground">Disputes close {new Date(closesAt).toLocaleString()}. An approved dispute upgrades the day to verified on-chain.</p>
+        <p className="text-xs text-muted-foreground">Disputes close {utcAndIst(closesAt)}. An approved dispute upgrades the day to verified on-chain.</p>
       </div>
     </form>
   );

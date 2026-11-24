@@ -167,8 +167,8 @@ class FakeDb implements Db {
   poolState = 'open';
   payoutsDone: string | null = null;
   members = [
-    { id: 'm-alice', profile_id: 'pr-alice', wallet_address: ALICE, participant_address: `P-${ALICE}`, claimed_at: null as string | null },
-    { id: 'm-bob', profile_id: 'pr-bob', wallet_address: BOB, participant_address: null, claimed_at: null as string | null },
+    { id: 'm-alice', profile_id: 'pr-alice', wallet_address: ALICE, participant_address: `P-${ALICE}`, claimed_at: null as string | null, payout: null as string | null },
+    { id: 'm-bob', profile_id: 'pr-bob', wallet_address: BOB, participant_address: null, claimed_at: null as string | null, payout: null as string | null },
   ];
   work = [{ challenge_id: 'c1', address: CHALLENGE, reason: 'record' }];
   reconciled: Record<string, unknown>[] = [];
@@ -220,6 +220,8 @@ class FakeDb implements Db {
         return 'badge-id' as T;
       case 'record_payout':
         this.payouts.push({ wallet: a.p_wallet as string, kind: a.p_kind as string, amount: a.p_amount as string, tx: a.p_tx as string | null });
+        // Like the SQL: the member is marked paid with its amount.
+        for (const m of this.members) if (m.wallet_address === a.p_wallet && a.p_kind !== 'sponsor_refund') Object.assign(m, { claimed_at: m.claimed_at ?? 'now', payout: m.payout ?? (a.p_amount as string) });
         return null as T;
     }
     throw new Error(`unexpected rpc ${fn}`);
@@ -378,7 +380,7 @@ describe('verification job', () => {
 
   it('settles: finalizes everyone, settles, pays survivors (dust to the last) and mirrors it', async () => {
     const { chain, db, deps, setOutcome } = setup([ALICE, BOB, 'Caro11111111111111111111111111111111111111']);
-    db.members.push({ id: 'm-caro', profile_id: 'pr-caro', wallet_address: 'Caro11111111111111111111111111111111111111', participant_address: null, claimed_at: null });
+    db.members.push({ id: 'm-caro', profile_id: 'pr-caro', wallet_address: 'Caro11111111111111111111111111111111111111', participant_address: null, claimed_at: null, payout: null });
     setOutcome((profile) => ({ providers: [profile === 'pr-caro' ? notMet : met()], evidence: [], transientFailure: null }));
     chain.clock = START + 3 * DAY + 200;
     await runVerification(deps); // all three days recorded
@@ -415,6 +417,20 @@ describe('verification job', () => {
     expect(chain.ps.get(`P-${BOB}`)!.status).toBe('failed');
     // Alice: her 10 back + Bob's 10 (the fake pool counts missed stakes only).
     expect(db.payouts).toEqual([{ wallet: ALICE, kind: 'reward', amount: '20', tx: expect.stringMatching(/^sig-/) }]);
+  });
+
+  it('mirrors the amount of a payout that reconcile marked claimed without one (no second payout)', async () => {
+    const { chain, db, deps } = setup([ALICE, BOB]);
+    chain.clock = START + 3 * DAY + 200;
+    await runVerification(deps);
+    chain.clock = START + 3 * DAY + 900 + 600;
+    // Alice was paid outside the job; reconcile copied only claimed_at.
+    chain.ps.get(`P-${ALICE}`)!.claimed = true;
+    db.members[0]!.claimed_at = 'earlier';
+    await runVerification(deps);
+    expect(chain.sent.filter((x) => x.includes(ALICE) && /reward|refund/.test(x))).toEqual([]);
+    expect(db.payouts.find((p) => p.wallet === ALICE)).toMatchObject({ tx: null });
+    expect(db.members[0]!.payout).not.toBeNull();
   });
 
   it('mints one soulbound badge per survivor after settlement, none for failed players, never twice', async () => {

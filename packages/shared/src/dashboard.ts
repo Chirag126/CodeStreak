@@ -272,3 +272,13 @@ export function crossedWarning(endsAt: number, dayLengthSecs: number, before: nu
   const warnAt = endsAt - warningLeadSecs(dayLengthSecs);
   return before < warnAt && after >= warnAt && after < endsAt;
 }
+
+/**
+ * One time in both zones the app uses, e.g. "24 Nov, 14:50 UTC · 24 Nov, 20:20 IST". Accepts unix
+ * seconds or an ISO string. Deterministic (never the browser's locale), so server and browser render
+ * the same text and nothing shifts on hydration.
+ */
+export function utcAndIst(when: number | string): string {
+  const s = typeof when === 'number' ? when : Math.floor(Date.parse(when) / 1000);
+  return `${zonedClock(s, 'UTC')} · ${zonedClock(s, 'IST')}`;
+}

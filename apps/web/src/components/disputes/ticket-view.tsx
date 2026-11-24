@@ -1,5 +1,6 @@
 import { Badge } from '@/components/ui/badge';
-import { explorerTxUrl } from '@/components/tx/tx-stepper';
+import { utcAndIst } from '@codestreak/shared';
+import { explorerTxUrl } from '@codestreak/shared/program';
 import type { DisputeStatus, Ticket } from '@/lib/disputes/load';
 
 export const STATUS: Record<DisputeStatus, { label: string; variant: 'accent' | 'warning' | 'success' | 'danger' | 'outline'; help: string }> = {
@@ -53,7 +54,7 @@ export function TicketView({ ticket, showChallenge = false }: { ticket: Ticket; 
         {ticket.events.map((e, i) => (
           <li key={`${e.at}-${i}`}>
             <time className="text-muted-foreground" dateTime={e.at}>
-              {new Date(e.at).toLocaleString()}
+              {utcAndIst(e.at)}
             </time>{' '}
             · {ACTION_LABEL[e.action] ?? e.action}
             {e.note && e.action !== 'opened' && <span className="text-muted-foreground"> — {e.note}</span>}

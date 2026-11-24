@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { utcAndIst } from '@codestreak/shared';
 import { notFound, redirect } from 'next/navigation';
 import { ReviewForm } from '@/components/disputes/review-card';
 import { STATUS, TicketView } from '@/components/disputes/ticket-view';
@@ -66,7 +67,7 @@ function AdminTicketCard({ ticket }: { ticket: AdminTicket }) {
             <span className="font-mono text-xs">{ticket.player.wallet}</span>
           </p>
           <p>
-            <span className="text-muted-foreground">Window closes:</span> {new Date(ticket.disputeEndsAt).toLocaleString()}
+            <span className="text-muted-foreground">Window closes:</span> {utcAndIst(ticket.disputeEndsAt)}
           </p>
           <div>
             <p className="text-muted-foreground">What the rules engine recorded ({ticket.previousResult}):</p>

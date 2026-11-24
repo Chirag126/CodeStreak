@@ -1,6 +1,6 @@
 'use client';
 
-import { formatAmount, SOL_DECIMALS, USDC_DECIMALS } from '@codestreak/shared';
+import { formatAmount, SOL_DECIMALS, USDC_DECIMALS, utcAndIst } from '@codestreak/shared';
 import type { Wallet, WalletAccount } from '@wallet-standard/base';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -171,7 +171,7 @@ export function ClaimRowCard({ row }: { row: ClaimRow }) {
           )}
           {row.reason && <p className="text-muted-foreground">{row.reason}</p>}
           {row.state === 'not_settled' && row.settlesAt && (
-            <p className="text-muted-foreground">Settles after {new Date(row.settlesAt * 1000).toLocaleString()}.</p>
+            <p className="text-muted-foreground">Settles after {utcAndIst(row.settlesAt)}.</p>
           )}
           {row.state === 'claimable' && <p className="text-xs text-muted-foreground">Payouts are also sent automatically within a few minutes.</p>}
         </div>

@@ -1435,3 +1435,53 @@ tokens:
 - tie ranks (1, 1, 3) and tie-breakers;
 - the limit;
 - rank movement (up, down, new).
+
+## Video 1 review fixes
+
+Found by watching the three Video 1 recordings, and confirmed in the Render logs and the database.
+
+- **Pages crashed after a dispute was resolved.** User 2's challenge page and Dashboard → Disputes
+  returned "This page couldn't load" (a 500). The dispute ticket, a server component, called
+  `explorerTxUrl()` imported from a `'use client'` module, which only runs once a dispute has an on-chain
+  transaction. The fix imports it from `@codestreak/shared/program`. A new test,
+  `client-boundary.test.ts`, fails CI if any server file imports a non-component from a client module.
+- **No error or 404 pages existed**, so one failure blanked the whole app (no header, no nav).
+  - `app/error.tsx` keeps the layout and offers Try again / Dashboard / Challenges, plus a reference id.
+  - `app/not-found.tsx` explains "doesn't exist, or you don't have access (admin pages)", with links.
+  - `app/global-error.tsx` is the last resort.
+- **A valid challenge could show 404.** An RPC failure (devnet 429 rate limits) was treated as "account
+  doesn't exist". Now only a real missing account is a 404; RPC errors go to the retryable error page.
+- **Slow pages (20+ s) under devnet rate limiting.**
+  - New `lib/chain/read-cache.ts`: concurrent reads share one request, a value stays fresh for a few
+    seconds, and the last good value is served while the RPC returns 429.
+  - The chain clock is read at most every 5 s and advanced locally.
+  - The background member sync runs at most once per 30 s per challenge.
+- **"View checks" could stay on "Loading…" forever.** It now times out after 15 s with an error and a
+  Try again button.
+- **Times in the browser's locale** (`11/24/2026, 8:20:00 PM`) in the dispute form, ticket timeline,
+  payouts and admin review. They now use one deterministic format, "24 Nov, 14:50 UTC · 24 Nov, 20:20
+  IST" (`utcAndIst`). That also removes a hydration mismatch.
+- **Dispute form:** days already covered by a Shield are labelled "(covered by a Shield: only corrects
+  the record)" and listed after the days that cost the streak.
+- **A refund never shown** ("Demo challenge 6HLS"). Reconcile had added a member who joined outside the
+  app with `claimed_at` but no amount, and the payout step skipped them.
+  - The worker now mirrors any member who is claimed on-chain but has no payout recorded.
+  - `record_payout` fills a missing amount without overwriting a recorded one.
+  - Migration `payout_mirror_fix` re-queues affected challenges.
+  - Tests: worker and SQL `99k`.
+- **"Your challenges" redesigned** (dashboard):
+  - grouped into **Active**, **Finished** and **Cancelled** (collapsed), with counts;
+  - each row shows **your result** (Playing, Survived, Failed, Voided · refunded, Refunded, Refund on its
+    way, Cancelled · nobody joined…) and **your money**: stake → received, with +/− net;
+  - links to Full history.
+
+Verified correct in the recordings (no change needed):
+- the under-minimum challenge auto-cancelled (you created it but didn't join, so there was no stake to
+  refund);
+- day results were recorded on-chain;
+- Shields covered missed days;
+- the dispute upgraded Failed → Verified on-chain;
+- settlement and the automatic reward were exact (0.14 SOL = stake + forfeited stake + 2 Shield fees);
+- non-admins get 404 on `/admin/disputes`;
+- **reconcile reset your `participant_count` edit from 5 back to 2** at 15:05 UTC and logged
+  `reconcile.challenge_fixed`.

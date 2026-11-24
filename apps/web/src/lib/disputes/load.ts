@@ -34,6 +34,8 @@ export interface Ticket {
 export interface DisputableDay {
   day: number;
   result: 'failed' | 'indeterminate';
+  /** A Shield already keeps this day: a dispute only corrects the record, the streak is safe. */
+  shielded: boolean;
 }
 
 type Raw = Record<string, unknown>;
@@ -74,14 +76,14 @@ export async function myTickets(supabase: SupabaseClient, profileId: string, mem
 /** Recorded failed / "could not verify" days of a membership, while the dispute window is open. */
 export async function disputableDays(supabase: SupabaseClient, membershipId: string, disputeEndMs: number): Promise<{ open: boolean; days: DisputableDay[] }> {
   if (Date.now() >= disputeEndMs) return { open: false, days: [] };
-  const { data } = await supabase
-    .from('day_results')
-    .select('day, result, onchain_at')
-    .eq('membership_id', membershipId)
-    .in('result', ['failed', 'indeterminate'])
-    .not('onchain_at', 'is', null)
-    .order('day');
-  return { open: true, days: (data ?? []).map((d) => ({ day: d.day as number, result: d.result as DisputableDay['result'] })) };
+  const [{ data }, { data: shields }] = await Promise.all([
+    supabase.from('day_results').select('day, result, onchain_at').eq('membership_id', membershipId).in('result', ['failed', 'indeterminate']).not('onchain_at', 'is', null).order('day'),
+    supabase.from('shields').select('day').eq('membership_id', membershipId),
+  ]);
+  const covered = new Set((shields ?? []).map((s) => s.day as number));
+  const days = (data ?? []).map((d) => ({ day: d.day as number, result: d.result as DisputableDay['result'], shielded: covered.has(d.day as number) }));
+  // Days that actually cost the streak first.
+  return { open: true, days: days.sort((a, b) => Number(a.shielded) - Number(b.shielded) || a.day - b.day) };
 }
 
 export interface AdminTicket extends Ticket {

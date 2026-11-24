@@ -68,6 +68,8 @@ interface MemberRow {
   wallet_address: string;
   participant_address: string | null;
   claimed_at: string | null;
+  /** Mirrored payout (null until paid, or when only `claimed_at` was mirrored by reconcile). */
+  payout?: string | number | null;
 }
 interface DisputeRow {
   id: string;
@@ -182,7 +184,7 @@ class ChallengeRun {
     const [row] = await db.select<ChallengeRow>('challenges', `select=id,rules,payouts_done_at&id=eq.${this.w.challenge_id}`);
     if (!row) throw new Error(`challenge ${this.w.challenge_id} is not in the database`);
     this.row = row;
-    this.members = await db.select<MemberRow>('memberships', `select=id,profile_id,wallet_address,participant_address,claimed_at&challenge_id=eq.${row.id}`);
+    this.members = await db.select<MemberRow>('memberships', `select=id,profile_id,wallet_address,participant_address,claimed_at,payout&challenge_id=eq.${row.id}`);
     const now = await this.read(() => this.chain.now());
     const open = () => this.c.times.state === 'open';
 
@@ -415,9 +417,10 @@ class ChallengeRun {
   private async payOut(participants: ChainParticipant[]): Promise<void> {
     const { db } = this.deps;
     for (const p of participants) {
-      // Paid earlier outside this job (e.g. devnet:close-challenges) but never mirrored: record it now.
+      // Paid earlier outside this job (e.g. devnet:close-challenges), or added by reconcile with only
+      // `claimed_at`: the amount was never mirrored, so record it now (no receipt: no transaction).
       const member = this.members.find((m) => m.participant_address === p.address || m.wallet_address === p.user);
-      if (p.claimed && member && !member.claimed_at) {
+      if (p.claimed && member && (!member.claimed_at || member.payout === null || member.payout === undefined)) {
         const paid = participantPayout(this.c, { ...p, claimed: false });
         if (paid) await db.rpc('record_payout', { p_challenge: this.row.id, p_wallet: p.user, p_kind: paid.kind, p_amount: paid.amount.toString(), p_tx: null });
         continue;
