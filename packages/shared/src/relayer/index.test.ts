@@ -2,7 +2,15 @@ import { ComputeBudgetProgram, Keypair, PublicKey, SystemProgram, Transaction, T
 import { describe, expect, it } from 'vitest';
 
 import { challengePda, participantPda, PROGRAM_ID, vaultPda } from '../program/pdas.js';
-import { buildCodestreakInstruction, checkRelayedTransaction, decodeInstructionName, rateLimitDecision, RATE_LIMITS } from './index.js';
+import {
+  buildCodestreakInstruction,
+  checkRelayedTransaction,
+  checkUnwrapTransaction,
+  closeWrappedSolAccountInstruction,
+  decodeInstructionName,
+  rateLimitDecision,
+  RATE_LIMITS,
+} from './index.js';
 
 const TOKEN_PROGRAM = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 const relayer = Keypair.generate().publicKey;
@@ -185,5 +193,41 @@ describe('SOL wrap plan (insufficient balance handled before anything is signed)
     const { planSolWrap } = await import('./index.js');
     expect(planSolWrap({ buyIn: 100n, accountExists: true, wrappedBalance: 70n, accountRent: 20n, solBalance: 30n })).toMatchObject({ toWrap: 30n, required: 30n, enough: true });
     expect(planSolWrap({ buyIn: 100n, accountExists: true, wrappedBalance: 150n, accountRent: 20n, solBalance: 0n })).toMatchObject({ toWrap: 0n, enough: true, createAccount: false });
+  });
+});
+
+describe('unwrap (Phase 30): the relayer only pays the fee to close your own wSOL account', () => {
+  const account = Keypair.generate().publicKey;
+  const ctx = { relayer, user, account };
+
+  it('accepts closing your wSOL account to your wallet', () => {
+    expect(checkUnwrapTransaction(tx(closeWrappedSolAccountInstruction(user, account)), ctx)).toEqual({ ok: true });
+  });
+  it('rejects sending the SOL to someone else, closing another account, or no owner signature', () => {
+    const toAttacker = new TransactionInstruction({
+      programId: TOKEN_PROGRAM,
+      keys: [
+        { pubkey: account, isSigner: false, isWritable: true },
+        { pubkey: attacker, isSigner: false, isWritable: true },
+        { pubkey: user, isSigner: true, isWritable: false },
+      ],
+      data: Buffer.from([9]),
+    });
+    expect(checkUnwrapTransaction(tx(toAttacker), ctx)).toMatchObject({ ok: false, errors: ['close: the SOL must go to your own wallet'] });
+    expect(checkUnwrapTransaction(tx(closeWrappedSolAccountInstruction(user, userToken)), ctx)).toMatchObject({ ok: false, errors: ['close: only your own wrapped SOL account'] });
+  });
+  it('rejects anything added: a transfer, a second close, a program instruction', () => {
+    const drain = SystemProgram.transfer({ fromPubkey: relayer, toPubkey: attacker, lamports: 1_000_000 });
+    expect(checkUnwrapTransaction(tx(closeWrappedSolAccountInstruction(user, account), drain), ctx).ok).toBe(false);
+    expect(checkUnwrapTransaction(tx(closeWrappedSolAccountInstruction(user, account), closeWrappedSolAccountInstruction(user, account)), ctx)).toMatchObject({
+      ok: false,
+      errors: ['exactly one close instruction'],
+    });
+    expect(checkUnwrapTransaction(tx(closeWrappedSolAccountInstruction(user, account), joinIx()), ctx).ok).toBe(false);
+  });
+  it('rejects another fee payer', () => {
+    const t = tx(closeWrappedSolAccountInstruction(user, account));
+    t.feePayer = user;
+    expect(checkUnwrapTransaction(t, ctx)).toMatchObject({ ok: false, errors: ['the relayer must be the fee payer'] });
   });
 });

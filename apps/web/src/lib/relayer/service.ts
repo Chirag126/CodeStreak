@@ -22,6 +22,7 @@ import { friendlyTxError } from '@codestreak/shared/errors';
 import {
   buildCodestreakInstruction,
   checkRelayedTransaction,
+  checkUnwrapTransaction,
   closeWrappedSolAccountInstruction,
   createWrappedSolAccountInstruction,
   planSolWrap,
@@ -58,7 +59,8 @@ function failure(err: unknown, logs?: readonly string[] | null) {
   return { ok: false as const, error: f.message, code: f.code, title: f.title };
 }
 
-async function userCounts(profileId: string) {
+/** The user's recent relayer requests (for the rate limit). */
+export async function relayerUsage(profileId: string) {
   const admin = createSupabaseAdminClient();
   const since = (ms: number) => new Date(Date.now() - ms).toISOString();
   const count = async (from: string) => {
@@ -123,6 +125,8 @@ async function acceptInvitationOnJoin(profileId: string, challengeAddress: strin
 
 type RelayKind = 'join' | 'create' | 'sponsor';
 const KIND_INSTRUCTION: Record<RelayKind, RelayedInstruction> = { join: 'join_pool', create: 'initialize_pool', sponsor: 'sponsor_pool' };
+/** Requests the user signs and submits here: the program actions above, plus unwrapping wrapped SOL (Phase 30). */
+type SubmitKind = RelayKind | 'unwrap';
 
 export const hashSponsorToken = (token: string) => createHash('sha256').update(token, 'utf8').digest('hex');
 
@@ -170,7 +174,7 @@ async function existingOrRateLimit(input: { profileId: string; idempotencyKey: s
     }
     return { existing: { id: existing.id as string, status: existing.status as string } };
   }
-  const limit = rateLimitDecision(await userCounts(input.profileId));
+  const limit = rateLimitDecision(await relayerUsage(input.profileId));
   if (!limit.ok) return { done: { ok: false as const, error: limit.message, code: 'relayer.rate_limited', title: 'Slow down' } };
   return {};
 }
@@ -577,11 +581,14 @@ export async function submitRelayed(input: { profileId: string; idempotencyKey: 
   }
   if (messageHash(tx) !== row.message_hash) return { ok: false, error: 'Refused: the transaction was changed after it was prepared.' };
   const user = new PublicKey(row.wallet as string);
-  const kind = row.kind as RelayKind;
-  if (!(kind in KIND_INSTRUCTION)) return { ok: false, error: 'Unsupported request.' };
+  const kind = row.kind as SubmitKind;
+  if (kind !== 'unwrap' && !(kind in KIND_INSTRUCTION)) return { ok: false, error: 'Unsupported request.' };
   const storedWrap = (row.payload as { wrap?: { account: string; maxLamports: string } } | null)?.wrap;
   const wrap = storedWrap ? { account: new PublicKey(storedWrap.account), maxLamports: BigInt(storedWrap.maxLamports) } : undefined;
-  const policy = checkRelayedTransaction(tx, { relayer: relayer.publicKey, user, programId: PROGRAM_ID, allowed: [KIND_INSTRUCTION[kind]], wrap });
+  const policy =
+    kind === 'unwrap'
+      ? checkUnwrapTransaction(tx, { relayer: relayer.publicKey, user, account: associatedTokenAddress(user, WSOL_MINT_KEY) })
+      : checkRelayedTransaction(tx, { relayer: relayer.publicKey, user, programId: PROGRAM_ID, allowed: [KIND_INSTRUCTION[kind]], wrap });
   if (!policy.ok) return { ok: false, error: `Refused: ${policy.errors.join('; ')}`, code: 'relayer.policy', title: 'Refused by the relayer' };
   if (!tx.verifySignatures(true)) return { ok: false, error: 'Missing or invalid signature.' };
   if ((await connection.getBlockHeight('confirmed')) >= Number(row.last_valid_block_height)) {
@@ -620,7 +627,9 @@ export async function submitRelayed(input: { profileId: string; idempotencyKey: 
   // and retried on the next sync, never reported as a failed join.
   const sponsorPayload = row.payload as { amount?: string; message?: string | null; receipt?: string } | null;
   const mirror =
-    kind === 'join'
+    kind === 'unwrap'
+      ? null // nothing of CodeStreak's changed: the user's own token account was closed
+      : kind === 'join'
       ? syncJoin(connection, { challengeAddress: row.challenge_address as string, wallet: row.wallet as string, profileId: input.profileId, signature })
       : kind === 'sponsor'
         ? syncSponsor(connection, {
@@ -648,8 +657,8 @@ export async function submitRelayed(input: { profileId: string; idempotencyKey: 
     actor_kind: 'relayer',
     actor_id: input.profileId,
     action: `relayer.${row.kind as string}`,
-    entity_type: 'challenge',
-    entity_id: row.challenge_address as string,
+    entity_type: kind === 'unwrap' ? 'wallet' : 'challenge',
+    entity_id: (row.challenge_address as string | null) ?? (row.wallet as string),
     details: { signature, wallet: row.wallet },
   });
   return { ok: true, signature };
