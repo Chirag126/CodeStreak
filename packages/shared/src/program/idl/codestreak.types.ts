@@ -889,6 +889,161 @@ export type Codestreak = {
       "args": []
     },
     {
+      "name": "mintBadge",
+      "docs": [
+        "Mints the soulbound Token-2022 survivor badge into a Survived player's wallet (anyone may pay)."
+      ],
+      "discriminator": [
+        242,
+        234,
+        237,
+        183,
+        232,
+        245,
+        146,
+        1
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "challenge",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  97,
+                  108,
+                  108,
+                  101,
+                  110,
+                  103,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "challenge.creator",
+                "account": "challenge"
+              },
+              {
+                "kind": "account",
+                "path": "challenge.challengeId",
+                "account": "challenge"
+              }
+            ]
+          }
+        },
+        {
+          "name": "participant",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  114,
+                  116,
+                  105,
+                  99,
+                  105,
+                  112,
+                  97,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "challenge"
+              },
+              {
+                "kind": "account",
+                "path": "participant.user",
+                "account": "participant"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user"
+        },
+        {
+          "name": "badgeMint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  100,
+                  103,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "participant"
+              }
+            ]
+          }
+        },
+        {
+          "name": "badgeAuthority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  100,
+                  103,
+                  101,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "userBadgeAccount",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        },
+        {
+          "name": "associatedTokenProgram",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "recordVerification",
       "docs": [
         "Verifier records one participant-day result. One-way: only upgrades to Verified after a first result."
@@ -1264,6 +1419,19 @@ export type Codestreak = {
     }
   ],
   "events": [
+    {
+      "name": "badgeMinted",
+      "discriminator": [
+        53,
+        227,
+        68,
+        72,
+        115,
+        78,
+        25,
+        14
+      ]
+    },
     {
       "name": "challengeCancelled",
       "discriminator": [
@@ -1643,9 +1811,43 @@ export type Codestreak = {
       "code": 6046,
       "name": "cannotCancel",
       "msg": "This challenge cannot be cancelled now"
+    },
+    {
+      "code": 6047,
+      "name": "notSurvivor",
+      "msg": "Only players who kept their streak (Survived) can mint a badge"
+    },
+    {
+      "code": 6048,
+      "name": "badgeAlreadyMinted",
+      "msg": "This player's badge was already minted"
     }
   ],
   "types": [
+    {
+      "name": "badgeMinted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "challenge",
+            "type": "pubkey"
+          },
+          {
+            "name": "participant",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
     {
       "name": "challenge",
       "docs": [

@@ -30,6 +30,7 @@ export default async function DashboardPage() {
     { title: 'Insights', body: 'Your streaks, success rate and weekly coding summary, from your recorded days.', href: '/dashboard/insights', cta: 'Open insights' },
     { title: 'Disputes', body: 'Tickets you opened about recorded days, with their review and on-chain timeline.', href: '/dashboard/disputes', cta: 'Open disputes' },
     { title: 'Payouts', body: 'Rewards and refunds from your challenges, where each amount came from, and unwrapping SOL.', href: '/dashboard/claims', cta: 'Open payouts' },
+    { title: 'Badges', body: 'Soulbound Token-2022 badges for every challenge you survived, with Explorer links.', href: '/dashboard/badges', cta: 'Open badges' },
   ];
 
   return (

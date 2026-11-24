@@ -5,6 +5,7 @@ import { PublicKey } from '@solana/web3.js';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { after } from 'next/server';
+import { MyBadge } from '@/components/badges/my-badge';
 import { MyPayout } from '@/components/claims/my-payout';
 import { percent, type Token } from '@/components/challenges/format';
 import { RewardEstimate } from '@/components/challenges/reward-estimate';
@@ -227,6 +228,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
             </p>
           )}
           {viewer && row && (phase === 'settled' || phase === 'cancelled') && <MyPayout profileId={viewer.userId} address={address} />}
+          {viewer && row && phase === 'settled' && <MyBadge profileId={viewer.userId} address={address} />}
           {phase === 'cancelled' ? (
             <p className="text-sm text-muted-foreground">
               Cancelled: fewer than {account.minParticipants} players joined. Every stake and sponsorship is refunded automatically to the wallet it came from.

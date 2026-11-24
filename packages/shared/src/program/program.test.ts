@@ -5,6 +5,9 @@ import {
   CODESTREAK_IDL_JSON,
   PROGRAM_ID,
   anchor,
+  badgeAuthorityPda,
+  badgeMintPda,
+  badgeTokenAccount,
   canonicalJson,
   challengePda,
   challengePhase,
@@ -115,5 +118,18 @@ describe('rules hash', () => {
     expect(h1).toHaveLength(32);
     // SHA-256("{}")
     expect(Buffer.from(await rulesHash({})).toString('hex')).toBe('44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a');
+  });
+});
+
+describe('badge PDAs (Phase 34)', () => {
+  it('one mint per participant, one program-wide authority, the badge in a Token-2022 account', () => {
+    const a = Keypair.generate().publicKey;
+    const b = Keypair.generate().publicKey;
+    const owner = Keypair.generate().publicKey;
+    expect(badgeMintPda(a).equals(badgeMintPda(a))).toBe(true);
+    expect(badgeMintPda(a).equals(badgeMintPda(b))).toBe(false);
+    expect(badgeAuthorityPda().equals(PublicKey.findProgramAddressSync([new TextEncoder().encode('badge_authority')], PROGRAM_ID)[0])).toBe(true);
+    expect(badgeTokenAccount(owner, a).equals(badgeTokenAccount(owner, b))).toBe(false);
+    expect(CODESTREAK_IDL_JSON.instructions.some((i) => i.name === 'mint_badge')).toBe(true);
   });
 });
