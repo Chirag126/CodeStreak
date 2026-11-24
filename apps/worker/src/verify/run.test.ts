@@ -86,9 +86,13 @@ class FakeChain implements Chain {
   }
   recordVerification(_c: string, participant: string, day: number, result: DayResultName) {
     const p = this.ps.get(participant)!;
-    if (dayResultOf(p, day)) return Promise.reject(new Error('custom program error: 0x1780 InvalidTransition'));
+    const before = dayResultOf(p, day);
+    // The program: none -> any; failed/indeterminate -> verified (an upgrade, until the dispute window ends).
+    if (before && !(result === 'verified' && before !== 'verified')) return Promise.reject(new Error('custom program error: 0x1780 InvalidTransition'));
     return this.tx(`record:${p.user}:${day}:${result}`, () => {
       const bit = 1n << BigInt(day);
+      p.failedDays &= ~bit;
+      p.indeterminateDays &= ~bit;
       if (result === 'verified') p.verifiedDays |= bit;
       else if (result === 'failed') p.failedDays |= bit;
       else p.indeterminateDays |= bit;
@@ -146,6 +150,8 @@ class FakeDb implements Db {
   ];
   work = [{ challenge_id: 'c1', address: CHALLENGE, reason: 'record' }];
   reconciled: Record<string, unknown>[] = [];
+  disputes: { id: string; day: number; previous_hash: string; review_note: string; reviewed_at: string; memberships: { wallet_address: string; challenge_id: string } }[] = [];
+  disputeCalls: Record<string, unknown>[] = [];
 
   async rpc<T>(fn: string, a: Record<string, unknown> = {}): Promise<T> {
     switch (fn) {
@@ -179,6 +185,11 @@ class FakeDb implements Db {
       case 'mirror_pool_state':
         this.poolState = a.p_state as string;
         return null as T;
+      case 'resolve_dispute':
+      case 'close_dispute':
+        this.disputeCalls.push({ fn, ...a });
+        this.disputes = this.disputes.filter((d) => d.id !== a.p_dispute);
+        return null as T;
       case 'reconcile_challenge':
         this.reconciled.push(a);
         return { challenge_id: 'c1', added: false, changes: [], warnings: [] } as T;
@@ -192,6 +203,7 @@ class FakeDb implements Db {
     if (table === 'challenges') return [{ id: 'c1', rules: { providers: ['github'], github: { minMeaningfulLines: 10 } }, payouts_done_at: this.payoutsDone }] as T[];
     if (table === 'memberships') return this.members as T[];
     if (table === 'day_results') return [...this.dayResults.values()] as T[];
+    if (table === 'disputes') return this.disputes as T[];
     throw new Error(`unexpected select ${table}`);
   }
   async insert() {}
@@ -391,6 +403,35 @@ describe('verification job', () => {
     expect(chain.sent).toEqual([]);
     expect(db.payouts).toEqual([{ wallet: ALICE, kind: 'refund', amount: '10', tx: null }]);
     expect(db.payoutsDone).toBeTruthy();
+  });
+
+  it('applies an approved dispute: failed -> verified on-chain with a dispute receipt, once', async () => {
+    const { chain, db, deps } = setup([ALICE]);
+    chain.c.minParticipants = 1;
+    chain.ps.get(`P-${ALICE}`)!.failedDays = 1n; // day 1 recorded as failed
+    chain.clock = START + 3 * DAY + 900 + 100; // in the dispute window
+    db.disputes.push({ id: 'd-1', day: 0, previous_hash: 'aa'.repeat(32), review_note: 'Commit confirmed', reviewed_at: 'now', memberships: { wallet_address: ALICE, challenge_id: 'c1' } });
+    await runVerification(deps);
+    expect(chain.sent).toEqual([`record:${ALICE}:0:verified`]);
+    expect(dayResultOf(chain.ps.get(`P-${ALICE}`)!, 0)).toBe('verified');
+    const call = db.disputeCalls[0] as { fn: string; p_tx: string; p_receipt: string; p_hash: string };
+    expect(call.fn).toBe('resolve_dispute');
+    expect(call.p_tx).toMatch(/^sig-/);
+    expect(JSON.parse(call.p_receipt)).toMatchObject({ engine: 'codestreak-dispute/1', verdict: 'verified', day: 0, dispute: 'd-1', previous_hash: 'aa'.repeat(32) });
+    expect(call.p_hash).toMatch(/^[0-9a-f]{64}$/);
+    await runVerification(deps);
+    expect(chain.sent).toHaveLength(1); // nothing sent twice
+  });
+
+  it('expires an approved dispute once the dispute window has closed', async () => {
+    const { chain, db, deps } = setup([ALICE]);
+    chain.c.minParticipants = 1;
+    chain.ps.get(`P-${ALICE}`)!.failedDays = 1n;
+    chain.clock = START + 3 * DAY + 900 + 600; // dispute window over
+    db.disputes.push({ id: 'd-2', day: 0, previous_hash: 'aa'.repeat(32), review_note: 'ok', reviewed_at: 'now', memberships: { wallet_address: ALICE, challenge_id: 'c1' } });
+    await runVerification(deps);
+    expect(db.disputeCalls[0]).toMatchObject({ fn: 'close_dispute', p_dispute: 'd-2', p_status: 'expired' });
+    expect(chain.sent.some((s) => s.startsWith('record:'))).toBe(false);
   });
 
   it('does nothing without a verifier key, and says why', async () => {

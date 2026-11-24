@@ -60,8 +60,8 @@ insert into public.receipts (challenge_id, profile_id, wallet, kind, amount, tx_
   ('b0000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-00000000000f', 'Ff5vCCzJBaUEiv4omcdY5Hu2fwk8VpaSC3fCPuu7JTaa',
    'join', 5000000, repeat('B', 87));
 
-insert into public.disputes (membership_id, day, opened_by, reason) values
-  ('b1000000-0000-0000-0000-00000000000d', 0, '00000000-0000-0000-0000-00000000000d', 'My push was on time, GitHub was slow.');
+insert into public.disputes (membership_id, day, opened_by, reason, previous_result, previous_hash) values
+  ('b1000000-0000-0000-0000-00000000000d', 0, '00000000-0000-0000-0000-00000000000d', 'My push was on time, GitHub was slow.', 'failed', repeat('1', 64));
 
 insert into public.audit_log (actor_kind, actor_id, action, entity_type, entity_id) values
   ('user', '00000000-0000-0000-0000-00000000000e', 'challenge.join', 'challenge', 'b0000000-0000-0000-0000-00000000000a'),
@@ -123,14 +123,13 @@ select pg_temp.expect_fail('receipt tx recorded twice', $q$
   insert into public.receipts (challenge_id, wallet, kind, amount, tx_signature)
   values ('b0000000-0000-0000-0000-00000000000a', 'Ee5vCCzJBaUEiv4omcdY5Hu2fwk8VpaSC3fCPuu7JTaa', 'reward', 1, repeat('A', 87)) $q$);
 
+-- Disputes (reworked in Phase 31: see 99g_disputes_test.sql).
 select pg_temp.expect_fail('two open disputes for one member-day', $q$
-  insert into public.disputes (membership_id, day, opened_by, reason)
-  values ('b1000000-0000-0000-0000-00000000000d', 0, '00000000-0000-0000-0000-00000000000d', 'Opening it a second time.') $q$);
+  insert into public.disputes (membership_id, day, opened_by, reason, previous_result, previous_hash)
+  values ('b1000000-0000-0000-0000-00000000000d', 0, '00000000-0000-0000-0000-00000000000d', 'Opening it a second time, please.', 'failed', repeat('1', 64)) $q$);
 select pg_temp.expect_fail('dispute reason too short', $q$
-  insert into public.disputes (membership_id, day, opened_by, reason)
-  values ('b1000000-0000-0000-0000-00000000000d', 1, '00000000-0000-0000-0000-00000000000d', 'pls') $q$);
-select pg_temp.expect_fail('accepted dispute without a resolution', $q$
-  update public.disputes set status = 'accepted', resolved_at = now() $q$);
+  insert into public.disputes (membership_id, day, opened_by, reason, previous_result, previous_hash)
+  values ('b1000000-0000-0000-0000-00000000000d', 1, '00000000-0000-0000-0000-00000000000d', 'pls', 'failed', repeat('1', 64)) $q$);
 
 select pg_temp.expect_fail('audit log update', $q$ update public.audit_log set action = 'tampered' $q$);
 select pg_temp.expect_fail('audit log delete', $q$ delete from public.audit_log $q$);
@@ -171,10 +170,10 @@ select pg_temp.expect_fail('outsider cannot write results', $q$
   insert into public.day_results (membership_id, day, result, evidence_hash)
   values ('b1000000-0000-0000-0000-00000000000f', 2, 'verified', repeat('6', 64)) $q$);
 select pg_temp.expect_fail('outsider cannot open disputes directly', $q$
-  insert into public.disputes (membership_id, day, opened_by, reason)
-  values ('b1000000-0000-0000-0000-00000000000f', 1, '00000000-0000-0000-0000-00000000000f', 'Direct insert attempt.') $q$);
+  insert into public.disputes (membership_id, day, opened_by, reason, previous_result, previous_hash)
+  values ('b1000000-0000-0000-0000-00000000000f', 1, '00000000-0000-0000-0000-00000000000f', 'Direct insert attempt, bypassing checks.', 'failed', repeat('1', 64)) $q$);
 
--- e IS a member: sees the private group's members, results, evidence, disputes and standings.
+-- e IS a member: sees the private group's members, results, evidence and standings (not others' disputes).
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000e', false);
 do $$
 declare p uuid := 'b0000000-0000-0000-0000-00000000000a';
@@ -185,7 +184,7 @@ begin
           where m.challenge_id = p) = 3, 'member: results visible';
   assert (select count(*) from public.evidence e join public.memberships m on m.id = e.membership_id
           where m.challenge_id = p) = 2, 'member: evidence visible';
-  assert (select count(*) from public.disputes) = 1, 'member: group dispute visible';
+  assert (select count(*) from public.disputes) = 0, 'member: another player''s dispute stays hidden (own or admin only)';
   assert (select count(*) from public.challenge_standings where challenge_id = p) = 2, 'member: standings';
   assert (select count(*) from public.voice_clips) = 1 and (select count(*) from public.audit_log) = 1, 'member: own clips and audit';
   assert (select count(*) from public.receipts) = 1, 'member: own receipt only';

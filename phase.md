@@ -1058,3 +1058,67 @@ the same wallet, including its small rent deposit. You approve in your wallet; t
 - the unwrap policy (accepts your own close; rejects another destination, another account, extra
   instructions, a second close, another fee payer);
 - SQL `99f_claim_center_test.sql`: only unwrap requests may have no challenge.
+
+## Phase 31: Disputes (M)
+
+**Player: dispute form (challenge page) and tickets (Dashboard → Disputes).** Once a day is recorded
+on-chain as *failed* or *could not verify*, the player can open a dispute until the dispute window closes.
+A dispute has a reason (20–2000 characters) and up to 5 https evidence links. Each ticket shows its
+status and its full timeline: opened, approved or rejected (with the admin's note), then upgraded
+on-chain (with the Explorer link), expired, or could not be applied.
+
+**Admin review (`/admin/disputes`).** Admins are the profiles listed in `public.admins`. The page shows
+waiting tickets with:
+- the player (username and wallet);
+- what the rules engine recorded (each provider's outcome, progress and confidence, from the day's
+  sealed receipt);
+- the reason and evidence links;
+- when the window closes.
+
+**Approve** or **Reject** needs a note to the player. Everyone who isn't an admin gets a plain 404: the
+page doesn't reveal that it exists.
+
+**Verifier upgrade.** An approval queues work for the crank: `verification_work` reason `dispute`, handled
+before anything settles. The worker signs `record_verification(day, verified)` with the verifier key;
+the program allows failed/indeterminate → verified until the dispute window ends. The evidence hash is a
+**dispute receipt** (engine `codestreak-dispute/1`), which records:
+- the ticket;
+- the previous receipt's hash;
+- the review.
+
+`resolve_dispute` then replaces the day's receipt, marks the day verified (`source = dispute`) and
+resolves the ticket, all in one transaction, still checked by the Phase 27 receipt constraints. Every
+attempt re-reads the chain, so a retry never upgrades twice. An approval that misses the window is
+closed as *expired*.
+
+**Rules enforced by the database** (`open_dispute`, `review_dispute`, RLS), not only by the UI:
+- only your own days, recorded on-chain, not already verified, while the challenge is open and before
+  the dispute window closes ("The dispute window closed on … UTC");
+- one live ticket per day and at most two per day;
+- only admins can review, and a ticket can't be reviewed twice;
+- approving after the window closes becomes *expired*;
+- tickets and timelines are visible only to their owner and to admins (other members, outsiders and anon
+  see nothing);
+- only the worker (service role) resolves or closes tickets.
+
+**Audit trail:** `dispute_events` (the timeline people see) and `audit_log` (`dispute.opened|approved|
+rejected|resolved|expired|failed`, actor kind user/admin/worker).
+
+Phase 11's unused `disputes` placeholder was replaced: it was empty everywhere, and members could see each
+other's tickets.
+
+**Tests:**
+- SQL `99g_disputes_test.sql`:
+  - opening;
+  - every refusal (after the window, someone else's day, a verified or unrecorded day, a duplicate, a
+    short reason, a bad link);
+  - a player can't review or see other tickets;
+  - an admin sees all and approves or rejects;
+  - reviewing twice is refused;
+  - the work order (dispute first);
+  - resolution replaces the receipt and verifies the day;
+  - a user can't resolve;
+  - anon sees nothing.
+- Worker:
+  - an approved dispute upgrades failed → verified on-chain with a dispute receipt, once;
+  - an approval after the window expires.
