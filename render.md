@@ -18,7 +18,7 @@ Both auto-deploy from `main`. Build and start commands:
 
 **Free plan budget:** 750 instance-hours a month for the whole workspace (shared with your other free services). Each free service sleeps after ~15 idle minutes and takes up to about a minute to wake. The worker is woken every 30 minutes by Supabase (below), so it is awake about half the time.
 
-**Waking the worker:** Supabase `pg_cron` job `codestreak-wake-worker` (every 30 minutes) calls `private.wake_worker('wake')` (and `codestreak-leetcode-snapshots` at :15/:45 calls `private.wake_worker('leetcode-snapshots')`), which POSTs to `<worker_url>/jobs/wake` through `pg_net` with the secret. The URL and secret live in **Supabase Vault** as `worker_url` and `worker_job_secret`. The secret is generated inside Supabase; copy it to the worker's `WORKER_JOB_SECRET` from Supabase → Project Settings → Vault.
+**Waking the worker:** Supabase `pg_cron` job `codestreak-verify` (every minute, **only while a challenge has work**: a finished day to record, a pool to cancel or settle, payouts to send) calls `private.wake_worker('verify')`. Supabase `pg_cron` job `codestreak-wake-worker` (every 30 minutes) calls `private.wake_worker('wake')` (and `codestreak-leetcode-snapshots` at :15/:45 calls `private.wake_worker('leetcode-snapshots')`), which POSTs to `<worker_url>/jobs/wake` through `pg_net` with the secret. The URL and secret live in **Supabase Vault** as `worker_url` and `worker_job_secret`. The secret is generated inside Supabase; copy it to the worker's `WORKER_JOB_SECRET` from Supabase → Project Settings → Vault.
 
 This file is updated every phase. It lists what currently points at **localhost** or at files on
 your laptop, and what each value must be on Render. Never commit real secret values: set them in
@@ -33,7 +33,7 @@ Render → Service → Environment.
 | Supabase → Auth → URL Configuration → **Redirect URLs** | `http://localhost:3000/**` | add `https://codestreak-k0uv.onrender.com/**` (keep localhost for development) | Supabase dashboard | 12 |
 | `RELAYER_KEYPAIR_PATH` | `\\wsl$\Ubuntu\home\chirag_126\.config\codestreak\keys\relayer.json` | **don't set**; set **`RELAYER_KEYPAIR_JSON`** instead: the file's whole contents (a JSON array of 64 numbers). **Required from Phase 15** (sponsored joins). Get it in WSL with `cat ~/.config/codestreak/keys/relayer.json` | web | 9 / 15 |
 | `UPGRADE_AUTHORITY_KEYPAIR_PATH` | path to `upgrade-authority.json` | **never set on Render** (local, one-time scripts only) | - | 9 |
-| `VERIFIER_KEYPAIR_PATH` | (not used yet) | **don't set**; set `VERIFIER_KEYPAIR_JSON` instead | worker | 28 |
+| `VERIFIER_KEYPAIR_PATH` | `~/.config/codestreak/keys/verifier.json` (WSL) | **don't set**; set **`VERIFIER_KEYPAIR_JSON`** instead: the file's whole contents (a JSON array of 64 numbers). **Required from Phase 28** (recording days, settling, payouts). Get it in WSL with `cat ~/.config/codestreak/keys/verifier.json` | worker | 28 |
 | `WORKER_URL` | `http://localhost:10000` (local worker) | `https://codestreak-worker.onrender.com` (Supabase Vault `worker_url` is **set**) | web | 14 |
 | `WORKER_JOB_SECRET` | any 64-hex value in `.env.local` | the Vault `worker_job_secret` value (**secret**) | worker | 14 |
 
@@ -49,7 +49,7 @@ Copy these from your `.env.local` as they are.
 | `NEXT_PUBLIC_CODESTREAK_PROGRAM_ID` | `A4ohMziwegRbnV2DFHKW1YkNoVNeeiWuCJS5MjWeJT7J` | web |
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | same project | web, worker |
 | `SUPABASE_SERVICE_ROLE_KEY` | **secret**. Web: wallet linking (Phase 13). Worker: writes `worker.wake` to the audit log (Phase 14) | web, worker |
-| `UPGRADE_AUTHORITY_PUBKEY`, `RELAYER_PUBKEY`, `VERIFIER_PUBKEY`, `ADMIN_PUBKEY` | public keys, safe | web |
+| `UPGRADE_AUTHORITY_PUBKEY`, `RELAYER_PUBKEY`, `VERIFIER_PUBKEY`, `ADMIN_PUBKEY` | public keys, safe. The worker also needs `VERIFIER_PUBKEY`: it refuses a `VERIFIER_KEYPAIR_JSON` that is a different key | web (worker: `VERIFIER_PUBKEY`) |
 | `GITHUB_API_TOKEN`, `FIRECRAWL_API_KEY` | **secret** | worker |
 
 `NEXT_PUBLIC_*` values are built into the browser bundle: after changing one on Render, trigger a
@@ -85,3 +85,4 @@ new deploy (not just a restart).
 | 26 | **`FIRECRAWL_API_KEY` on the worker too** (scheduled LeetCode snapshots, ~1 credit per profile per 30 min while a LeetCode challenge runs). pg_cron job `codestreak-leetcode-snapshots` (`:15`/`:45`) → `/jobs/leetcode-snapshots`. Migration `leetcode_snapshots` applied. |
 | 27 | No new settings. Migration `day_receipts` applied (receipts table, `member_day_checks.confidence`). |
 | fix | **Optional, recommended: custom SMTP** (e.g. Resend or Brevo free tier) in Supabase → Authentication → SMTP. Then paste `supabase/templates/magic-link.html` and `confirm-signup.html` into Authentication → Emails. Makes sign-in links safe from link previews and scanners, and lifts the built-in mailer's limits (2 emails/hour, organisation members only). |
+| 28 | Worker needs **`VERIFIER_KEYPAIR_JSON`** (secret, the verifier keypair file's contents) and **`VERIFIER_PUBKEY`**. Without them the `verify` job logs "VERIFIER_KEYPAIR_JSON is not set" and does nothing. **Fund the verifier** with devnet SOL (`solana airdrop 2 <VERIFIER_PUBKEY> --url devnet`): it pays every fee for recording days, finalize/settle and payouts, plus ~0.002 SOL of token-account rent per payout wallet that has none yet (SOL payouts arrive as Wrapped SOL). Migration `verification_job` applied; pg_cron `codestreak-verify` runs every minute but only wakes the worker when there is work. |

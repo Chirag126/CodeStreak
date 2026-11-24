@@ -898,5 +898,55 @@ Found by watching the three recordings of video 3 and checking the stored snapsh
   ended-but-unsettled, "Too few players" for under-filled, "Settled" only when settled.
 - Copy: cancelled challenges no longer claim stakes "were refunded" (none were claimed yet); they are claimable.
 
-**Known gap (not a bug in these fixes):** nothing after the days runs yet: day results, on-chain
-verification records, finalize, settle and claim/refund are the next phases. Stakes stay safe in escrow.
+**Known gap (closed in Phase 28):** nothing after the days ran yet: day results, on-chain verification
+records, finalize, settle and claim/refund. Stakes stayed safe in escrow.
+
+## Phase 28: Verification job (M)
+
+Everything after a day ends now happens by itself: `apps/worker/src/verify/*`, job `verify`, migration
+`verification_job`.
+
+**Schedule (by challenge day boundaries).** pg_cron `codestreak-verify` runs every minute but wakes the
+worker only when `public.verification_has_work()`: a finished day without an on-chain result, a pool to
+cancel or settle, or payouts to send. A day is recorded a quarter-day after it ends (1 to 45 minutes:
+late pushes, LeetCode's list catching up), never later than 2 minutes before the verification window
+closes (`private.record_delay_secs`, mirrored in `schedule.ts`). All timing uses the chain's clock.
+
+**Per challenge, under a lease** (`begin_verification_run`: one scheduled run per challenge; a stuck
+lease expires after 10 minutes):
+1. **Cancel** an underfilled pool once joining closes (`cancel_pool`, allowed for anyone).
+2. **Record** each due day for each player: the same Phase 24/26/27 evaluation as "Check now" (a final
+   LeetCode snapshot is taken after the day if none exists) → receipt → `save_day_result` (result,
+   receipt, final evidence and audit entry in one transaction) → `record_verification` signed by the
+   verifier → `mark_day_recorded`. A wallet that joined without a CodeStreak account is recorded as
+   "could not verify" (never a fail).
+3. **Settle** after the dispute window: `finalize_participant` for each player, then `settle_challenge`.
+   Unrecorded days make a player *voided* (stake back); nobody surviving refunds everyone.
+4. **Pay out** (claims are permissionless): reward / refund / sponsor refund straight to each owner's
+   token account; the verifier pays fees and creates a missing token account. **SOL arrives as Wrapped
+   SOL** (the program pays tokens), which the wallet can unwrap.
+Every step is mirrored (`mirror_pool_state`, `record_payout`: receipts, membership status/payout,
+`challenges.payouts_done_at`) and written to `audit_log`; each run is a `verification_runs` row.
+
+**Idempotency.** The chain is the source of truth. Every attempt to send, including each retry, first
+re-reads the account it would change and sends nothing if the change is already there: a duplicate or
+overlapping run, or a retry after a lost confirmation, never sends a second transaction. A saved day
+result is never recomputed: later runs reuse its receipt hash, so the chain always gets the hash the
+receipt was sealed with.
+
+**Retries and caching.** RPC and Supabase calls retry transient failures (429, 5xx, timeouts, blockhash)
+with backoff (`packages/shared/src/retry.ts`); program errors are final and reported with the program's
+error name. A provider that can't be reached defers that player-day to the next run, until 3 minutes
+before the window closes (then it is recorded as "could not verify"). GitHub data is fetched once per
+account and day per run.
+
+**UI.** After a challenge settles or is cancelled the page shows your result and payout ("Your reward of
+… was sent to your wallet"); the board's after-the-days note explains that results and payouts are automatic.
+
+**Setup (render.md):** worker `VERIFIER_KEYPAIR_JSON` + `VERIFIER_PUBKEY`, and devnet SOL for the verifier.
+
+**Tests:** SQL (`99d_verification_job_test.sql`: work selection, delay, lease, cached results, idempotent
+mirrors, permissions) and worker (`run.test.ts` with an in-memory program: a demo challenge's days get
+recorded; a duplicate run sends no transaction and re-evaluates nothing; an RPC failure is retried and
+sent once; a lost confirmation is not re-sent; program errors are final; settle with rewards and dust;
+full refund; cancel with sponsor refunds; wrong verifier; `db.test.ts`: Supabase 5xx retried, 4xx not).

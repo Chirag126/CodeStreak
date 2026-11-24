@@ -148,8 +148,8 @@ export function GroupBoard({ address, initial, initialNow, decimals, symbol }: {
         {(board.phase === 'verifying' || board.phase === 'disputeWindow' || board.phase === 'awaitingSettlement') &&
           !input.members.some((m) => m.results.length > 0) && (
             <p role="status" className="rounded-lg border border-warning-400/40 bg-warning-400/10 p-3 text-sm">
-              All days are over. Day results haven&apos;t been recorded on-chain yet, so nobody is marked as passed or failed and every
-              stake stays locked in the challenge&apos;s on-chain escrow. Payouts and refunds open once the results are recorded.
+              All days are over. Each day&apos;s result is recorded on-chain automatically within a few minutes; stakes stay in the
+              challenge&apos;s escrow until the dispute window ends, then rewards and refunds are sent to every wallet automatically.
             </p>
           )}
         <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">

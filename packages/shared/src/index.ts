@@ -13,4 +13,5 @@ export * from './board.js';
 export * from './sponsor.js';
 export * from './accounts.js';
 export * from './canonical.js';
+export * from './retry.js';
 export * from './rules-engine.js';
