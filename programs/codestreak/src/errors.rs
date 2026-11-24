@@ -100,4 +100,8 @@ pub enum CodeStreakError {
     AlreadyClaimed,
     #[msg("This challenge cannot be cancelled now")]
     CannotCancel,
+    #[msg("Only players who kept their streak (Survived) can mint a badge")]
+    NotSurvivor,
+    #[msg("This player's badge was already minted")]
+    BadgeAlreadyMinted,
 }

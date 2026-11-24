@@ -73,10 +73,6 @@ jobs:
             target/types/codestreak.ts
           if-no-files-found: error
 
-      # The typed client in packages/shared must use exactly this IDL.
-      - name: IDL in packages/shared is up to date
-        run: node scripts/sync-idl.mjs --check
-
       # Same files as base64 in the log, so they can be read without artifact download access.
       - name: IDL (base64)
         run: |
@@ -86,6 +82,11 @@ jobs:
       # Unit tests (validation, lifecycle) + LiteSVM integration tests against the built .so.
       - name: Program tests
         run: cargo test -p codestreak -- --nocapture
+
+      # Last, so a program change still prints its IDL and runs its tests in the same run.
+      # The typed client in packages/shared must use exactly this IDL.
+      - name: IDL in packages/shared is up to date
+        run: node scripts/sync-idl.mjs --check
 
   database:
     name: Database migrations + constraint tests (Postgres)
