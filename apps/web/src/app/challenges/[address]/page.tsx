@@ -27,15 +27,22 @@ import { DisputePanel } from '@/components/disputes/dispute-panel';
 import { ShieldPanel } from '@/components/shields/shield-panel';
 import { MyDaysExplained } from '@/components/explain/my-days-explained';
 import { readDayLogs } from '@/lib/verification/day-check';
+import { cachedRead, throttled } from '@/lib/chain/read-cache';
 import { listGroupInvites } from '@/lib/groups/invites';
 import { JoinButton } from './join-button';
 
 export const metadata: Metadata = { title: 'Challenge' };
 
-/** The cluster's clock (falls back to this server's clock if the RPC has no block time). */
+/**
+ * The cluster's clock (falls back to this server's clock if the RPC has no block time). Read at most
+ * every 5 s per server and advanced locally in between, so busy pages don't hammer the RPC.
+ */
 async function chainNow(connection: ReturnType<typeof serverConnection>): Promise<number> {
-  const slot = await connection.getSlot('confirmed');
-  return (await connection.getBlockTime(slot)) ?? Math.floor(Date.now() / 1000);
+  const sample = await cachedRead('chain-now', 5000, async () => {
+    const slot = await connection.getSlot('confirmed');
+    return { chain: (await connection.getBlockTime(slot)) ?? Math.floor(Date.now() / 1000), local: Date.now() };
+  });
+  return sample.chain + Math.floor((Date.now() - sample.local) / 1000);
 }
 
 const when = (ts: number) => new Date(ts * 1000).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }) + ' UTC';
@@ -90,7 +97,9 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
   if (!isSolanaAddress(address)) notFound();
   const connection = serverConnection();
   const program = createProgram(connection);
-  const account = await program.account.challenge.fetchNullable(new PublicKey(address)).catch(() => null);
+  // A failed RPC read (e.g. devnet rate limiting) must not look like "this challenge doesn't
+  // exist": it throws, and the error page offers a retry. Only a real "no such account" is a 404.
+  const account = await cachedRead(`challenge:${address}`, 4000, () => program.account.challenge.fetchNullable(new PublicKey(address)));
   if (!account) notFound();
 
   const times = challengeTimes(account);
@@ -142,7 +151,8 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
 
   const stale = !row || Date.parse(row.updated_at as string) < now * 1000 - 60_000;
   if (stale) {
-    after(() => syncMembers(connection, address).then(() => undefined, (e: unknown) => console.error('[sync] challenge refresh failed:', e)));
+    // At most once per 30 s per challenge on this server, however many tabs refresh.
+    after(() => throttled(`sync:${address}`, 30_000, () => syncMembers(connection, address))?.then(() => undefined, (e: unknown) => console.error('[sync] challenge refresh failed:', e)));
   }
 
   const rate = row ? survivalRate({ members: Number(row.members), stillIn: Number(row.still_in), survived: Number(row.survived), finalized: Number(row.finalized) }) : null;
