@@ -14,6 +14,8 @@ export const SEEDS = {
   vault: enc.encode('vault'),
   participant: enc.encode('participant'),
   sponsor: enc.encode('sponsor'),
+  badge: enc.encode('badge'),
+  badgeAuthority: enc.encode('badge_authority'),
 } as const;
 
 /** u64 little-endian, as the program writes `challenge_id.to_le_bytes()`. */
@@ -52,9 +54,25 @@ export function programDataAddress(programId = PROGRAM_ID): PublicKey {
 }
 
 export const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+export const TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
 export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
 
 /** The owner's associated token account for `mint` (same derivation as @solana/spl-token). */
 export function associatedTokenAddress(owner: PublicKey, mint: PublicKey, tokenProgram: PublicKey = TOKEN_PROGRAM_ID): PublicKey {
   return find([owner.toBytes(), tokenProgram.toBytes(), mint.toBytes()], ASSOCIATED_TOKEN_PROGRAM_ID);
+}
+
+/** Soulbound survivor badge (Phase 34): one Token-2022 mint per Participant account. */
+export function badgeMintPda(participant: PublicKey, programId = PROGRAM_ID): PublicKey {
+  return find([SEEDS.badge, participant.toBytes()], programId);
+}
+
+/** The program-wide PDA that is every badge's mint, freeze and metadata authority. */
+export function badgeAuthorityPda(programId = PROGRAM_ID): PublicKey {
+  return find([SEEDS.badgeAuthority], programId);
+}
+
+/** The owner's Token-2022 account that holds their badge. */
+export function badgeTokenAccount(owner: PublicKey, participant: PublicKey, programId = PROGRAM_ID): PublicKey {
+  return associatedTokenAddress(owner, badgeMintPda(participant, programId), TOKEN_2022_PROGRAM_ID);
 }
