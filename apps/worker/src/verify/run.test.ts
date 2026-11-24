@@ -148,7 +148,11 @@ class FakeChain implements Chain {
     // The program: finalized Survived only, once.
     if (!live.finalized || live.status !== 'survived') return Promise.reject(new Error('custom program error: NotSurvivor'));
     if (this.badges.has(p.address)) return Promise.reject(new Error('custom program error: BadgeAlreadyMinted'));
-    return this.tx(`badge:${p.user}`, () => void this.badges.set(p.address, `sig-badge-${p.user}`));
+    // A landed-but-unconfirmed mint still shows its transaction on the mint address.
+    return this.tx(`badge:${p.user}`, () => void this.badges.set(p.address, `sig-badge-${p.user}`)).then((sig) => {
+      this.badges.set(p.address, sig);
+      return sig;
+    });
   }
 }
 
@@ -421,7 +425,8 @@ describe('verification job', () => {
     chain.clock = START + 3 * DAY + 900 + 600;
     await runVerification(deps);
     expect(chain.sent.filter((s) => s.startsWith('badge:'))).toEqual([`badge:${ALICE}`]);
-    expect(db.badges).toEqual([{ wallet: ALICE, mint: `B-P-${ALICE}`, tx: `sig-badge-${ALICE}` }]);
+    expect(db.badges).toEqual([{ wallet: ALICE, mint: `B-P-${ALICE}`, tx: chain.badges.get(`P-${ALICE}`) }]);
+    expect(db.badges[0]!.tx).toMatch(/^sig-\d+$/);
     expect(db.badgesChecked).toBeTruthy();
     const sent = chain.sent.length;
     await runVerification(deps); // a later run (or the 10-minute retry) sends nothing new
