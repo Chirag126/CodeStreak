@@ -299,7 +299,12 @@ export function LiveDashboard({ view }: { view: DashboardView }) {
             <Receipt className="size-4" aria-hidden />
             Recent receipts
           </CardTitle>
-          <CardDescription>Sealed day receipts recorded on-chain, and payouts. Each one links to its devnet transaction.</CardDescription>
+          <CardDescription>
+            Sealed day receipts recorded on-chain, and payouts. Each one links to its devnet transaction.{' '}
+            <Link className="underline underline-offset-4" href="/dashboard/history">
+              Full history
+            </Link>
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {view.receipts.length ? (

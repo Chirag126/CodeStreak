@@ -1369,3 +1369,23 @@ pretending to be data. Today shows a *Browse challenges* button.
 - the 30-day series (empty days filled, results and evidence bucketed, out-of-window results ignored);
 - UTC and IST clocks across midnight; countdown text;
 - entering the warning window detected exactly once.
+
+**Full history** (`/dashboard/history`, linked from the dashboard and from Recent receipts). Every
+challenge you played or sponsored, one row each, newest first:
+- outcome: running, awaiting settlement, survived, failed, voided, cancelled or sponsored;
+- dates (UTC);
+- recorded days (verified / failed / shielded / undecided);
+- what you put in and what came back;
+- your badge, if you have one.
+
+Several sponsorship top-ups on one challenge add up to one row.
+- **Filters:** role, outcome, token and title search, as URL parameters, so a filtered view can be
+  bookmarked. Unknown values fall back to "all".
+- **Summary:** challenges, survived · failed, verified days, and in → back per token.
+- **Export CSV** downloads exactly what's filtered (`/dashboard/history/export`):
+  - signed-in only, your rows only, `no-store`;
+  - Excel-safe: UTF-8 with a BOM, CRLF line ends;
+  - any title starting with `= + - @` is neutralised, so a hostile challenge title can't run as a
+    spreadsheet formula.
+- **Tests:** `history.test.ts` covers outcomes, filter parsing from untrusted input, filtering and
+  sorting, the summary, and CSV quoting and formula neutralising.
