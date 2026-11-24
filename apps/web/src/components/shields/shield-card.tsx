@@ -78,7 +78,7 @@ export function ShieldCard(props: ShieldCardProps) {
           </p>
         )}
         {days.map((d) => (
-          <ShieldDayRow key={d.day} {...props} day={d.day} block={d.block} closesIn={d.closesAt - (now ?? 0)} endsIn={d.dayEndsAt - (now ?? 0)} inGrace={d.inGrace} recorded={props.recorded[d.day]} />
+          <ShieldDayRow key={d.day} {...props} day={d.day} block={d.block} closesIn={d.closesAt - (now ?? 0)} endsIn={d.dayEndsAt - (now ?? 0)} inGrace={d.inGrace} dayResult={props.recorded[d.day]} />
         ))}
       </CardContent>
     </Card>
@@ -95,8 +95,8 @@ function ShieldDayRow({
   closesIn,
   endsIn,
   inGrace,
-  recorded,
-}: ShieldCardProps & { day: number; block: ReturnType<typeof shieldableDays>[number]['block']; closesIn: number; endsIn: number; inGrace: boolean; recorded?: string }) {
+  dayResult,
+}: ShieldCardProps & { day: number; block: ReturnType<typeof shieldableDays>[number]['block']; closesIn: number; endsIn: number; inGrace: boolean; dayResult?: string }) {
   const router = useRouter();
   const toast = useToast();
   const wallets = useSolanaWallets().filter((w) => 'solana:signTransaction' in w.features);
@@ -141,7 +141,7 @@ function ShieldDayRow({
         <p className="font-medium">
           Day {day + 1}{' '}
           <span className="font-normal text-muted-foreground">
-            {inGrace ? `ended · ${recorded === 'failed' ? 'recorded as missed' : recorded === 'indeterminate' ? "couldn't be verified" : 'result not recorded yet'}` : `today · ends in ${formatCountdown(endsIn)}`}
+            {inGrace ? `ended · ${dayResult === 'failed' ? 'recorded as missed' : dayResult === 'indeterminate' ? "couldn't be verified" : 'result not recorded yet'}` : `today · ends in ${formatCountdown(endsIn)}`}
           </span>
         </p>
         {block === null ? (
