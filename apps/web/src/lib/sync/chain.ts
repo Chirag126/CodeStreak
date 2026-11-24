@@ -1,42 +1,10 @@
 import 'server-only';
 
-import { WSOL_MINT } from '@codestreak/shared';
-import { createProgram, enumVariant, participantPda, type ChallengeAccount } from '@codestreak/shared/program';
+import { challengeMirrorRow, createProgram, enumVariant, participantPda } from '@codestreak/shared/program';
 import { PublicKey, type Connection } from '@solana/web3.js';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 const iso = (unixSeconds: number) => new Date(unixSeconds * 1000).toISOString();
-const hex = (bytes: number[]) => Buffer.from(bytes).toString('hex');
-
-/** The app's view of a Challenge account. Everything comes from the chain. */
-function challengeRow(address: string, c: ChallengeAccount) {
-  return {
-    onchain_address: address,
-    onchain_challenge_id: c.challengeId.toString(),
-    mint: c.mint.toBase58(),
-    vault: c.vault.toBase58(),
-    token: c.mint.toBase58() === WSOL_MINT ? 'sol' : 'usdc',
-    visibility: c.joinAuthority ? 'private' : 'public',
-    buy_in: c.buyIn.toString(),
-    start_at: iso(c.startTs.toNumber()),
-    day_length_secs: c.dayLengthSecs,
-    num_days: c.numDays,
-    join_deadline_at: iso(c.joinDeadlineTs.toNumber()),
-    min_participants: c.minParticipants,
-    max_participants: c.maxParticipants,
-    shield_price: c.shieldPrice.toString(),
-    max_shields: c.maxShieldsPerParticipant,
-    shield_grace_secs: c.shieldGraceSecs,
-    verify_window_secs: c.verifyWindowSecs,
-    dispute_window_secs: c.disputeWindowSecs,
-    rules_hash: hex(c.rulesHash),
-    pool_state: enumVariant<'open' | 'cancelled' | 'settled'>(c.state),
-    participant_count: c.participantCount,
-    total_stake: c.totalStake.toString(),
-    total_sponsor: c.totalSponsor.toString(),
-    total_shield: c.totalShield.toString(),
-  };
-}
 
 /**
  * Mirrors a challenge into `challenges` (insert on first sight, then refresh the mirrored fields).
@@ -57,7 +25,7 @@ export async function syncChallenge(connection: Connection, address: string, det
   const account = await program.account.challenge.fetchNullable(new PublicKey(address));
   if (!account) return null;
   const admin = createSupabaseAdminClient();
-  const mirror = challengeRow(address, account);
+  const mirror = challengeMirrorRow(address, account);
 
   const appFields = details
     ? {

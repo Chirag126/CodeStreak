@@ -42,9 +42,11 @@ class FakeChain implements Chain {
       rewardPerSurvivor: 0n,
       rewardDust: 0n,
       survivorsClaimed: 0,
+      creator: VERIFIER,
+      mirror: {} as ChainChallenge['mirror'], // only passed through to reconcile_challenge
     };
     for (const u of players) {
-      this.ps.set(`P-${u}`, { address: `P-${u}`, user: u, deposited: 10n, shieldPaid: 0n, verifiedDays: 0n, failedDays: 0n, indeterminateDays: 0n, finalized: false, claimed: false, status: 'active' });
+      this.ps.set(`P-${u}`, { address: `P-${u}`, user: u, deposited: 10n, shieldPaid: 0n, verifiedDays: 0n, failedDays: 0n, indeterminateDays: 0n, finalized: false, claimed: false, status: 'active', joinedAt: START - 100 });
     }
   }
   private tx(what: string, apply: () => void): Promise<string> {
@@ -64,6 +66,9 @@ class FakeChain implements Chain {
   }
   async challenge() {
     return structuredClone(this.c);
+  }
+  async allChallenges() {
+    return [structuredClone(this.c)];
   }
   async participants() {
     return [...this.ps.values()].map((p) => ({ ...p }));
@@ -140,6 +145,7 @@ class FakeDb implements Db {
     { id: 'm-bob', profile_id: 'pr-bob', wallet_address: BOB, participant_address: null, claimed_at: null as string | null },
   ];
   work = [{ challenge_id: 'c1', address: CHALLENGE, reason: 'record' }];
+  reconciled: Record<string, unknown>[] = [];
 
   async rpc<T>(fn: string, a: Record<string, unknown> = {}): Promise<T> {
     switch (fn) {
@@ -173,6 +179,9 @@ class FakeDb implements Db {
       case 'mirror_pool_state':
         this.poolState = a.p_state as string;
         return null as T;
+      case 'reconcile_challenge':
+        this.reconciled.push(a);
+        return { challenge_id: 'c1', added: false, changes: [], warnings: [] } as T;
       case 'record_payout':
         this.payouts.push({ wallet: a.p_wallet as string, kind: a.p_kind as string, amount: a.p_amount as string, tx: a.p_tx as string | null });
         return null as T;
@@ -245,6 +254,7 @@ describe('verification job', () => {
     expect(report).toMatchObject({ recorded: 4, cached: 0, errors: [] });
     expect([...db.dayResults.values()].every((r) => r.onchain_at && r.record_tx?.startsWith('sig-'))).toBe(true);
     expect(db.runs[0]).toMatchObject({ status: 'succeeded', error: null });
+    expect(db.reconciled).toHaveLength(1); // the mirror is reconciled after every run
   });
 
   it('a duplicate run sends no duplicate transaction and re-evaluates nothing', async () => {
@@ -412,6 +422,7 @@ describe('participantPayout', () => {
     finalized: true,
     claimed: false,
     status: 'survived',
+    joinedAt: 0,
     ...o,
   });
   const settled = { ...base, times: { ...base.times, state: 'settled' as const }, survivorCount: 2, rewardPerSurvivor: 4n, rewardDust: 1n };
