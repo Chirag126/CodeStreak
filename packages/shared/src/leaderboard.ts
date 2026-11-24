@@ -116,7 +116,7 @@ export function buildLeaderboard(kind: BoardKind, ms: LeaderMembership[], now: n
 }
 
 /** Rank movement since the previous render: positive = moved up. New entries are null. */
-export function rankChanges(prev: Map<string, number>, next: RankedEntry[]): Map<string, number | null> {
+export function rankChanges(prev: Map<string, number>, next: Pick<RankedEntry, 'profileId' | 'rank'>[]): Map<string, number | null> {
   const out = new Map<string, number | null>();
   for (const e of next) {
     const before = prev.get(e.profileId);
