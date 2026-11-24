@@ -1,5 +1,5 @@
 import { checkableDay, describeDailyGoal, PHASE_LABELS, formatAmount, missingProviders, PROVIDER_LABELS, type Provider, GITHUB_OPTION_LIMITS, SOL_DECIMALS, survivalRate, USDC_DECIMALS, WSOL_MINT } from '@codestreak/shared';
-import { challengePhase, challengeTimes, createProgram, explorerAddressUrl, rulesHash } from '@codestreak/shared/program';
+import { challengePhase, challengeTimes, createProgram, disputeEndTs, explorerAddressUrl, rulesHash } from '@codestreak/shared/program';
 import { isSolanaAddress } from '@codestreak/shared/wallet';
 import { PublicKey } from '@solana/web3.js';
 import type { Metadata } from 'next';
@@ -21,6 +21,7 @@ import { SponsorLinkPanel } from '@/components/sponsor/sponsor-link-panel';
 import { listSponsors } from '@/lib/sponsor/load';
 import { loadBoard } from '@/lib/board/load';
 import { MyDayCard } from '@/components/checks/my-day-card';
+import { DisputePanel } from '@/components/disputes/dispute-panel';
 import { readDayLogs } from '@/lib/verification/day-check';
 import { listGroupInvites } from '@/lib/groups/invites';
 import { JoinButton } from './join-button';
@@ -320,6 +321,10 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
           rule={((row?.rules ?? {}) as Rules).providerRule === 'all' ? 'all' : 'any'}
           providers={(['github', 'leetcode'] as const).filter((p) => Boolean(((row?.rules ?? {}) as Rules)[p]))}
         />
+      )}
+
+      {viewer && myMembershipId && phase !== 'joining' && phase !== 'starting' && (
+        <DisputePanel address={address} membershipId={myMembershipId} profileId={viewer.userId} disputeEndMs={disputeEndTs(times) * 1000} />
       )}
 
       <SponsorLeaderboard

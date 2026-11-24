@@ -9,7 +9,7 @@
 // first re-reads the account it would change and sends nothing if the change is already there, so
 // a duplicate run, or a retry after a lost confirmation, never sends a second transaction. A saved
 // day result is never recomputed: later runs reuse the stored receipt hash.
-import { buildReceipt, isTransientError, RULES_ENGINE_ID, sealReceipt, withRetry, type ProviderRule, type RetryOptions } from '@codestreak/shared';
+import { buildReceipt, canonicalJson, isTransientError, RULES_ENGINE_ID, sealReceipt, sha256Hex, withRetry, type ProviderRule, type RetryOptions } from '@codestreak/shared';
 import { disputeEndTs, friendlyTxError, verifyEndTs } from '@codestreak/shared/program';
 import { reconcileOne } from '../reconcile/run.js';
 import { dayResultOf, type Chain, type ChainChallenge, type ChainParticipant, type DayResultName } from './chain.js';
@@ -67,6 +67,14 @@ interface MemberRow {
   wallet_address: string;
   participant_address: string | null;
   claimed_at: string | null;
+}
+interface DisputeRow {
+  id: string;
+  day: number;
+  previous_hash: string;
+  review_note: string | null;
+  reviewed_at: string | null;
+  memberships: { wallet_address: string; challenge_id: string } | { wallet_address: string; challenge_id: string }[] | null;
 }
 interface DayRow {
   membership_id: string;
@@ -183,6 +191,9 @@ class ChallengeRun {
       await this.refresh();
     }
 
+    // 1b. Approved disputes: upgrade the day on-chain before anything settles (Phase 31).
+    await this.applyDisputes(now);
+
     // 2. Record finished days.
     if (open() && now < verifyEndTs(this.c.times)) {
       if (this.c.verifier !== this.chain.verifier) {
@@ -221,6 +232,60 @@ class ChallengeRun {
       await reconcileOne({ db, chain: this.chain, log: this.deps.log, retry: this.deps.retry }, address);
     } catch (e) {
       this.report.errors.push(`reconcile: ${errText(e)}`);
+    }
+  }
+
+  /**
+   * Approved disputes of this challenge: record_verification(day, verified) signed by the verifier,
+   * with a dispute receipt (the old receipt's hash, the ticket and the review) as the evidence hash.
+   * Closed as expired when the dispute window ended first; the program would refuse the upgrade.
+   */
+  private async applyDisputes(now: number): Promise<void> {
+    const { db } = this.deps;
+    const tickets = await db.select<DisputeRow>(
+      'disputes',
+      `select=id,day,previous_hash,review_note,reviewed_at,memberships!inner(wallet_address,challenge_id)&status=eq.approved&memberships.challenge_id=eq.${this.row.id}`,
+    );
+    if (!tickets.length) return;
+    const address = this.c.address;
+    const participants = await this.read(() => this.chain.participants(address));
+    for (const t of tickets) {
+      const member = Array.isArray(t.memberships) ? t.memberships[0] : t.memberships;
+      const label = `dispute ${t.id.slice(0, 8)} (day ${t.day + 1})`;
+      if (this.c.times.state !== 'open' || now >= disputeEndTs(this.c.times)) {
+        await db.rpc('close_dispute', { p_dispute: t.id, p_status: 'expired', p_error: 'The dispute window closed before the upgrade could be recorded.' });
+        this.deps.log(`${label}: expired`);
+        continue;
+      }
+      if (this.c.verifier !== this.chain.verifier) {
+        this.report.errors.push(`${label}: this challenge's verifier is not the worker's key`);
+        continue;
+      }
+      const p = participants.find((x) => x.user === member?.wallet_address);
+      if (!member || !p) {
+        await db.rpc('close_dispute', { p_dispute: t.id, p_status: 'failed', p_error: 'The player has no participant account on-chain.' });
+        continue;
+      }
+      const receipt = canonicalJson({
+        challenge: address,
+        member: p.user,
+        day: t.day,
+        engine: 'codestreak-dispute/1',
+        verdict: 'verified',
+        dispute: t.id,
+        previous_hash: t.previous_hash,
+        reviewed_at: t.reviewed_at,
+        review_note: t.review_note,
+      });
+      const hash = await sha256Hex(receipt);
+      const sent = await this.send(
+        label,
+        async () => dayResultOf((await this.chain.participant(p.address)) ?? p, t.day) === 'verified',
+        () => this.chain.recordVerification(address, p.address, t.day, 'verified', hash),
+      );
+      if (!sent.ok) continue; // retried next minute; expires on its own once the window closes
+      await db.rpc('resolve_dispute', { p_dispute: t.id, p_tx: sent.tx, p_receipt: receipt, p_hash: hash });
+      this.deps.log(`${label}: resolved${sent.tx ? ` (${sent.tx.slice(0, 8)}…)` : ' (already verified on-chain)'}`);
     }
   }
 
