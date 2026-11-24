@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { CopyButton } from '@/components/auth/copy-button';
 import { listMyChallenges, MyChallenges } from '@/components/challenges/my-challenges';
+import { LiveDashboard } from '@/components/dashboard/live-dashboard';
 import { MyInvites } from '@/components/groups/my-invites';
 import { Reveal } from '@/components/motion/primitives';
 import { RefreshOnFocus } from '@/components/motion/refresh-on-focus';
@@ -10,8 +11,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { SIGN_IN_PATH, USERNAME_PATH } from '@/lib/auth/routes';
+import { loadDashboard } from '@/lib/dashboard/load';
 import { listMyInvites } from '@/lib/groups/invites';
-import { getViewer } from '@/lib/supabase/server';
+import { nowSecs } from '@/lib/insights/load';
+import { createSupabaseServerClient, getViewer } from '@/lib/supabase/server';
 import { signOut } from '../sign-in/actions';
 
 export const metadata: Metadata = { title: 'Dashboard' };
@@ -21,7 +24,8 @@ export default async function DashboardPage() {
   if (!viewer) redirect(SIGN_IN_PATH);
   if (!viewer.username) redirect(USERNAME_PATH);
 
-  const [invites, challenges] = await Promise.all([listMyInvites(viewer.userId), listMyChallenges(viewer.userId)]);
+  const supabase = await createSupabaseServerClient();
+  const [invites, challenges, view] = await Promise.all([listMyInvites(viewer.userId), listMyChallenges(viewer.userId), loadDashboard(supabase, viewer.userId, nowSecs())]);
 
   const sections: { title: string; body: string; href?: string; cta?: string }[] = [
     { title: 'Accounts', body: 'Link GitHub and LeetCode so your coding days can be verified.', href: '/dashboard/settings', cta: 'Linked accounts' },
@@ -47,6 +51,8 @@ export default async function DashboardPage() {
           </Button>
         </form>
       </Reveal>
+
+      <LiveDashboard view={view} />
 
       <Reveal trigger="mount" delay={0.05}>
         <Card>

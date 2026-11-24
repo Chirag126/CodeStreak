@@ -1320,3 +1320,52 @@ instruction, and are retried every 10 minutes.
   - a mint that landed with a lost confirmation is mirrored without a second mint.
 - Shared and web: the badge PDAs; the IDL has `mint_badge`; friendly errors; the metadata JSON (name
   ≤ 32 bytes, private challenges unlinked); SVG escaping.
+
+## Phase 35: Developer dashboard (M)
+
+`/dashboard` opens on a live overview of your coding streak and money. Every widget reads your own records
+with your session (RLS), so it can only show what you're allowed to see. The logic is pure and tested
+(`packages/shared/src/dashboard.ts`), and the loader is `apps/web/src/lib/dashboard/load.ts`.
+
+| Widget | Where the data comes from |
+| --- | --- |
+| **Current streak**, longest, success rate | On-chain-recorded day results and Shields (`computeInsights`, as on Insights). |
+| **Active challenges**, **stake at risk** per token | Your memberships in open challenges that haven't ended. |
+| **Today's status** | In order: the recorded result; a Shield; the latest "Check now" (any provider met → *Goal met, waiting to be recorded*; below → *Below the goal so far*; incomplete → *Data incomplete*); otherwise *Not checked yet*. An earlier uncovered failure shows *Streak lost in this challenge*. |
+| **Potential payout** | `computeSettlement()` if every player still in (no uncovered failure) finishes: stake + an equal share of the forfeits, sponsorships and Shields. Labelled as an estimate. 0 once you're out. |
+| **Countdown** | The running day's end (or the start). Ticks every second. Shown in **UTC and IST** (UTC+05:30, no daylight saving). It turns amber inside the Phase 33 warning window while today isn't met. |
+| **Deadlines** | Upcoming joining close, start, current and next day ends, and the last day, soonest first, each in UTC and IST with a countdown. |
+| **Recent receipts** | Sealed day receipts recorded on-chain (verdict, receipt hash, record transaction) and payouts (amount, transaction), newest first, linked to devnet Explorer. |
+| **Activity chart** (Recharts) | The last 30 UTC dates, with empty days included. Stacked bars: verified, shielded, undecided and failed days. Lines: commits and solves that counted. |
+
+**Live.**
+- The page follows your notifications over Supabase Realtime: a day result, payout, badge, settlement or
+  deadline warning reloads the data at once.
+- It also reloads when a countdown reaches zero (a new day starts), every minute while the tab is visible,
+  and when you come back to the tab.
+
+**Audio.** Short cues synthesised in the browser with the Web Audio API: no files, no voice, no paid
+service.
+- Chime: a deadline enters its warning window while you're unmet.
+- Rising tone: a verified day.
+- Low tone: a missed day.
+- Coin: a payout or badge.
+
+Sound is **off** until you press *Sound on* (browsers allow sound only after a click). The choice is
+remembered in this browser.
+
+**Brand-new user.** A welcome card shows three steps (link GitHub or LeetCode, link a wallet, join or
+create a challenge), each marked done when it's done. Every widget has its own empty state, with no zeros
+pretending to be data. Today shows a *Browse challenges* button.
+
+**Tests:** `dashboard.test.ts` covers:
+- today's status precedence (record > Shield > check), and "out" after an uncovered failure but not a
+  shielded one;
+- stake and potential payout (sponsored, with forfeits), 0 for a player who is out, and no throw when the
+  mirrored player count lags;
+- the warning only inside the window and only while unmet;
+- deadlines (only active challenges, soonest first, before and after the start);
+- stake at risk per token;
+- the 30-day series (empty days filled, results and evidence bucketed, out-of-window results ignored);
+- UTC and IST clocks across midnight; countdown text;
+- entering the warning window detected exactly once.
