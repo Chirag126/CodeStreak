@@ -72,8 +72,8 @@ export async function myTickets(supabase: SupabaseClient, profileId: string, mem
 }
 
 /** Recorded failed / "could not verify" days of a membership, while the dispute window is open. */
-export async function disputableDays(supabase: SupabaseClient, membershipId: string, disputeEndMs: number, nowMs: number): Promise<DisputableDay[]> {
-  if (nowMs >= disputeEndMs) return [];
+export async function disputableDays(supabase: SupabaseClient, membershipId: string, disputeEndMs: number): Promise<{ open: boolean; days: DisputableDay[] }> {
+  if (Date.now() >= disputeEndMs) return { open: false, days: [] };
   const { data } = await supabase
     .from('day_results')
     .select('day, result, onchain_at')
@@ -81,7 +81,7 @@ export async function disputableDays(supabase: SupabaseClient, membershipId: str
     .in('result', ['failed', 'indeterminate'])
     .not('onchain_at', 'is', null)
     .order('day');
-  return (data ?? []).map((d) => ({ day: d.day as number, result: d.result as DisputableDay['result'] }));
+  return { open: true, days: (data ?? []).map((d) => ({ day: d.day as number, result: d.result as DisputableDay['result'] })) };
 }
 
 export interface AdminTicket extends Ticket {
@@ -89,6 +89,8 @@ export interface AdminTicket extends Ticket {
   /** The day's sealed receipt (what the rules engine decided and why), as stored. */
   receipt: Record<string, unknown> | null;
   disputeEndsAt: string;
+  /** The program still accepts the upgrade (dispute window open) at load time. */
+  windowOpen: boolean;
 }
 
 /**
@@ -126,6 +128,7 @@ export async function adminQueue(supabase: SupabaseClient): Promise<AdminTicket[
       player: { username: one<{ username: string | null }>(m?.profiles)?.username ?? null, wallet: (m?.wallet_address as string) ?? '' },
       receipt,
       disputeEndsAt: new Date(end).toISOString(),
+      windowOpen: end > Date.now(),
     };
   });
 }

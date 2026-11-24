@@ -47,7 +47,6 @@ export default async function AdminDisputesPage() {
 }
 
 function AdminTicketCard({ ticket }: { ticket: AdminTicket }) {
-  const windowOpen = Date.parse(ticket.disputeEndsAt) > Date.now();
   const providers = (ticket.receipt?.providers as { provider: string; outcome: string; value?: number; goal?: number; confidence?: number }[] | undefined) ?? [];
   return (
     <Card>
@@ -87,7 +86,7 @@ function AdminTicketCard({ ticket }: { ticket: AdminTicket }) {
           </div>
           <TicketView ticket={ticket} />
         </div>
-        <ReviewForm id={ticket.id} windowOpen={windowOpen} />
+        <ReviewForm id={ticket.id} windowOpen={ticket.windowOpen} />
       </CardContent>
     </Card>
   );
