@@ -3,6 +3,7 @@ import { challengePhase, challengeTimes, createProgram, disputeEndTs, explorerAd
 import { isSolanaAddress } from '@codestreak/shared/wallet';
 import { PublicKey } from '@solana/web3.js';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { after } from 'next/server';
 import { MyBadge } from '@/components/badges/my-badge';
