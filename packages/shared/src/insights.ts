@@ -93,7 +93,9 @@ export function computeInsights(days: InsightDay[], evidence: InsightEvidence[],
   }
   for (const e of evidence) {
     const w = slot(e.at);
-    if (w) e.provider === 'github' ? w.commits++ : w.solves++;
+    if (!w) continue;
+    if (e.provider === 'github') w.commits++;
+    else w.solves++;
   }
   return {
     recordedDays: sorted.length,
