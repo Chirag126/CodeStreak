@@ -57,6 +57,7 @@ export interface ChainParticipant {
   verifiedDays: bigint;
   failedDays: bigint;
   indeterminateDays: bigint;
+  shieldedDays: bigint;
   finalized: boolean;
   claimed: boolean;
   status: ParticipantStatusName;
@@ -133,6 +134,7 @@ function participantOf(address: string, a: ParticipantAccount): ChainParticipant
     verifiedDays: big(a.verifiedDays),
     failedDays: big(a.failedDays),
     indeterminateDays: big(a.indeterminateDays),
+    shieldedDays: big(a.shieldedDays),
     finalized: a.finalized,
     claimed: a.claimed,
     status: enumVariant<ParticipantStatusName>(a.status),

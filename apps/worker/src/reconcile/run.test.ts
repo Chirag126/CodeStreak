@@ -35,6 +35,7 @@ const player = (o: Partial<ChainParticipant> = {}): ChainParticipant => ({
   verifiedDays: 0b001n,
   failedDays: 0b100n,
   indeterminateDays: 0n,
+  shieldedDays: 0n,
   finalized: false,
   claimed: false,
   status: 'active',
@@ -95,6 +96,20 @@ describe('runReconcile', () => {
     expect(report).toMatchObject({ checked: 2, added: 1, fixed: 1 });
     expect(report.warnings).toEqual([`Cha1…3333: in the database but not on devnet`]);
     expect(f.logs).toContain('Cha1…1111: fixed challenge: participant_count');
+  });
+
+  it('adds on-chain Shields missing in the database', async () => {
+    const f = fakes({ challenges: [challenge(A)], known: [A] });
+    const calls: { fn: string; args: Record<string, unknown> }[] = [];
+    const rpc = f.db.rpc.bind(f.db);
+    f.db.rpc = (async (fn: string, args: Record<string, unknown>) => {
+      calls.push({ fn, args });
+      return fn === 'reconcile_shields' ? 1 : rpc(fn, args);
+    }) as typeof f.db.rpc;
+    (f.chain as { participants: unknown }).participants = async () => [player({ shieldedDays: 0b101n })];
+    await runReconcile(f.deps);
+    expect(calls.find((c) => c.fn === 'reconcile_shields')?.args).toEqual({ p_challenge_address: A, p_shields: [{ wallet: 'A1ice11111111111111111111111111111111111111', days: [0, 2] }] });
+    expect(f.logs).toContain('Cha1…1111: fixed 1 Shield(s) added');
   });
 
   it('retries an RPC failure while reading', async () => {

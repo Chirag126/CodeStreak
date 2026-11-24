@@ -161,3 +161,31 @@ export async function syncSponsor(
   );
   if (receiptError) throw new Error(`receipt sync failed: ${receiptError.message}`);
 }
+
+/** Mirrors a confirmed Shield: the shields row (board shows the day as covered), the receipt, the totals. */
+export async function syncShield(connection: Connection, input: { challengeAddress: string; wallet: string; day: number; signature: string }): Promise<void> {
+  const challengeId = await syncChallenge(connection, input.challengeAddress);
+  if (!challengeId) throw new Error('challenge not found on chain');
+  const program = createProgram(connection);
+  const challengeKey = new PublicKey(input.challengeAddress);
+  const [account, p] = await Promise.all([
+    program.account.challenge.fetch(challengeKey),
+    program.account.participant.fetch(participantPda(challengeKey, new PublicKey(input.wallet))),
+  ]);
+  if (!Number.isInteger(input.day) || !((BigInt(p.shieldedDays.toString()) >> BigInt(input.day)) & 1n)) throw new Error(`day ${input.day} is not shielded on-chain`);
+
+  const admin = createSupabaseAdminClient();
+  const { data: m } = await admin.from('memberships').select('id, profile_id').eq('challenge_id', challengeId).eq('wallet_address', input.wallet).maybeSingle();
+  if (!m) throw new Error('membership not found');
+  const price = account.shieldPrice.toString();
+  const { error } = await admin
+    .from('shields')
+    .upsert({ membership_id: m.id, day: input.day, price_paid: price, tx_signature: input.signature }, { onConflict: 'membership_id,day', ignoreDuplicates: true });
+  if (error) throw new Error(`shield sync failed: ${error.message}`);
+  await admin
+    .from('receipts')
+    .upsert(
+      { challenge_id: challengeId, profile_id: m.profile_id, wallet: input.wallet, kind: 'shield', amount: price, tx_signature: input.signature },
+      { onConflict: 'tx_signature', ignoreDuplicates: true },
+    );
+}

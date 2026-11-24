@@ -34,12 +34,12 @@ export function decodeInstructionName(data: Uint8Array): string | null {
 
 /**
  * Builds a CodeStreak instruction straight from the IDL (account order, signer/writable flags, the
- * program-ID placeholder for an absent optional account). Args: only u64 amounts are needed here.
+ * program-ID placeholder for an absent optional account). Args: u64 `amount`, u16 `day` (Shields).
  */
 export function buildCodestreakInstruction(
   name: RelayedInstruction,
   accounts: Record<string, PublicKey | null | undefined>,
-  args: { amount?: bigint } = {},
+  args: { amount?: bigint; day?: number } = {},
   programId: PublicKey = PROGRAM_ID,
 ): TransactionInstruction {
   const idl = byName.get(name);
@@ -54,10 +54,17 @@ export function buildCodestreakInstruction(
   });
   const parts: Uint8Array[] = [Uint8Array.from(idl.discriminator)];
   for (const arg of idl.args as unknown as { name: string; type: string }[]) {
-    if (arg.type !== 'u64' || arg.name !== 'amount' || args.amount === undefined) throw new Error(`${name}: unsupported argument ${arg.name}`);
-    const buf = new Uint8Array(8);
-    new DataView(buf.buffer).setBigUint64(0, args.amount, true);
-    parts.push(buf);
+    if (arg.type === 'u64' && arg.name === 'amount' && args.amount !== undefined) {
+      const buf = new Uint8Array(8);
+      new DataView(buf.buffer).setBigUint64(0, args.amount, true);
+      parts.push(buf);
+    } else if (arg.type === 'u16' && arg.name === 'day' && args.day !== undefined && Number.isInteger(args.day) && args.day >= 0 && args.day <= 0xffff) {
+      const buf = new Uint8Array(2);
+      new DataView(buf.buffer).setUint16(0, args.day, true);
+      parts.push(buf);
+    } else {
+      throw new Error(`${name}: unsupported argument ${arg.name}`);
+    }
   }
   const data = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
   let offset = 0;
