@@ -66,7 +66,7 @@ describe('CSV', () => {
 
   it('exports one line per row with readable amounts, UTC times and a BOM', () => {
     const csv = historyCsv([row({ title: '@evil, title' })]);
-    expect(csv.startsWith('﻿Role,Challenge,')).toBe(true);
+    expect(csv.startsWith(String.fromCharCode(0xfeff) + 'Role,Challenge,')).toBe(true);
     const lines = csv.trim().split('\r\n');
     expect(lines).toHaveLength(2);
     expect(lines[1]).toContain(`"'@evil, title"`);

@@ -120,6 +120,8 @@ export function csvCell(v: string | number): string {
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+/** UTF-8 byte-order mark, so Excel reads the file as UTF-8. */
+const BOM = String.fromCharCode(0xfeff);
 const iso = (t: number) => new Date(t * 1000).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
 
 export function historyCsv(rows: HistoryRow[]): string {
@@ -146,5 +148,5 @@ export function historyCsv(rows: HistoryRow[]): string {
       .join(','),
   );
   // CRLF and a BOM: Excel opens UTF-8 (· and non-Latin titles) correctly.
-  return `﻿${[header.join(','), ...lines].join('\r\n')}\r\n`;
+  return `${BOM}${[header.join(','), ...lines].join('\r\n')}\r\n`;
 }
