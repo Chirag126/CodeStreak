@@ -961,3 +961,54 @@ First live run (all on devnet, public RPC; its 429s were retried and every run s
   `devnet:close-challenges`, so the job correctly sent nothing, but the app never showed those refunds.
   The job now mirrors a payout it finds already made (membership marked paid; no receipt, since the
   transaction is unknown).
+
+## Phase 29: Crank and reconcile (M)
+
+**Crank (finalize, settle, cancel).** The Phase 28 `verify` job is the crank. Every minute pg_cron
+checks for work: a pool under its minimum once joining has closed, a finished day, the end of the dispute
+window, or payouts still owed. The worker then cancels, records, finalizes each player, settles and pays
+out, re-reading the chain before every transaction. No step needs a person. After each challenge it
+handles, the job now also reconciles that challenge, so the mirror is right as soon as the crank changes
+anything.
+
+**Reconcile (chain → database).** New job `reconcile`, run by pg_cron `codestreak-reconcile` at :05 and :35
+(`apps/worker/src/reconcile/run.ts`, migration `reconcile`). It reads every challenge of the program,
+its participants and their day bitmasks; it only reads the chain and sends no transactions.
+`public.reconcile_challenge()` then fixes drift in one transaction:
+- **Challenges** created outside the app (scripts, demo seed) are added, attributed to the creator's
+  profile when their wallet is linked. Pool state, player count and totals follow the chain.
+- **Payouts** marked done while the chain still owes someone (a player or a sponsor) are reopened, so the
+  crank pays them.
+- **Members** who joined outside the app with a verified linked wallet are added. Status, deposit,
+  participant address, and finalized and claimed times follow the chain.
+- **Days**: the "on-chain" flag follows the chain. A result the chain doesn't have is cleared, so the
+  crank records it again; one the chain has is set. A different result on-chain is reported, never
+  overwritten, because the receipt is the evidence for the database's result.
+- Every fix goes to `audit_log` (`reconcile.*`) with the database value and the chain value. Warnings are
+  logged, not written to the audit log: a membership with no on-chain player, a database challenge
+  missing from devnet, or a result mismatch.
+- A second pass over the same chain state changes nothing and logs nothing. Memberships are never
+  deleted.
+- **Robustness:** listing every account decodes them all; if one can't be decoded, the job checks the
+  database's challenges one by one instead. Reads retry transient RPC errors.
+
+**Why it matters for the crank:** the work queue reads the database (player count, pool state, day
+flags). Drift there could hide work, such as an under-minimum pool never being cancelled, or create
+phantom work. Reconciling closes that gap within 30 minutes, or immediately for challenges the crank
+touches.
+
+**Shared:** `challengeMirrorRow()` (`packages/shared/src/program/mirror.ts`) is the one definition of the
+database copy of a Challenge account, used by both the web sync and the worker.
+
+**Tests:** SQL (`99e_reconcile_test.sql`):
+- drifted counts, totals and pool state are fixed and logged with both values;
+- payouts are reopened while something is still owed;
+- an outside join with a linked wallet is added, an unlinked one isn't;
+- day flags are set and cleared;
+- a result mismatch is reported and not overwritten;
+- an outside challenge is added and attributed;
+- the second pass is a no-op;
+- users can't call it.
+
+Worker (`reconcile/run.test.ts`): day maps, the payouts-pending rule, missing-on-chain warnings, retry,
+and the fallback listing. The verify job's tests check that every run reconciles.

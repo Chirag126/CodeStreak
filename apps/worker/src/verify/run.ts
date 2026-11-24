@@ -11,10 +11,14 @@
 // day result is never recomputed: later runs reuse the stored receipt hash.
 import { buildReceipt, isTransientError, RULES_ENGINE_ID, sealReceipt, withRetry, type ProviderRule, type RetryOptions } from '@codestreak/shared';
 import { disputeEndTs, friendlyTxError, verifyEndTs } from '@codestreak/shared/program';
+import { reconcileOne } from '../reconcile/run.js';
 import { dayResultOf, type Chain, type ChainChallenge, type ChainParticipant, type DayResultName } from './chain.js';
 import type { Db } from './db.js';
 import type { DayEvaluation, RulesDocument } from './evaluate.js';
+import { participantPayout } from './payout.js';
 import { dayWindow, dueDays } from './schedule.js';
+
+export { participantPayout };
 
 export interface EvaluateInput {
   profileId: string;
@@ -117,21 +121,6 @@ export async function runVerification(deps: VerifyDeps): Promise<{ skipped?: str
   return { challenges: reports };
 }
 
-/** What a participant is owed now (mirrors programs/codestreak/src/rules.rs), or null. */
-export function participantPayout(c: ChainChallenge, p: ChainParticipant): { kind: 'reward' | 'refund'; amount: bigint } | null {
-  if (p.claimed) return null;
-  const everything = p.deposited + p.shieldPaid;
-  if (c.times.state === 'cancelled') return { kind: 'refund', amount: everything };
-  if (c.times.state !== 'settled' || !p.finalized) return null;
-  if (c.fullRefund) return { kind: 'refund', amount: everything };
-  if (p.status === 'voided') return { kind: 'refund', amount: p.deposited };
-  if (p.status === 'survived') {
-    const last = c.survivorsClaimed + 1 === c.survivorCount;
-    return { kind: 'reward', amount: p.deposited + c.rewardPerSurvivor + (last ? c.rewardDust : 0n) };
-  }
-  return null; // failed: their stake is part of the survivors' rewards
-}
-
 type Sent = { ok: true; tx: string | null } | { ok: false };
 
 class ChallengeRun {
@@ -225,6 +214,13 @@ class ChallengeRun {
       const errorsBefore = this.report.errors.length;
       await this.payOut(participants);
       if (this.report.errors.length === errorsBefore) await db.update('challenges', `id=eq.${row.id}`, { payouts_done_at: new Date().toISOString() });
+    }
+
+    // Phase 29: bring the whole mirror (counts, totals, members, day flags) in line with the chain.
+    try {
+      await reconcileOne({ db, chain: this.chain, log: this.deps.log, retry: this.deps.retry }, address);
+    } catch (e) {
+      this.report.errors.push(`reconcile: ${errText(e)}`);
     }
   }
 

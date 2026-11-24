@@ -1,6 +1,7 @@
 import { EnvError, parseEnv, workerEnvSchema, type WorkerEnv } from '@codestreak/shared';
 import { loadLocalEnv } from './load-env.js';
 import { createLeetcodeSnapshotJob } from './jobs/leetcode-snapshots.js';
+import { createReconcileJob } from './jobs/reconcile.js';
 import { createVerifyJob } from './jobs/verify.js';
 import { createWakeJob } from './jobs/wake.js';
 import { createWorkerServer, type Job } from './server.js';
@@ -19,11 +20,16 @@ function loadEnv(): WorkerEnv {
 const envFile = loadLocalEnv();
 const env = loadEnv();
 
-// Jobs are added in later phases: crank (29), voice (33).
+// Jobs are added in later phases: voice (33).
 const jobs: Record<string, Job> = {
   noop: async () => ({ message: 'worker is alive' }),
   wake: createWakeJob({ supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL, serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY, version: VERSION }),
   'leetcode-snapshots': createLeetcodeSnapshotJob({ supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL, serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY, firecrawlApiKey: env.FIRECRAWL_API_KEY }),
+  reconcile: createReconcileJob({
+    supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL,
+    serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY,
+    rpcUrl: env.SOLANA_RPC_URL,
+  }),
   verify: createVerifyJob({
     supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL,
     serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY,

@@ -4,6 +4,7 @@ export { anchor } from './anchor.js';
 export * from './client.js';
 export * from './errors.js';
 export * from './lifecycle.js';
+export * from './mirror.js';
 export * from './pdas.js';
 export { CODESTREAK_IDL, CODESTREAK_IDL_JSON } from './idl/codestreak.idl.js';
 export type { Codestreak } from './idl/codestreak.types.js';

@@ -5,6 +5,7 @@
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   associatedTokenAddress,
+  challengeMirrorRow,
   challengeTimes,
   ComputeBudgetProgram,
   Connection,
@@ -16,6 +17,8 @@ import {
   SystemProgram,
   Transaction,
   TransactionInstruction,
+  type ChallengeAccount,
+  type ChallengeMirrorRow,
   type ChallengeTimes,
   type CodestreakProgram,
   type ParticipantAccount,
@@ -41,6 +44,9 @@ export interface ChainChallenge {
   rewardPerSurvivor: bigint;
   rewardDust: bigint;
   survivorsClaimed: number;
+  /** The creator's wallet, and the database's copy of this account (Phase 29 reconciliation). */
+  creator: string;
+  mirror: ChallengeMirrorRow;
 }
 
 export interface ChainParticipant {
@@ -54,6 +60,7 @@ export interface ChainParticipant {
   finalized: boolean;
   claimed: boolean;
   status: ParticipantStatusName;
+  joinedAt: number;
 }
 
 export interface ChainSponsorReceipt {
@@ -68,6 +75,8 @@ export interface Chain {
   /** The chain's clock (unix seconds): every timing decision uses it, not the server's. */
   now(): Promise<number>;
   challenge(address: string): Promise<ChainChallenge | null>;
+  /** Every challenge of the program. */
+  allChallenges(): Promise<ChainChallenge[]>;
   participants(challenge: string): Promise<ChainParticipant[]>;
   participant(address: string): Promise<ChainParticipant | null>;
   sponsorReceipts(challenge: string): Promise<ChainSponsorReceipt[]>;
@@ -127,12 +136,40 @@ function participantOf(address: string, a: ParticipantAccount): ChainParticipant
     finalized: a.finalized,
     claimed: a.claimed,
     status: enumVariant<ParticipantStatusName>(a.status),
+    joinedAt: a.joinedAt.toNumber(),
   };
 }
 
-export function createSolanaChain(rpcUrl: string, verifier: Keypair): Chain {
+function challengeOf(address: string, a: ChallengeAccount): ChainChallenge {
+  return {
+    address,
+    times: challengeTimes(a),
+    participantCount: a.participantCount,
+    minParticipants: a.minParticipants,
+    mint: a.mint.toBase58(),
+    vault: a.vault.toBase58(),
+    tokenProgram: a.tokenProgram.toBase58(),
+    verifier: a.verifier.toBase58(),
+    rulesHash: Buffer.from(a.rulesHash).toString('hex'),
+    survivorCount: a.survivorCount,
+    fullRefund: a.fullRefund,
+    rewardPerSurvivor: big(a.rewardPerSurvivor),
+    rewardDust: big(a.rewardDust),
+    survivorsClaimed: a.survivorsClaimed,
+    creator: a.creator.toBase58(),
+    mirror: challengeMirrorRow(address, a),
+  };
+}
+
+/** No verifier key: reads work, every send explains what is missing. */
+const NO_KEY = () => Promise.reject(new Error('VERIFIER_KEYPAIR_JSON is not set on the worker, so it cannot send transactions'));
+
+export function createSolanaChain(rpcUrl: string, verifier: Keypair | null): Chain {
   const connection = new Connection(rpcUrl, 'confirmed');
-  const program: CodestreakProgram = createProgram(connection, keypairWallet(verifier));
+  const reader = createSolanaReader(connection);
+  if (!verifier) return reader;
+  const signer: Keypair = verifier;
+  const program: CodestreakProgram = createProgram(connection, keypairWallet(signer));
   const key = (s: string) => new PublicKey(s);
   const priority = [ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 10_000 })];
 
@@ -143,7 +180,7 @@ export function createSolanaChain(rpcUrl: string, verifier: Keypair): Chain {
     const ix = new TransactionInstruction({
       programId: ASSOCIATED_TOKEN_PROGRAM_ID,
       keys: [
-        { pubkey: verifier.publicKey, isSigner: true, isWritable: true },
+        { pubkey: signer.publicKey, isSigner: true, isWritable: true },
         { pubkey: account, isSigner: false, isWritable: true },
         { pubkey: key(owner), isSigner: false, isWritable: false },
         { pubkey: key(c.mint), isSigner: false, isWritable: false },
@@ -152,37 +189,55 @@ export function createSolanaChain(rpcUrl: string, verifier: Keypair): Chain {
       ],
       data: Buffer.from([1]), // CreateIdempotent: safe to repeat
     });
-    const sig = await connection.sendTransaction(new Transaction().add(ix), [verifier]);
+    const sig = await connection.sendTransaction(new Transaction().add(ix), [signer]);
     await connection.confirmTransaction(sig, 'confirmed');
     return account;
   }
 
   return {
-    verifier: verifier.publicKey.toBase58(),
+    ...reader,
+    verifier: signer.publicKey.toBase58(),
+    recordVerification: (challenge, participant, day, result, hashHex) =>
+      program.methods
+        .recordVerification(day, { [result]: {} } as never, Array.from(Buffer.from(hashHex, 'hex')))
+        .accountsPartial({ verifier: signer.publicKey, challenge: key(challenge), participant: key(participant) })
+        .preInstructions(priority)
+        .rpc(),
+    cancel: (challenge) => program.methods.cancelPool().accountsPartial({ authority: signer.publicKey, challenge: key(challenge) }).preInstructions(priority).rpc(),
+    finalize: (challenge, participant) =>
+      program.methods.finalizeParticipant().accountsPartial({ challenge: key(challenge), participant: key(participant) }).preInstructions(priority).rpc(),
+    settle: (challenge) => program.methods.settleChallenge().accountsPartial({ challenge: key(challenge) }).preInstructions(priority).rpc(),
+    claimParticipant: async (c, p, kind) => {
+      const destination = await ensureTokenAccount(c, p.user);
+      const accounts = { challenge: key(c.address), participant: key(p.address), mint: key(c.mint), destination, vault: key(c.vault), tokenProgram: key(c.tokenProgram) };
+      return (kind === 'reward' ? program.methods.claimReward() : program.methods.claimRefund()).accountsPartial(accounts).preInstructions(priority).rpc();
+    },
+    claimSponsorRefund: async (c, r) => {
+      const destination = await ensureTokenAccount(c, r.sponsor);
+      return program.methods
+        .claimSponsorRefund()
+        .accountsPartial({ challenge: key(c.address), receipt: key(r.address), mint: key(c.mint), destination, vault: key(c.vault), tokenProgram: key(c.tokenProgram) })
+        .preInstructions(priority)
+        .rpc();
+    },
+  };
+}
+
+/** The read half of the chain (no key needed): used for reconciliation and by createSolanaChain. */
+function createSolanaReader(connection: Connection): Chain {
+  const program: CodestreakProgram = createProgram(connection);
+  const key = (s: string) => new PublicKey(s);
+  return {
+    verifier: '',
     now: async () => {
       const slot = await connection.getSlot('confirmed');
       return (await connection.getBlockTime(slot)) ?? Math.floor(Date.now() / 1000);
     },
     challenge: async (address) => {
       const a = await program.account.challenge.fetchNullable(key(address));
-      if (!a) return null;
-      return {
-        address,
-        times: challengeTimes(a),
-        participantCount: a.participantCount,
-        minParticipants: a.minParticipants,
-        mint: a.mint.toBase58(),
-        vault: a.vault.toBase58(),
-        tokenProgram: a.tokenProgram.toBase58(),
-        verifier: a.verifier.toBase58(),
-        rulesHash: Buffer.from(a.rulesHash).toString('hex'),
-        survivorCount: a.survivorCount,
-        fullRefund: a.fullRefund,
-        rewardPerSurvivor: big(a.rewardPerSurvivor),
-        rewardDust: big(a.rewardDust),
-        survivorsClaimed: a.survivorsClaimed,
-      };
+      return a ? challengeOf(address, a) : null;
     },
+    allChallenges: async () => (await program.account.challenge.all()).map((a) => challengeOf(a.publicKey.toBase58(), a.account)),
     participants: async (challenge) =>
       (await program.account.participant.all([{ memcmp: { offset: 8, bytes: challenge } }])).map((p) => participantOf(p.publicKey.toBase58(), p.account)),
     participant: async (address) => {
@@ -200,28 +255,11 @@ export function createSolanaChain(rpcUrl: string, verifier: Keypair): Chain {
       const a = await program.account.sponsorReceipt.fetchNullable(key(address));
       return a ? { address, sponsor: a.sponsor.toBase58(), amount: big(a.amount), refunded: a.refunded } : null;
     },
-    recordVerification: (challenge, participant, day, result, hashHex) =>
-      program.methods
-        .recordVerification(day, { [result]: {} } as never, Array.from(Buffer.from(hashHex, 'hex')))
-        .accountsPartial({ verifier: verifier.publicKey, challenge: key(challenge), participant: key(participant) })
-        .preInstructions(priority)
-        .rpc(),
-    cancel: (challenge) => program.methods.cancelPool().accountsPartial({ authority: verifier.publicKey, challenge: key(challenge) }).preInstructions(priority).rpc(),
-    finalize: (challenge, participant) =>
-      program.methods.finalizeParticipant().accountsPartial({ challenge: key(challenge), participant: key(participant) }).preInstructions(priority).rpc(),
-    settle: (challenge) => program.methods.settleChallenge().accountsPartial({ challenge: key(challenge) }).preInstructions(priority).rpc(),
-    claimParticipant: async (c, p, kind) => {
-      const destination = await ensureTokenAccount(c, p.user);
-      const accounts = { challenge: key(c.address), participant: key(p.address), mint: key(c.mint), destination, vault: key(c.vault), tokenProgram: key(c.tokenProgram) };
-      return (kind === 'reward' ? program.methods.claimReward() : program.methods.claimRefund()).accountsPartial(accounts).preInstructions(priority).rpc();
-    },
-    claimSponsorRefund: async (c, r) => {
-      const destination = await ensureTokenAccount(c, r.sponsor);
-      return program.methods
-        .claimSponsorRefund()
-        .accountsPartial({ challenge: key(c.address), receipt: key(r.address), mint: key(c.mint), destination, vault: key(c.vault), tokenProgram: key(c.tokenProgram) })
-        .preInstructions(priority)
-        .rpc();
-    },
+    recordVerification: NO_KEY,
+    cancel: NO_KEY,
+    finalize: NO_KEY,
+    settle: NO_KEY,
+    claimParticipant: NO_KEY,
+    claimSponsorRefund: NO_KEY,
   };
 }
