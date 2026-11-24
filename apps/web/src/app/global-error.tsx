@@ -12,7 +12,6 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
             <button onClick={reset} style={{ padding: '8px 14px', borderRadius: 8, border: 0, background: '#a3e635', color: '#0b1120', fontWeight: 600 }}>
               Try again
             </button>
-            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/dashboard" style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #334155', color: '#e5e7eb', textDecoration: 'none' }}>
               Dashboard
             </a>

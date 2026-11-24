@@ -41,7 +41,8 @@ const lastRun = new Map<string, number>();
 /** Runs `fn` at most once per `minIntervalMs` per key on this server (background syncs). */
 export function throttled(key: string, minIntervalMs: number, fn: () => Promise<unknown>, now = Date.now): Promise<unknown> | null {
   const t = now();
-  if (t - (lastRun.get(key) ?? 0) < minIntervalMs) return null;
+  const last = lastRun.get(key);
+  if (last !== undefined && t - last < minIntervalMs) return null;
   lastRun.set(key, t);
   return fn();
 }
