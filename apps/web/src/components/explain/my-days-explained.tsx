@@ -1,4 +1,4 @@
-import { explainReceipt, type DayReceipt } from '@codestreak/shared';
+import { explainReceipt, type DayExplanation, type DayReceipt } from '@codestreak/shared';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -20,10 +20,11 @@ export async function MyDaysExplained({ membershipId }: { membershipId: string }
     supabase.from('shields').select('day').eq('membership_id', membershipId),
   ]);
   const shielded = new Set((shields ?? []).map((s) => s.day as number));
-  const days = (receipts ?? []).flatMap((r) => {
-    if (r.engine !== 'codestreak-rules/1') return [{ day: r.day as number, dispute: true as const, hash: r.evidence_hash as string }];
+  type Row = { day: number; dispute: true; hash: string } | { day: number; dispute: false; hash: string; x: DayExplanation };
+  const days = (receipts ?? []).flatMap((r): Row[] => {
+    if (r.engine !== 'codestreak-rules/1') return [{ day: r.day as number, dispute: true, hash: r.evidence_hash as string }];
     try {
-      return [{ day: r.day as number, dispute: false as const, hash: r.evidence_hash as string, x: explainReceipt(JSON.parse(r.receipt as string) as DayReceipt) }];
+      return [{ day: r.day as number, dispute: false, hash: r.evidence_hash as string, x: explainReceipt(JSON.parse(r.receipt as string) as DayReceipt) }];
     } catch {
       return [];
     }
