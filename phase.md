@@ -950,3 +950,14 @@ mirrors, permissions) and worker (`run.test.ts` with an in-memory program: a dem
 recorded; a duplicate run sends no transaction and re-evaluates nothing; an RPC failure is retried and
 sent once; a lost confirmation is not re-sent; program errors are final; settle with rewards and dust;
 full refund; cancel with sponsor refunds; wrong verifier; `db.test.ts`: Supabase 5xx retried, 4xx not).
+
+### Phase 28 follow-up: payouts made before the job existed
+
+First live run (all on devnet, public RPC; its 429s were retried and every run succeeded):
+- **Video3 Group** and **Fresh demo grp** settled. No day had been recorded, so all players were voided and
+  refunded 0.01 SOL each; Video3 Group's 0.005 SOL sponsorship was refunded too.
+- **fresh demo group** (1 of 2 players) was cancelled and refunded.
+- 4 older cancelled challenges (GQcq, EC7E, Ge21, nnn) had already been refunded on-chain by
+  `devnet:close-challenges`, so the job correctly sent nothing, but the app never showed those refunds.
+  The job now mirrors a payout it finds already made (membership marked paid; no receipt, since the
+  transaction is unknown).
