@@ -82,9 +82,6 @@ export const workerEnvSchema = z.object({
   VERIFIER_PUBKEY: pubkeySchema.optional(),
   VERIFIER_KEYPAIR_PATH: z.string().min(1).optional(),
   VERIFIER_KEYPAIR_JSON: z.string().min(1).optional(),
-  /** Phase 33. */
-  ELEVENLABS_API_KEY: z.string().min(1).optional(),
-  ELEVENLABS_VOICE_ID: z.string().min(1).optional(),
 });
 export type WorkerEnv = z.infer<typeof workerEnvSchema>;
 

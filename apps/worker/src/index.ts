@@ -20,7 +20,6 @@ function loadEnv(): WorkerEnv {
 const envFile = loadLocalEnv();
 const env = loadEnv();
 
-// Jobs are added in later phases: voice (33).
 const jobs: Record<string, Job> = {
   noop: async () => ({ message: 'worker is alive' }),
   wake: createWakeJob({ supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL, serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY, version: VERSION }),

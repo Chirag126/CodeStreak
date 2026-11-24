@@ -26,6 +26,8 @@ export default async function DashboardPage() {
   const sections: { title: string; body: string; href?: string; cta?: string }[] = [
     { title: 'Accounts', body: 'Link GitHub and LeetCode so your coding days can be verified.', href: '/dashboard/settings', cta: 'Linked accounts' },
     { title: 'Wallet', body: 'Link Phantom or MetaMask (Solana) and check your devnet balances.', href: '/dashboard/wallet' },
+    { title: 'Notifications', body: 'Deadline warnings, day results, payouts and group activity, live.', href: '/dashboard/notifications', cta: 'Open notifications' },
+    { title: 'Insights', body: 'Your streaks, success rate and weekly coding summary, from your recorded days.', href: '/dashboard/insights', cta: 'Open insights' },
     { title: 'Disputes', body: 'Tickets you opened about recorded days, with their review and on-chain timeline.', href: '/dashboard/disputes', cta: 'Open disputes' },
     { title: 'Payouts', body: 'Rewards and refunds from your challenges, where each amount came from, and unwrapping SOL.', href: '/dashboard/claims', cta: 'Open payouts' },
   ];

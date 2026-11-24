@@ -251,7 +251,7 @@ export function StyleGuide() {
             </div>
             <div className="flex items-center gap-3">
               <Switch id="sg-notify" checked={notify} onCheckedChange={setNotify} />
-              <Label htmlFor="sg-notify">Voice warnings 3 hours before the deadline</Label>
+              <Label htmlFor="sg-notify">Deadline warnings 3 hours before a day ends</Label>
             </div>
             <p className="text-sm text-muted-foreground" aria-live="polite">
               Warnings are <span className="font-medium text-foreground">{notify ? 'on' : 'off'}</span>.

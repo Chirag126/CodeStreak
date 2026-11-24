@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { springs } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { AuthNav } from '@/components/auth/auth-nav';
+import { NotificationBell } from '@/components/notifications/notification-bell';
 import { Logo } from './logo';
 import { NAV_ITEMS } from './nav-config';
 
@@ -62,6 +63,7 @@ export function SiteHeader() {
             <TooltipContent>Solana devnet: test tokens with no real value.</TooltipContent>
           </Tooltip>
 
+          <NotificationBell />
           <AuthNav />
 
           <Dialog open={menuOpen} onOpenChange={setMenuOpen}>
