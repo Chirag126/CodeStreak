@@ -136,8 +136,8 @@ class FakeDb implements Db {
   poolState = 'open';
   payoutsDone: string | null = null;
   members = [
-    { id: 'm-alice', profile_id: 'pr-alice', wallet_address: ALICE, participant_address: `P-${ALICE}` },
-    { id: 'm-bob', profile_id: 'pr-bob', wallet_address: BOB, participant_address: null },
+    { id: 'm-alice', profile_id: 'pr-alice', wallet_address: ALICE, participant_address: `P-${ALICE}`, claimed_at: null as string | null },
+    { id: 'm-bob', profile_id: 'pr-bob', wallet_address: BOB, participant_address: null, claimed_at: null as string | null },
   ];
   work = [{ challenge_id: 'c1', address: CHALLENGE, reason: 'record' }];
 
@@ -329,7 +329,7 @@ describe('verification job', () => {
 
   it('settles: finalizes everyone, settles, pays survivors (dust to the last) and mirrors it', async () => {
     const { chain, db, deps, setOutcome } = setup([ALICE, BOB, 'Caro11111111111111111111111111111111111111']);
-    db.members.push({ id: 'm-caro', profile_id: 'pr-caro', wallet_address: 'Caro11111111111111111111111111111111111111', participant_address: null });
+    db.members.push({ id: 'm-caro', profile_id: 'pr-caro', wallet_address: 'Caro11111111111111111111111111111111111111', participant_address: null, claimed_at: null });
     setOutcome((profile) => ({ providers: [profile === 'pr-caro' ? notMet : met()], evidence: [], transientFailure: null }));
     chain.clock = START + 3 * DAY + 200;
     await runVerification(deps); // all three days recorded
@@ -369,6 +369,17 @@ describe('verification job', () => {
     await runVerification(deps);
     expect(chain.sent).toEqual(['cancel', `refund:${ALICE}`, 'sponsor_refund:Sponsor1111111111111111111111111111111111']);
     expect(db.poolState).toBe('cancelled');
+    expect(db.payoutsDone).toBeTruthy();
+  });
+
+  it('mirrors a refund paid earlier outside the job, without sending anything', async () => {
+    const { chain, db, deps } = setup([ALICE]);
+    chain.c.times.state = 'cancelled';
+    chain.ps.get(`P-${ALICE}`)!.claimed = true;
+    db.work = [{ challenge_id: 'c1', address: CHALLENGE, reason: 'payout' }];
+    await runVerification(deps);
+    expect(chain.sent).toEqual([]);
+    expect(db.payouts).toEqual([{ wallet: ALICE, kind: 'refund', amount: '10', tx: null }]);
     expect(db.payoutsDone).toBeTruthy();
   });
 
