@@ -3,6 +3,7 @@
 //   2. record  - each finished day, each player      -> receipt -> DB -> record_verification
 //   3. settle  - dispute window over                 -> finalize_participant (each) -> settle_challenge
 //   4. payout  - settled/cancelled                   -> claim_reward / claim_refund / claim_sponsor_refund
+//   5. badge   - settled, each Survived player        -> mint_badge (soulbound Token-2022) -> record_badge
 // and mirrors every confirmed step to the database and the audit log.
 //
 // Idempotency: the chain is the source of truth. Every attempt to send (including each retry)
@@ -227,6 +228,12 @@ class ChallengeRun {
       if (this.report.errors.length === errorsBefore) await db.update('challenges', `id=eq.${row.id}`, { payouts_done_at: new Date().toISOString() });
     }
 
+    // 5. Soulbound badges for every survivor (Phase 34). Who qualifies is decided by the program.
+    if (this.c.times.state === 'settled' && participants.some((p) => p.finalized && p.status === 'survived')) {
+      await this.mintBadges(participants);
+      await db.update('challenges', `id=eq.${row.id}`, { badges_checked_at: new Date().toISOString() });
+    }
+
     // Phase 29: bring the whole mirror (counts, totals, members, day flags) in line with the chain.
     try {
       await reconcileOne({ db, chain: this.chain, log: this.deps.log, retry: this.deps.retry }, address);
@@ -374,6 +381,33 @@ class ChallengeRun {
         if (!sent.ok) continue;
         if (sent.tx) this.report.recorded++;
         if (m) await markRecorded(m, day, sent.tx);
+      }
+    }
+  }
+
+  /**
+   * Mints each survivor's badge (skipped when the mint already exists: a lost confirmation or a
+   * mint someone else paid for) and mirrors it. The database refuses non-survivors and a second
+   * mint address; the program refuses both on-chain anyway.
+   */
+  private async mintBadges(participants: ChainParticipant[]): Promise<void> {
+    const { db } = this.deps;
+    for (const p of participants) {
+      if (!p.finalized || p.status !== 'survived') continue;
+      let badge = await this.read(() => this.chain.badge(p.address));
+      if (!badge.minted) {
+        const sent = await this.send(`badge for ${short(p.user)}`, async () => (await this.chain.badge(p.address)).minted, () => this.chain.mintBadge(this.c, p));
+        if (!sent.ok) continue;
+        badge = sent.tx ? { ...badge, minted: true, tx: sent.tx } : await this.read(() => this.chain.badge(p.address));
+      }
+      if (!badge.tx) {
+        this.report.errors.push(`badge for ${short(p.user)}: minted (${badge.mint}) but its transaction was not found yet; will retry`);
+        continue;
+      }
+      try {
+        await db.rpc('record_badge', { p_challenge: this.row.id, p_wallet: p.user, p_mint: badge.mint, p_tx: badge.tx });
+      } catch (e) {
+        this.report.errors.push(`badge for ${short(p.user)}: ${errText(e)}`);
       }
     }
   }

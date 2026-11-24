@@ -122,3 +122,11 @@ pub enum PayoutKind {
     ParticipantRefund,
     SponsorRefund,
 }
+
+#[event]
+pub struct BadgeMinted {
+    pub challenge: Pubkey,
+    pub participant: Pubkey,
+    pub user: Pubkey,
+    pub mint: Pubkey,
+}

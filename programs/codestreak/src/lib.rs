@@ -92,4 +92,9 @@ pub mod codestreak {
     pub fn claim_sponsor_refund(ctx: Context<ClaimSponsorRefund>) -> Result<()> {
         claim_sponsor_refund_handler(ctx)
     }
+
+    /// Mints the soulbound Token-2022 survivor badge into a Survived player's wallet (anyone may pay).
+    pub fn mint_badge(ctx: Context<MintBadge>) -> Result<()> {
+        mint_badge_handler(ctx)
+    }
 }

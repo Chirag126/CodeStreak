@@ -34,6 +34,8 @@ const OVERRIDES: Record<string, string> = {
   TooEarly: 'Too early: the verification and dispute windows are still open.',
   TransferAmountMismatch: 'This token is not supported (it charges a transfer fee).',
   InvalidVault: 'Wrong vault for this challenge.',
+  NotSurvivor: 'Only players who kept their streak every day (Survived, after settlement) get a badge.',
+  BadgeAlreadyMinted: 'This badge is already minted. There is exactly one per player per challenge.',
 };
 
 const ANCHOR_CONSTRAINTS: Record<string, string> = {

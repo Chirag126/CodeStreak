@@ -5,6 +5,9 @@
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   associatedTokenAddress,
+  badgeAuthorityPda,
+  badgeMintPda,
+  badgeTokenAccount,
   challengeMirrorRow,
   challengeTimes,
   ComputeBudgetProgram,
@@ -15,6 +18,7 @@ import {
   keypairWallet,
   PublicKey,
   SystemProgram,
+  TOKEN_2022_PROGRAM_ID,
   Transaction,
   TransactionInstruction,
   type ChallengeAccount,
@@ -64,6 +68,14 @@ export interface ChainParticipant {
   joinedAt: number;
 }
 
+/** A participant's soulbound badge mint (Phase 34): its PDA address, and whether it exists yet. */
+export interface ChainBadge {
+  mint: string;
+  minted: boolean;
+  /** The transaction that created it (the oldest on the address), once minted. */
+  tx: string | null;
+}
+
 export interface ChainSponsorReceipt {
   address: string;
   sponsor: string;
@@ -89,6 +101,9 @@ export interface Chain {
   /** Pays a participant's reward/refund into the token account of their own wallet. */
   claimParticipant(c: ChainChallenge, p: ChainParticipant, kind: 'reward' | 'refund'): Promise<string>;
   claimSponsorRefund(c: ChainChallenge, r: ChainSponsorReceipt): Promise<string>;
+  badge(participant: string): Promise<ChainBadge>;
+  /** Mints a Survived participant's badge into their own wallet (the verifier pays the rent). */
+  mintBadge(c: ChainChallenge, p: ChainParticipant): Promise<string>;
 }
 
 export function dayResultOf(p: Pick<ChainParticipant, 'verifiedDays' | 'failedDays' | 'indeterminateDays'>, day: number): DayResultName | null {
@@ -222,6 +237,26 @@ export function createSolanaChain(rpcUrl: string, verifier: Keypair | null): Cha
         .preInstructions(priority)
         .rpc();
     },
+    mintBadge: (c, p) => {
+      const participant = key(p.address);
+      return program.methods
+        .mintBadge()
+        .accountsPartial({
+          payer: signer.publicKey,
+          challenge: key(c.address),
+          participant,
+          user: key(p.user),
+          badgeMint: badgeMintPda(participant),
+          badgeAuthority: badgeAuthorityPda(),
+          userBadgeAccount: badgeTokenAccount(key(p.user), participant),
+          tokenProgram: TOKEN_2022_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        // Several CPIs (allocate, extensions, metadata, ATA): more than the default 200k units.
+        .preInstructions([ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), ...priority])
+        .rpc();
+    },
   };
 }
 
@@ -257,7 +292,20 @@ function createSolanaReader(connection: Connection): Chain {
       const a = await program.account.sponsorReceipt.fetchNullable(key(address));
       return a ? { address, sponsor: a.sponsor.toBase58(), amount: big(a.amount), refunded: a.refunded } : null;
     },
+    badge: async (participant) => {
+      const mint = badgeMintPda(key(participant));
+      const info = await connection.getAccountInfo(mint);
+      // Minted = a Token-2022 account; lamports alone (someone sent SOL there) is not a badge.
+      const minted = !!info && info.owner.equals(TOKEN_2022_PROGRAM_ID) && info.data.length > 0;
+      let tx: string | null = null;
+      if (minted) {
+        const sigs = await connection.getSignaturesForAddress(mint, { limit: 50 });
+        tx = sigs.filter((s) => !s.err).at(-1)?.signature ?? null;
+      }
+      return { mint: mint.toBase58(), minted, tx };
+    },
     recordVerification: NO_KEY,
+    mintBadge: NO_KEY,
     cancel: NO_KEY,
     finalize: NO_KEY,
     settle: NO_KEY,

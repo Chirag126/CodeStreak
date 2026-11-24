@@ -39,7 +39,7 @@ describe('friendly transaction errors', () => {
   });
 
   it('every program error has readable text', () => {
-    for (let code = 6000; code < 6047; code++) {
+    for (let code = 6000; code < 6060; code++) {
       const e = errorFromCode(code);
       if (e) expect(e.message.length).toBeGreaterThan(5);
     }

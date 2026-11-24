@@ -5,6 +5,14 @@ pub const CHALLENGE_SEED: &[u8] = b"challenge";
 pub const VAULT_SEED: &[u8] = b"vault";
 pub const PARTICIPANT_SEED: &[u8] = b"participant";
 pub const SPONSOR_SEED: &[u8] = b"sponsor";
+/// Soulbound survivor badge: one Token-2022 mint per Participant, minted by the program's PDA.
+pub const BADGE_MINT_SEED: &[u8] = b"badge";
+pub const BADGE_AUTHORITY_SEED: &[u8] = b"badge_authority";
+
+/// Badge metadata: fixed in the program so whoever pays for the mint can't change what it says.
+pub const BADGE_SYMBOL: &str = "STREAK";
+/// The metadata JSON is served by the app for each participant: `<base><participant>`.
+pub const BADGE_URI_BASE: &str = "https://codestreak-k0uv.onrender.com/api/badges/";
 
 /// Maximum number of token mints a challenge may use (devnet USDC, wrapped SOL, spare slots).
 pub const MAX_ALLOWED_MINTS: usize = 4;

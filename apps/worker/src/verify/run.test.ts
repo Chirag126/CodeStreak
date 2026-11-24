@@ -23,6 +23,8 @@ class FakeChain implements Chain {
   ps = new Map<string, ChainParticipant>();
   sponsors = new Map<string, ChainSponsorReceipt>();
   sent: string[] = [];
+  /** Badge mints by participant address (the program allows one each). */
+  badges = new Map<string, string>();
   /** Fail the next N calls of a method with this error (before or after the change lands). */
   faults: { method: string; error: Error; landed: boolean; times: number }[] = [];
 
@@ -137,6 +139,21 @@ class FakeChain implements Chain {
   claimSponsorRefund(_c: ChainChallenge, r: ChainSponsorReceipt) {
     return this.tx(`sponsor_refund:${r.sponsor}`, () => void (this.sponsors.get(r.address)!.refunded = true));
   }
+  async badge(participant: string) {
+    const tx = this.badges.get(participant) ?? null;
+    return { mint: `B-${participant}`, minted: tx !== null, tx };
+  }
+  mintBadge(_c: ChainChallenge, p: ChainParticipant) {
+    const live = this.ps.get(p.address)!;
+    // The program: finalized Survived only, once.
+    if (!live.finalized || live.status !== 'survived') return Promise.reject(new Error('custom program error: NotSurvivor'));
+    if (this.badges.has(p.address)) return Promise.reject(new Error('custom program error: BadgeAlreadyMinted'));
+    // A landed-but-unconfirmed mint still shows its transaction on the mint address.
+    return this.tx(`badge:${p.user}`, () => void this.badges.set(p.address, `sig-badge-${p.user}`)).then((sig) => {
+      this.badges.set(p.address, sig);
+      return sig;
+    });
+  }
 }
 
 /** The SQL functions the job calls, in memory. */
@@ -145,6 +162,8 @@ class FakeDb implements Db {
   runs: { id: string; status?: string; error?: string | null }[] = [];
   dayResults = new Map<string, { membership_id: string; day: number; result: DayResultName; evidence_hash: string; onchain_at: string | null; record_tx: string | null }>();
   payouts: { wallet: string; kind: string; amount: string; tx: string | null }[] = [];
+  badges: { wallet: string; mint: string; tx: string }[] = [];
+  badgesChecked: string | null = null;
   poolState = 'open';
   payoutsDone: string | null = null;
   members = [
@@ -196,6 +215,9 @@ class FakeDb implements Db {
       case 'reconcile_challenge':
         this.reconciled.push(a);
         return { challenge_id: 'c1', added: false, changes: [], warnings: [] } as T;
+      case 'record_badge':
+        if (!this.badges.some((b) => b.mint === a.p_mint)) this.badges.push({ wallet: a.p_wallet as string, mint: a.p_mint as string, tx: a.p_tx as string });
+        return 'badge-id' as T;
       case 'record_payout':
         this.payouts.push({ wallet: a.p_wallet as string, kind: a.p_kind as string, amount: a.p_amount as string, tx: a.p_tx as string | null });
         return null as T;
@@ -211,7 +233,9 @@ class FakeDb implements Db {
   }
   async insert() {}
   async update(table: string, _f: string, patch: Record<string, unknown>) {
-    if (table === 'challenges') this.payoutsDone = patch.payouts_done_at as string;
+    if (table !== 'challenges') return;
+    if ('payouts_done_at' in patch) this.payoutsDone = patch.payouts_done_at as string;
+    if ('badges_checked_at' in patch) this.badgesChecked = patch.badges_checked_at as string;
   }
 }
 
@@ -391,6 +415,35 @@ describe('verification job', () => {
     expect(chain.ps.get(`P-${BOB}`)!.status).toBe('failed');
     // Alice: her 10 back + Bob's 10 (the fake pool counts missed stakes only).
     expect(db.payouts).toEqual([{ wallet: ALICE, kind: 'reward', amount: '20', tx: expect.stringMatching(/^sig-/) }]);
+  });
+
+  it('mints one soulbound badge per survivor after settlement, none for failed players, never twice', async () => {
+    const { chain, db, deps, setOutcome } = setup([ALICE, BOB]);
+    setOutcome((profile, day) => ({ providers: [profile === 'pr-bob' && day === 1 ? notMet : met()], evidence: [], transientFailure: null }));
+    chain.clock = START + 3 * DAY + 200;
+    await runVerification(deps);
+    chain.clock = START + 3 * DAY + 900 + 600;
+    await runVerification(deps);
+    expect(chain.sent.filter((s) => s.startsWith('badge:'))).toEqual([`badge:${ALICE}`]);
+    expect(db.badges).toEqual([{ wallet: ALICE, mint: `B-P-${ALICE}`, tx: chain.badges.get(`P-${ALICE}`) }]);
+    expect(db.badges[0]!.tx).toMatch(/^sig-\d+$/);
+    expect(db.badgesChecked).toBeTruthy();
+    const sent = chain.sent.length;
+    await runVerification(deps); // a later run (or the 10-minute retry) sends nothing new
+    expect(chain.sent.length).toBe(sent);
+    expect(db.badges).toHaveLength(1);
+  });
+
+  it('mirrors a badge whose mint landed but whose confirmation was lost, without minting again', async () => {
+    const { chain, db, deps } = setup([ALICE, BOB]);
+    chain.clock = START + 3 * DAY + 200;
+    await runVerification(deps);
+    chain.clock = START + 3 * DAY + 900 + 600;
+    chain.faults.push({ method: 'badge', error: new Error('block height exceeded'), landed: true, times: 1 });
+    await runVerification(deps);
+    expect(chain.sent.filter((s) => s.startsWith('badge:'))).toEqual([`badge:${BOB}`]);
+    expect(db.badges.map((b) => b.wallet).sort()).toEqual([ALICE, BOB].sort());
+    expect(db.badges.find((b) => b.wallet === ALICE)!.tx).toBe(`sig-badge-${ALICE}`); // found on-chain
   });
 
   it('voids players with unrecorded days and refunds everyone when nobody survived', async () => {
