@@ -1244,3 +1244,79 @@ results, Shields and counted evidence. Previews are excluded, and the page says 
     mark some/all;
   - `explain.test.ts`: pass, gated-to-undecided, confident fail under ANY, and tampered numbers flagged;
   - `insights.test.ts`: ISO weeks, streaks with Shields, success rate, weekly and weekday counts.
+
+## Phase 34: Soulbound badges (S)
+
+Every player who survives a challenge gets a **soulbound badge**: a Token-2022 NFT (supply 1, 0
+decimals) minted by the program into their own wallet. It shows in Phantom and on Solana Explorer, and
+it can't be moved.
+
+**Program: `mint_badge`** (`programs/codestreak/src/instructions/mint_badge.rs`). The chain is the only
+gate:
+
+| Rule | How it's enforced |
+| --- | --- |
+| Survivors only | `participant.finalized && status == Survived`, else `NotSurvivor`. This covers active, failed and voided players, unfinalized survivors, and cancelled challenges (which never finalize). |
+| Once per player per challenge | The mint is the PDA `["badge", participant]`, and it must still be an empty system account, else `BadgeAlreadyMinted`. |
+| Nobody can mint more or change it | Mint, freeze and metadata-update authority are all the program PDA `["badge_authority"]`, which only signs inside `mint_badge`. That instruction mints exactly 1, once. |
+| Can't be transferred | The mint has the **NonTransferable** extension. Token-2022 refuses every transfer (holders' accounts get NonTransferableAccount and ImmutableOwner from the ATA program). |
+| Always to the player | `user` must equal `participant.user`, and the token account must be that wallet's Token-2022 ATA (`ConstraintAddress` otherwise). Anyone may pay. |
+| The payer can't change what it says | Name `CodeStreak Survivor · N days`, symbol `STREAK` and URI `https://codestreak-k0uv.onrender.com/api/badges/<participant>` are fixed in the program, not arguments. |
+| Can't be blocked | Sending SOL to the mint address first doesn't stop it. The mint is created by top-up, then `allocate` and `assign` signed by the PDA, not `create_account`, which fails on a funded address. |
+
+Metadata lives **on the mint itself**: a MetadataPointer pointing to the mint, plus the Token-2022
+metadata extension. No Metaplex.
+
+**Worker.** After settlement, the verification job:
+- mints each Survived player's badge (step 5, verifier pays, ~0.004 SOL rent per badge);
+- reads the chain before every attempt, so a lost confirmation never mints twice, and a badge someone
+  else paid for is just mirrored, with its transaction found on the mint address;
+- records the badge with `record_badge()` (service role only), which refuses non-survivors and a second,
+  different mint for the same badge.
+
+`verification_work` has a new reason, `badge`: a settled challenge with a survivor whose badge isn't
+mirrored. `challenges.badges_checked_at` backs off for 10 minutes after each attempt, so a mint that keeps
+failing (for example before the program upgrade) doesn't run every minute. The existing `notify_badge`
+trigger tells the player and links to the badges page.
+
+**Web:**
+- **Dashboard → Badges** shows every challenge you survived, its badge image and state:
+  - **In your wallet**, checked on-chain (the badge account holds 1);
+  - **Minted**;
+  - **Minting soon**.
+
+  Each badge links to the token on Explorer, the mint transaction and the metadata. The challenge page
+  shows the same line after settlement.
+- `GET /api/badges/<participant>` (public, CORS) returns the JSON wallets and explorers read: name, symbol,
+  description, image, attributes and `external_url`. Private challenges aren't named or linked.
+  `…/image` returns a self-contained SVG with every user string escaped, served with a strict CSP. Both
+  return 404 for anyone who didn't survive. `badge_metadata()` is service-role only, like every SECURITY
+  DEFINER function.
+
+**Devnet upgrade needed.** The program grew from ~507 KB to ~562 KB. `scripts/wsl/deploy-devnet.sh` now
+extends ProgramData first when the build is bigger. Until the upgrade, badge mints fail with an unknown
+instruction, and are retried every 10 minutes.
+
+**Tests:**
+- LiteSVM `tests/badges.rs`:
+  - a survivor gets exactly one badge (Token-2022 owner, supply 1, 0 decimals, name, symbol and fixed URI
+    on the mint);
+  - a transfer to another wallet fails, and balances are unchanged;
+  - an unfinalized player and a failed player both get `NotSurvivor`;
+  - a double mint gets `BadgeAlreadyMinted`;
+  - SOL sent to the mint address first doesn't block the mint;
+  - swapping in another wallet gets `ConstraintAddress`.
+- SQL `99j_soulbound_badges_test.sql`:
+  - the crank picks the badge step;
+  - a non-survivor is refused;
+  - recording is idempotent, notifies once and logs once;
+  - a second mint is refused;
+  - work clears once minted;
+  - metadata only for survivors;
+  - the 10-minute backoff;
+  - users and anon are refused.
+- Worker `run.test.ts`:
+  - only survivors are minted, never twice;
+  - a mint that landed with a lost confirmation is mirrored without a second mint.
+- Shared and web: the badge PDAs; the IDL has `mint_badge`; friendly errors; the metadata JSON (name
+  ≤ 32 bytes, private challenges unlinked); SVG escaping.

@@ -77,6 +77,14 @@ fi
 step "Deploy"
 if solana program show "$PROGRAM_ID" --url "$URL" >/dev/null 2>&1; then
   echo "program exists: upgrading"
+  # A bigger build needs a bigger ProgramData account first (Phase 34 added ~55 KB). Newer CLIs
+  # extend automatically; doing it here explicitly works with older ones too.
+  current="$(solana program show "$PROGRAM_ID" --url "$URL" | awk '/Data Length/ {print $3}')"
+  if [[ -n "$current" && "$so_bytes" -gt "$current" ]]; then
+    extra=$(( so_bytes - current + 10240 ))
+    echo "program grows from $current to $so_bytes bytes: extending ProgramData by $extra bytes"
+    solana program extend "$PROGRAM_ID" "$extra" --keypair "$AUTHORITY" --url "$URL"
+  fi
 else
   echo "first deploy"
 fi
