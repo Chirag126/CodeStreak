@@ -22,6 +22,7 @@ import { listSponsors } from '@/lib/sponsor/load';
 import { loadBoard } from '@/lib/board/load';
 import { MyDayCard } from '@/components/checks/my-day-card';
 import { DisputePanel } from '@/components/disputes/dispute-panel';
+import { ShieldPanel } from '@/components/shields/shield-panel';
 import { readDayLogs } from '@/lib/verification/day-check';
 import { listGroupInvites } from '@/lib/groups/invites';
 import { JoinButton } from './join-button';
@@ -321,6 +322,10 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
           rule={((row?.rules ?? {}) as Rules).providerRule === 'all' ? 'all' : 'any'}
           providers={(['github', 'leetcode'] as const).filter((p) => Boolean(((row?.rules ?? {}) as Rules)[p]))}
         />
+      )}
+
+      {viewer && myMembershipId && phase !== 'joining' && phase !== 'starting' && phase !== 'settled' && phase !== 'cancelled' && (
+        <ShieldPanel address={address} membershipId={myMembershipId} account={account} times={times} />
       )}
 
       {viewer && myMembershipId && phase !== 'joining' && phase !== 'starting' && (

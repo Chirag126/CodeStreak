@@ -231,3 +231,21 @@ describe('unwrap (Phase 30): the relayer only pays the fee to close your own wSO
     expect(checkUnwrapTransaction(t, ctx)).toMatchObject({ ok: false, errors: ['the relayer must be the fee payer'] });
   });
 });
+
+describe('activate_shield (Phase 32)', () => {
+  it('encodes the day as u16 and passes the relayer policy as the fee payer', () => {
+    const challenge = Keypair.generate().publicKey;
+    const ix = buildCodestreakInstruction(
+      'activate_shield',
+      { payer: relayer, user, challenge, participant: Keypair.generate().publicKey, mint: Keypair.generate().publicKey, user_token: userToken, vault: Keypair.generate().publicKey, token_program: TOKEN_PROGRAM },
+      { day: 2 },
+    );
+    expect(Array.from(ix.data.subarray(8))).toEqual([2, 0]);
+    expect(decodeInstructionName(ix.data)).toBe('activate_shield');
+    expect(checkRelayedTransaction(tx(ix), { relayer, user, allowed: ['activate_shield'] }).ok).toBe(true);
+    expect(checkRelayedTransaction(tx(ix), { relayer, user, allowed: ['join_pool'] }).ok).toBe(false);
+  });
+  it('rejects a day that is not a u16', () => {
+    expect(() => buildCodestreakInstruction('activate_shield', {}, { day: -1 })).toThrow();
+  });
+});

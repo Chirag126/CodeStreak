@@ -1,7 +1,19 @@
 import 'server-only';
 
 import { createHash } from 'node:crypto';
-import { formatAmount, missingProviders, PROVIDER_LABELS, parseSponsorAmount, POOL_PARAM_MESSAGES, SOL_DECIMALS, USDC_DECIMALS, validatePoolParams, type PoolParams } from '@codestreak/shared';
+import {
+  formatAmount,
+  missingProviders,
+  PROVIDER_LABELS,
+  parseSponsorAmount,
+  POOL_PARAM_MESSAGES,
+  SHIELD_BLOCK_TEXT,
+  shieldBlock,
+  SOL_DECIMALS,
+  USDC_DECIMALS,
+  validatePoolParams,
+  type PoolParams,
+} from '@codestreak/shared';
 import {
   anchor,
   associatedTokenAddress,
@@ -35,7 +47,7 @@ import {
 import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction, VersionedTransaction, type TransactionInstruction } from '@solana/web3.js';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { linkedProviders } from '@/lib/accounts/github';
-import { syncChallenge, syncJoin, syncSponsor } from '@/lib/sync/chain';
+import { syncChallenge, syncJoin, syncShield, syncSponsor } from '@/lib/sync/chain';
 import { relayerKeypair } from './keypair';
 import { after } from 'next/server';
 import { takeLeetcodeSnapshot } from '@/lib/verification/day-check';
@@ -123,8 +135,8 @@ async function acceptInvitationOnJoin(profileId: string, challengeAddress: strin
     .eq('status', 'pending');
 }
 
-type RelayKind = 'join' | 'create' | 'sponsor';
-const KIND_INSTRUCTION: Record<RelayKind, RelayedInstruction> = { join: 'join_pool', create: 'initialize_pool', sponsor: 'sponsor_pool' };
+type RelayKind = 'join' | 'create' | 'sponsor' | 'shield';
+const KIND_INSTRUCTION: Record<RelayKind, RelayedInstruction> = { join: 'join_pool', create: 'initialize_pool', sponsor: 'sponsor_pool', shield: 'activate_shield' };
 /** Requests the user signs and submits here: the program actions above, plus unwrapping wrapped SOL (Phase 30). */
 type SubmitKind = RelayKind | 'unwrap';
 
@@ -472,6 +484,87 @@ export async function prepareSponsor(input: {
 }
 
 /** Details stored with a create request and written to the challenges row once it confirms. */
+/**
+ * Sponsored Shield: the player pays `shield_price` into the pool to protect one day; the relayer
+ * pays the fee. Checked here against the chain (same rules as the program) so the player gets the
+ * reason before signing anything: not started, grace over, already protected or verified, limit.
+ */
+export async function prepareShield(input: {
+  profileId: string;
+  wallet: string;
+  challengeAddress: string;
+  idempotencyKey: string;
+  day: number;
+}): Promise<RelayResult<{ transaction: string } | { signature: string }>> {
+  const prior = await existingOrRateLimit(input);
+  if (prior.done) return prior.done;
+
+  const connection = serverConnection();
+  const relayer = relayerKeypair();
+  const user = new PublicKey(input.wallet);
+  const challengeKey = new PublicKey(input.challengeAddress);
+  const program = createProgram(connection);
+  const challenge = await program.account.challenge.fetchNullable(challengeKey);
+  if (!challenge) return { ok: false, error: 'Challenge not found on devnet.' };
+  const participant = participantPda(challengeKey, user);
+  const p = await program.account.participant.fetchNullable(participant);
+  if (!p) return { ok: false, error: "This wallet isn't in the challenge.", code: 'shield.not_member', title: 'Not a player' };
+
+  const times = challengeTimes(challenge);
+  const block = shieldBlock(
+    {
+      state: times.state,
+      startTs: times.startTs,
+      dayLengthSecs: times.dayLengthSecs,
+      numDays: times.numDays,
+      shieldPrice: BigInt(challenge.shieldPrice.toString()),
+      maxShields: challenge.maxShieldsPerParticipant,
+      shieldGraceSecs: challenge.shieldGraceSecs,
+    },
+    { finalized: p.finalized, shieldsUsed: p.shieldsUsed, shieldedDays: BigInt(p.shieldedDays.toString()), verifiedDays: BigInt(p.verifiedDays.toString()) },
+    input.day,
+    await chainNow(connection),
+  );
+  if (block) return { ok: false, error: SHIELD_BLOCK_TEXT[block], code: `shield.${block}`, title: block === 'grace_over' ? 'Too late' : block === 'limit_reached' ? 'No Shields left' : 'Not possible' };
+
+  const price = BigInt(challenge.shieldPrice.toString());
+  const userToken = associatedTokenAddress(user, challenge.mint, challenge.tokenProgram);
+  const shieldIx = buildCodestreakInstruction(
+    'activate_shield',
+    { payer: relayer.publicKey, user, challenge: challengeKey, participant, mint: challenge.mint, user_token: userToken, vault: vaultPda(challengeKey), token_program: challenge.tokenProgram },
+    { day: input.day },
+  );
+  const common = { ...input, kind: 'shield' as const, payload: { day: input.day, price: price.toString() }, existingId: prior.existing?.id, existingStatus: prior.existing?.status };
+
+  if (!challenge.mint.equals(WSOL_MINT_KEY)) {
+    const balance = await connection.getTokenAccountBalance(userToken).catch(() => null);
+    const have = balance ? BigInt(balance.value.amount) : 0n;
+    if (have < price) {
+      return { ok: false, code: 'token.insufficient_funds', title: 'Not enough USDC', error: `A Shield costs ${formatAmount(price, USDC_DECIMALS)} USDC and your wallet has ${formatAmount(have, USDC_DECIMALS)}.` };
+    }
+    return prepareRelayed({ ...common, instructions: [shieldIx] });
+  }
+  // SOL: wrap exactly what's missing, then close the wSOL account again if this created it.
+  const existing = await connection.getAccountInfo(userToken);
+  const plan = planSolWrap({
+    buyIn: price,
+    accountExists: Boolean(existing),
+    wrappedBalance: existing ? BigInt((await connection.getTokenAccountBalance(userToken)).value.amount) : 0n,
+    accountRent: existing ? 0n : BigInt(await connection.getMinimumBalanceForRentExemption(165)),
+    solBalance: BigInt(await connection.getBalance(user)),
+  });
+  if (!plan.enough) {
+    return { ok: false, code: 'sol.insufficient', title: 'Not enough SOL', error: `You need ${formatAmount(plan.required, SOL_DECIMALS)} SOL for the ${formatAmount(price, SOL_DECIMALS)} SOL Shield. Get devnet SOL from faucet.solana.com.` };
+  }
+  const instructions = [
+    ...(plan.createAccount ? [createWrappedSolAccountInstruction(user, userToken)] : []),
+    ...(plan.toWrap > 0n ? wrapSolInstructions(user, userToken, plan.toWrap) : []),
+    shieldIx,
+    ...(plan.createAccount ? [closeWrappedSolAccountInstruction(user, userToken)] : []),
+  ];
+  return prepareRelayed({ ...common, instructions, wrap: { account: userToken, maxLamports: price } });
+}
+
 export interface ChallengeDetails {
   title: string;
   description: string;
@@ -629,6 +722,8 @@ export async function submitRelayed(input: { profileId: string; idempotencyKey: 
   const mirror =
     kind === 'unwrap'
       ? null // nothing of CodeStreak's changed: the user's own token account was closed
+      : kind === 'shield'
+      ? syncShield(connection, { challengeAddress: row.challenge_address as string, wallet: row.wallet as string, day: Number((row.payload as { day?: number } | null)?.day), signature })
       : kind === 'join'
       ? syncJoin(connection, { challengeAddress: row.challenge_address as string, wallet: row.wallet as string, profileId: input.profileId, signature })
       : kind === 'sponsor'

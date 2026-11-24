@@ -46,7 +46,7 @@ class FakeChain implements Chain {
       mirror: {} as ChainChallenge['mirror'], // only passed through to reconcile_challenge
     };
     for (const u of players) {
-      this.ps.set(`P-${u}`, { address: `P-${u}`, user: u, deposited: 10n, shieldPaid: 0n, verifiedDays: 0n, failedDays: 0n, indeterminateDays: 0n, finalized: false, claimed: false, status: 'active', joinedAt: START - 100 });
+      this.ps.set(`P-${u}`, { address: `P-${u}`, user: u, deposited: 10n, shieldPaid: 0n, verifiedDays: 0n, failedDays: 0n, indeterminateDays: 0n, shieldedDays: 0n, finalized: false, claimed: false, status: 'active', joinedAt: START - 100 });
     }
   }
   private tx(what: string, apply: () => void): Promise<string> {
@@ -105,8 +105,11 @@ class FakeChain implements Chain {
     const p = this.ps.get(participant)!;
     return this.tx(`finalize:${p.user}`, () => {
       p.finalized = true;
+      // rules.rs finalize_outcome: a Shield covers its day whatever was recorded.
       const all = (1n << BigInt(this.c.times.numDays)) - 1n;
-      p.status = p.failedDays ? 'failed' : (p.verifiedDays & all) === all ? 'survived' : 'voided';
+      const uncoveredFailures = p.failedDays & ~p.shieldedDays & all;
+      const covered = (p.verifiedDays | p.shieldedDays) & all;
+      p.status = uncoveredFailures ? 'failed' : covered === all ? 'survived' : 'voided';
       if (p.status === 'survived') this.c.survivorCount++;
     });
   }
@@ -373,6 +376,23 @@ describe('verification job', () => {
     expect(chain.sent.length).toBe(sent); // nothing paid twice
   });
 
+  it('a Shield covers a missed demo day: the shielded player survives and is paid', async () => {
+    const { chain, db, deps, setOutcome } = setup([ALICE, BOB]);
+    // Both miss day 3; only Alice bought a Shield for it.
+    setOutcome((_profile, day) => ({ providers: [day === 2 ? notMet : met()], evidence: [], transientFailure: null }));
+    chain.ps.get(`P-${ALICE}`)!.shieldedDays = 0b100n;
+    chain.ps.get(`P-${ALICE}`)!.shieldPaid = 2n;
+    chain.clock = START + 3 * DAY + 200;
+    await runVerification(deps); // days recorded: day 3 failed for both
+    expect(dayResultOf(chain.ps.get(`P-${ALICE}`)!, 2)).toBe('failed');
+    chain.clock = START + 3 * DAY + 900 + 600;
+    await runVerification(deps);
+    expect(chain.ps.get(`P-${ALICE}`)!.status).toBe('survived');
+    expect(chain.ps.get(`P-${BOB}`)!.status).toBe('failed');
+    // Alice: her 10 back + Bob's 10 (the fake pool counts missed stakes only).
+    expect(db.payouts).toEqual([{ wallet: ALICE, kind: 'reward', amount: '20', tx: expect.stringMatching(/^sig-/) }]);
+  });
+
   it('voids players with unrecorded days and refunds everyone when nobody survived', async () => {
     const { chain, db, deps } = setup();
     chain.sponsors.set('R1', { address: 'R1', sponsor: 'Sponsor1111111111111111111111111111111111', amount: 7n, refunded: false });
@@ -460,6 +480,7 @@ describe('participantPayout', () => {
     verifiedDays: 0n,
     failedDays: 0n,
     indeterminateDays: 0n,
+    shieldedDays: 0n,
     finalized: true,
     claimed: false,
     status: 'survived',

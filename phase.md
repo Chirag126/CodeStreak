@@ -1122,3 +1122,48 @@ other's tickets.
 - Worker:
   - an approved dispute upgrades failed → verified on-chain with a dispute receipt, once;
   - an approval after the window expires.
+
+## Phase 32: Shield UI (S)
+
+**Shields card** (challenge page, for players while the challenge runs). It is read from the chain and
+shows:
+- Shields left (`used of max`), the price, and the grace period;
+- the days that can be protected right now: today, plus any finished day still inside its grace;
+- for each such day, a live countdown that follows the chain's clock: "Shield closes in" today, or
+  "Grace ends in" for a finished day. It turns amber in the last 2 minutes.
+
+For a day in its grace, the card says whether it was recorded as missed or isn't recorded yet. **Shield
+day N** runs the usual transaction steps: prepare (server), approve (wallet), confirm. The relayer pays
+the fee. A SOL Shield is wrapped in the same transaction.
+
+**Activation transaction.** `prepareShield` re-checks eligibility on-chain with `shieldBlock()`
+(`packages/shared/src/shield.ts`), which mirrors `rules.rs check_shield` check by check. It then builds
+`activate_shield(day)`; the relayer policy allows only that instruction, plus the SOL wrap. On confirm,
+`syncShield` mirrors it: a `shields` row (the board shows the day as covered), a `shield` receipt, and the
+pool totals.
+
+**Shield covers a missed demo day.** The worker still records the day as failed, and finalize counts it
+as kept: any uncovered failure → failed; every day verified or shielded → survived. The worker test
+plays it end to end: both players miss day 3, only the shielded one survives and is paid the other's
+stake.
+
+**Handled:**
+- **Expired grace:** the countdown reaches zero and the button is replaced by "Too late to protect this
+  day: the Shield grace period is over". The server refuses with the same message using the chain's
+  clock, and so does the program (`ShieldWindowClosed`).
+- **Over the limit:** the badge shows 0 left, and each day shows "You have used all your Shields for
+  this challenge". The server and the program refuse.
+- **Also refused, each with its reason:** a day not started yet, a day already protected or verified,
+  a final result, a closed challenge, Shields turned off, a wallet that isn't the player's own linked
+  wallet.
+- **No double buy:** one request key per attempt, and the program's own already-shielded check.
+- **Drift:** reconcile adds Shields that are on-chain but missing in the database
+  (`reconcile_shields`; the transaction is unknown then, so `shields.tx_signature` became optional).
+
+**Tests:**
+- shared `shield.test.ts`: the program's own fixture for the window edges (1 099 / 1 100 / 1 229 /
+  1 230), invalid day, limit, already shielded or verified, finalized, closed, disabled, which days are
+  listed, countdown format;
+- relayer: `activate_shield` encodes the day as u16 and passes only for its own kind;
+- worker: a Shield rescues a missed day at settlement; reconcile adds missing Shields;
+- SQL `99h_shield_reconcile_test.sql`.

@@ -65,6 +65,14 @@ export async function reconcileOne(deps: ReconcileDeps, address: string, known?:
   const refundsSponsors = c.times.state === 'cancelled' || (c.times.state === 'settled' && c.fullRefund);
   const sponsorRefundPending = refundsSponsors && (await read(() => deps.chain.sponsorReceipts(address))).some((r) => !r.refunded);
   const result = await deps.db.rpc<ReconcileResult>('reconcile_challenge', reconcileArgs(c, participants, sponsorRefundPending));
+  // Shields on-chain but missing in the database (Phase 32).
+  const shields = participants
+    .map((p) => ({ wallet: p.user, days: Array.from({ length: c.times.numDays }, (_, d) => d).filter((d) => (p.shieldedDays >> BigInt(d)) & 1n) }))
+    .filter((s) => s.days.length);
+  if (shields.length) {
+    const added = await deps.db.rpc<number>('reconcile_shields', { p_challenge_address: address, p_shields: shields });
+    if (added) result.changes.push(`${added} Shield(s) added`);
+  }
   for (const ch of result.changes) deps.log(`${short(address)}: fixed ${ch}`);
   for (const w of result.warnings) deps.log(`${short(address)}: warning: ${w}`);
   return result;
