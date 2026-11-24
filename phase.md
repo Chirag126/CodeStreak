@@ -1389,3 +1389,49 @@ Several sponsorship top-ups on one challenge add up to one row.
     spreadsheet formula.
 - **Tests:** `history.test.ts` covers outcomes, filter parsing from untrusted input, filtering and
   sorting, the summary, and CSV quoting and formula neutralising.
+
+## Phase 36: Leaderboards (M/S)
+
+`/leaderboards` (in the header nav) has **Global** (public challenges only, the same for everyone) and
+**group** boards (any challenge you can see; your groups are listed as chips, and each challenge page
+links to its own). Each has five tabs, ranked by `buildLeaderboard()` in
+`packages/shared/src/leaderboard.ts`, from on-chain-recorded results and payouts only:
+
+| Board | Score |
+| --- | --- |
+| This week | Days kept (verified, or covered by a Shield) whose window started since Monday 00:00 UTC |
+| Longest streak | Most consecutive kept days across all challenges, in time order (same rule as Insights). Ties: current streak. |
+| Most consistent | Verified ÷ (verified + uncovered failed), at least 3 decided days. Ties: more decided days. |
+| Top earners · USDC / · SOL | Reward above the stake from payouts after settlement, survivors only. Per token, never mixed. |
+
+Ranking is competition style (1, 1, 3): equal scores share a rank, and order inside a tie is by name.
+
+**Live.**
+- The page subscribes over Supabase Realtime to `challenge_activity`, which existing triggers bump on
+  every recorded day, membership, payout and challenge change. RLS filters it, so a private group's
+  changes reach only its members.
+- On a change it re-fetches `/api/leaderboards` (debounced: 0.3 s for a group, 1.2 s for global, so one
+  worker run that records many days re-ranks once).
+- It resubscribes with backoff after errors, catches up after any disconnect or when the tab comes back,
+  and re-ranks every 5 minutes so "This week" rolls over on Monday even without activity.
+
+**Animated rank changes.** Rows animate to their new place (`motion` layout). A row that moved shows ▲n /
+▼n, and a newcomer shows *New*, for 4 seconds. Reduced motion is respected.
+
+**Privacy.**
+- Global never includes private groups.
+- A private group's board is a 404 for non-members, on the page and on the API.
+- Everything is read with the viewer's session (RLS).
+
+**No migration** (the Realtime table already exists).
+
+**Tests:** `leaderboard.test.ts` has a hand-computed fixture of 5 players across 4 challenges and 2
+tokens:
+- the week boundary;
+- a Shield inside a streak;
+- the 3-day minimum;
+- SOL and USDC kept apart;
+- a payout equal to the stake isn't earnings;
+- tie ranks (1, 1, 3) and tie-breakers;
+- the limit;
+- rank movement (up, down, new).

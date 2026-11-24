@@ -14,6 +14,7 @@ export * from './explain.js';
 export * from './insights.js';
 export * from './dashboard.js';
 export * from './history.js';
+export * from './leaderboard.js';
 export * from './invites.js';
 export * from './sign-in-limits.js';
 export * from './board.js';
