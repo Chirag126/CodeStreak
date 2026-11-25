@@ -1175,6 +1175,85 @@ export const CODESTREAK_IDL_JSON = {
       ]
     },
     {
+      "name": "seal_badge",
+      "docs": [
+        "Permissionless (Phase 37.3): removes the mint and freeze authority from a badge minted before",
+        "mint_badge did it itself, so wallets show it as an NFT. Moves no tokens."
+      ],
+      "discriminator": [
+        116,
+        182,
+        94,
+        247,
+        216,
+        145,
+        177,
+        24
+      ],
+      "accounts": [
+        {
+          "name": "participant",
+          "docs": [
+            "The player record the badge belongs to (owner and type checked by Anchor)."
+          ]
+        },
+        {
+          "name": "badge_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  100,
+                  103,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "participant"
+              }
+            ]
+          }
+        },
+        {
+          "name": "badge_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  100,
+                  103,
+                  101,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "set_entry_gate",
       "docs": [
         "Admin-only (Phase 37.2): the key that must approve (pay for) new challenges, joins and",
@@ -2004,6 +2083,11 @@ export const CODESTREAK_IDL_JSON = {
       "code": 6049,
       "name": "EntryNotApproved",
       "msg": "CodeStreak must approve this action: start it from the CodeStreak app"
+    },
+    {
+      "code": 6050,
+      "name": "NotABadge",
+      "msg": "This is not a CodeStreak badge mint"
     }
   ],
   "types": [
