@@ -82,6 +82,9 @@ fn survivor_gets_one_soulbound_badge_with_metadata() {
     assert_eq!(mint_account.owner, anchor_spl::token_2022::ID, "a Token-2022 mint");
     assert_eq!(u64::from_le_bytes(mint_account.data[36..44].try_into().unwrap()), 1, "supply 1");
     assert_eq!(mint_account.data[44], 0, "0 decimals");
+    // Phase 37.3: COption tag 0 = None. No mint or freeze authority, so wallets treat it as an NFT.
+    assert_eq!(&mint_account.data[0..4], &[0, 0, 0, 0], "no mint authority: supply fixed at 1");
+    assert_eq!(&mint_account.data[46..50], &[0, 0, 0, 0], "no freeze authority");
     let text = String::from_utf8_lossy(&mint_account.data);
     assert!(text.contains("CodeStreak Survivor · 3 days"), "name in the on-mint metadata");
     assert!(text.contains(BADGE_SYMBOL));
@@ -180,4 +183,63 @@ fn badge_always_goes_to_the_participant_wallet() {
     ix.accounts[3].pubkey = thief.pubkey();
     ix.accounts[6].pubkey = ata_2022(&thief.pubkey(), &mint);
     expect_anchor_error(send(&mut env.svm, ix, &[&env.relayer]), "ConstraintAddress");
+}
+
+fn seal_ix(challenge: &Pubkey, user: &Pubkey) -> Instruction {
+    let participant = participant_pda(challenge, user);
+    Instruction {
+        program_id: codestreak::ID,
+        accounts: codestreak::accounts::SealBadge {
+            participant,
+            badge_mint: badge_mint(&participant),
+            badge_authority: badge_authority(),
+            token_program: anchor_spl::token_2022::ID,
+        }
+        .to_account_metas(None),
+        data: codestreak::instruction::SealBadge {}.data(),
+    }
+}
+
+/// Rewrites a minted badge to how Phase 34 left it (mint and freeze authority = the badge PDA),
+/// so the upgrade path for badges that already exist on devnet can be tested.
+fn make_old_style(env: &mut Env, mint: &Pubkey) {
+    let mut account = env.svm.get_account(mint).unwrap();
+    let auth = badge_authority();
+    account.data[0..4].copy_from_slice(&[1, 0, 0, 0]);
+    account.data[4..36].copy_from_slice(auth.as_ref());
+    account.data[46..50].copy_from_slice(&[1, 0, 0, 0]);
+    account.data[50..82].copy_from_slice(auth.as_ref());
+    env.svm.set_account(*mint, account).unwrap();
+}
+
+#[test]
+fn old_badges_can_be_sealed_by_anyone_and_only_lose_authority() {
+    let mut env = setup();
+    let (challenge, survivor, loser) = finished(&mut env, 707);
+    finalize(&mut env, &challenge, &[&survivor, &loser]);
+    send(&mut env.svm, mint_badge_ix(&env.relayer.pubkey(), &challenge, &survivor.pubkey()), &[&env.relayer]).unwrap();
+    let mint = badge_mint(&participant_pda(&challenge, &survivor.pubkey()));
+    make_old_style(&mut env, &mint);
+
+    let anyone = Keypair::new();
+    env.svm.airdrop(&anyone.pubkey(), 1_000_000_000).unwrap();
+    send(&mut env.svm, seal_ix(&challenge, &survivor.pubkey()), &[&anyone]).unwrap();
+    let data = env.svm.get_account(&mint).unwrap().data;
+    assert_eq!(&data[0..4], &[0, 0, 0, 0], "mint authority removed");
+    assert_eq!(&data[46..50], &[0, 0, 0, 0], "freeze authority removed");
+    assert_eq!(u64::from_le_bytes(data[36..44].try_into().unwrap()), 1, "supply unchanged");
+    assert_eq!(amount_of(&env.svm, &ata_2022(&survivor.pubkey(), &mint)), 1, "badge still in the player's wallet");
+    assert!(String::from_utf8_lossy(&data).contains("CodeStreak Survivor · 3 days"), "metadata unchanged");
+
+    // Running it again (or on a badge minted already sealed) changes nothing and doesn't fail.
+    send(&mut env.svm, seal_ix(&challenge, &survivor.pubkey()), &[&anyone]).unwrap();
+}
+
+#[test]
+fn seal_refuses_a_player_without_a_badge() {
+    let mut env = setup();
+    let (challenge, survivor, loser) = finished(&mut env, 708);
+    finalize(&mut env, &challenge, &[&survivor, &loser]);
+    // No badge minted for the loser: the mint account doesn't exist.
+    assert!(send(&mut env.svm, seal_ix(&challenge, &loser.pubkey()), &[&env.relayer]).is_err());
 }

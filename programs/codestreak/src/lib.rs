@@ -93,6 +93,12 @@ pub mod codestreak {
         claim_sponsor_refund_handler(ctx)
     }
 
+    /// Permissionless (Phase 37.3): removes the mint and freeze authority from a badge minted before
+    /// mint_badge did it itself, so wallets show it as an NFT. Moves no tokens.
+    pub fn seal_badge(ctx: Context<SealBadge>) -> Result<()> {
+        seal_badge_handler(ctx)
+    }
+
     /// Admin-only (Phase 37.2): the key that must approve (pay for) new challenges, joins and
     /// sponsorships. None = open. Claims, refunds, finalizing, settling and Shields are never gated.
     pub fn set_entry_gate(ctx: Context<SetEntryGate>, authority: Option<Pubkey>) -> Result<()> {

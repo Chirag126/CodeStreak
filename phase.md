@@ -1629,3 +1629,23 @@ Expired suspensions read as active at once and are cleared by pg_cron every 10 m
 Undo in an emergency: `pnpm devnet:set-entry-gate --off`.
 
 **Tests.** `programs/codestreak/tests/entry_gate.rs`: open without a gate (backwards compatible), only the admin sets it, a self-paid join, sponsor or create is refused, the relayer path works, a fake gate account fails the seeds check, Shields and refunds stay open with the gate on, clearing it reopens entry. `packages/shared/src/relayer/index.test.ts`: gate PDA filled automatically, wrong gate and non-relayer payer refused.
+
+## Phase 37.3: Badges show as NFTs in wallets
+
+**Problem.** Badges were correct on-chain (Solscan showed name, image and attributes), but Phantom didn't list them. Solscan filed them as a "Fungible Asset": the mint still had a mint authority (and a freeze authority), the program's badge PDA. Wallets and indexers only treat a token as an NFT when it has 0 decimals, supply 1 and **no mint authority**.
+
+**Fix (no Metaplex, no new dependency, no extra cost).**
+- `mint_badge` creates the mint with no freeze authority and, right after minting the single badge, removes the mint authority (`SetAuthority MintTokens → None`, signed by the badge PDA). The supply is fixed at 1 for ever. Name, symbol, URI, NonTransferable and the metadata update authority are unchanged.
+- New permissionless `seal_badge(participant)` does the same for badges minted before the upgrade: it removes the mint and freeze authority if the badge PDA still holds them, and does nothing if it's already sealed. It moves no tokens, can only take authority away, and refuses a mint that isn't a 1-supply, 0-decimal badge (`NotABadge`).
+
+**What doesn't change.** One badge per player per challenge (mint PDA), soulbound (NonTransferable), metadata JSON, the worker's mint flow and its accounts, profile and wallet checks (they read the token balance).
+
+**Rollout.**
+1. merge;
+2. WSL: `bash scripts/wsl/deploy-devnet.sh`;
+3. Windows, repo root: `pnpm devnet:seal-badges --dry-run` (lists old badges), then `pnpm devnet:seal-badges` (relayer pays the fees).
+Phantom may take a while to re-index. Check Collectibles and its hidden list with Testnet Mode on devnet. Whether Phantom shows devnet collectibles, and its spam filter, are Phantom's decisions; Solscan and the app's badge pages remain the proof.
+
+**Tests.** `programs/codestreak/tests/badges.rs`: a new badge has no mint or freeze authority; an old-style badge is sealed by anyone, keeps supply, owner and metadata, and re-sealing is a no-op; sealing fails for a player without a badge.
+
+**Later, only if still needed:** Metaplex Core (bigger change, new dependency, higher rent per badge).

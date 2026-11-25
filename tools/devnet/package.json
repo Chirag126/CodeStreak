@@ -9,7 +9,8 @@
     "seed-demo": "tsx src/seed-demo.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "close-challenges": "tsx src/close-challenges.ts",
-    "set-entry-gate": "tsx src/set-entry-gate.ts"
+    "set-entry-gate": "tsx src/set-entry-gate.ts",
+    "seal-badges": "tsx src/seal-badges.ts"
   },
   "dependencies": {
     "@codestreak/shared": "workspace:*",
