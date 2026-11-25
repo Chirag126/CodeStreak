@@ -8,6 +8,7 @@ import { cache } from 'react';
 import { Reveal } from '@/components/motion/primitives';
 import { RefreshOnFocus } from '@/components/motion/refresh-on-focus';
 import { AutoRefresh } from '@/components/profile/auto-refresh';
+import { EmbedDialog } from '@/components/profile/embed-dialog';
 import { ShareButton } from '@/components/profile/share-button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,7 +29,12 @@ export async function generateMetadata({ params }: { params: Promise<{ username:
   if (!p) return { title: 'Profile not found' };
   const name = p.displayName ?? `@${p.username}`;
   const description = `${name} on CodeStreak: longest streak ${p.stats.longestStreak} days, ${p.stats.survived} challenge${p.stats.survived === 1 ? '' : 's'} survived, ${p.badges.length} soulbound badge${p.badges.length === 1 ? '' : 's'}.`;
-  return { title: `${name} (@${p.username})`, description, openGraph: { title: `${name} on CodeStreak`, description } };
+  return {
+    title: `${name} (@${p.username})`,
+    description,
+    openGraph: { title: `${name} on CodeStreak`, description, type: 'profile' },
+    twitter: { card: 'summary_large_image', title: `${name} on CodeStreak`, description },
+  };
 }
 
 const VARIANT: Record<HistoryOutcome, 'success' | 'danger' | 'warning' | 'outline' | 'primary' | 'accent'> = {
@@ -107,6 +113,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
             </div>
             <div className="flex gap-2">
               <ShareButton path={`/u/${p.username}`} title={`${name} on CodeStreak`} />
+              <EmbedDialog username={p.username} />
               <ReportButton username={p.username} />
             </div>
           </CardContent>
