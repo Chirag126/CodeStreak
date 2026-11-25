@@ -33,7 +33,7 @@ export type WidgetModel =
     }
   | { found: false };
 
-const PRINTABLE = /^[\x20-\x7E -ɏ]+$/;
+const PRINTABLE = /^[\x20-\x7E\u00A0-\u024F]+$/;
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 export function widgetModel(p: WidgetProfileInput | null): WidgetModel {
