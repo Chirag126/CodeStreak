@@ -736,6 +736,21 @@ export async function submitRelayed(input: { profileId: string; idempotencyKey: 
     return fail(e, (e as { logs?: string[] }).logs);
   }
 
+  await finishConfirmed(connection, { ...row, kind }, input.profileId, signature);
+  return { ok: true, signature };
+}
+
+type ConfirmedRow = { id: string; kind: SubmitKind; wallet: string; challenge_address: string | null; payload: unknown };
+
+/**
+ * After a relayed transaction is final on-chain: mark the request confirmed, mirror it into the app
+ * tables (a mirror failure is logged and healed by the next sync, never reported as a failed
+ * action), run join side effects and write the audit entry. Used by submitRelayed and by the
+ * Blink callback (Phase 39), where the wallet sent the transaction itself.
+ */
+async function finishConfirmed(connection: Connection, row: ConfirmedRow, profileId: string, signature: string): Promise<void> {
+  const admin = createSupabaseAdminClient();
+  const kind = row.kind;
   await admin.from('relayer_requests').update({ status: 'confirmed', signature, error: null }).eq('id', row.id);
 
   // Mirror the result into the app tables. The chain is already final, so a sync failure is logged
@@ -747,36 +762,71 @@ export async function submitRelayed(input: { profileId: string; idempotencyKey: 
       : kind === 'shield'
       ? syncShield(connection, { challengeAddress: row.challenge_address as string, wallet: row.wallet as string, day: Number((row.payload as { day?: number } | null)?.day), signature })
       : kind === 'join'
-      ? syncJoin(connection, { challengeAddress: row.challenge_address as string, wallet: row.wallet as string, profileId: input.profileId, signature })
+      ? syncJoin(connection, { challengeAddress: row.challenge_address as string, wallet: row.wallet as string, profileId, signature })
       : kind === 'sponsor'
         ? syncSponsor(connection, {
             challengeAddress: row.challenge_address as string,
             wallet: row.wallet as string,
-            profileId: input.profileId,
+            profileId,
             signature,
             amount: sponsorPayload?.amount ?? '0',
             message: sponsorPayload?.message ?? null,
             receipt: sponsorPayload?.receipt ?? null,
           })
-        : syncChallenge(connection, row.challenge_address as string, { ...(row.payload as ChallengeDetails), creatorId: input.profileId, createTx: signature });
+        : syncChallenge(connection, row.challenge_address as string, { ...(row.payload as ChallengeDetails), creatorId: profileId, createTx: signature });
   await Promise.resolve(mirror).catch((e: unknown) => console.error(`[sync] ${kind} mirror failed:`, e instanceof Error ? e.message : e));
   if (kind === 'join') {
-    await acceptInvitationOnJoin(input.profileId, row.challenge_address as string);
+    await acceptInvitationOnJoin(profileId, row.challenge_address as string);
     // LeetCode challenges: a first snapshot now, so day 1 has an anchor even before the scheduled ones.
     const { data: joined } = await admin.from('challenges').select('rules').eq('onchain_address', row.challenge_address as string).maybeSingle();
     if ((joined?.rules as { leetcode?: unknown } | null)?.leetcode) {
-      const profileId = input.profileId;
       after(() => takeLeetcodeSnapshot(profileId, 'join').then(() => undefined));
     }
   }
 
   await admin.from('audit_log').insert({
     actor_kind: 'relayer',
-    actor_id: input.profileId,
+    actor_id: profileId,
     action: `relayer.${row.kind as string}`,
     entity_type: kind === 'unwrap' ? 'wallet' : 'challenge',
     entity_id: (row.challenge_address as string | null) ?? (row.wallet as string),
     details: { signature, wallet: row.wallet },
   });
-  return { ok: true, signature };
+}
+
+/**
+ * Phase 39 (Blinks): the wallet sent a relayer-prepared transaction itself, then the Blink client
+ * reports its signature. Accepted only if that confirmed, successful transaction is exactly the
+ * message the relayer prepared for this user and request (same hash), so a signature can't be
+ * reused for someone else's request. Then the same mirror as submitRelayed.
+ */
+export async function confirmExternalRelayed(input: { profileId: string; idempotencyKey: string; signature: string }): Promise<RelayResult<{ signature: string }>> {
+  if (!/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(input.signature)) return { ok: false, error: 'That is not a transaction signature.' };
+  const admin = createSupabaseAdminClient();
+  const { data: row } = await admin
+    .from('relayer_requests')
+    .select('id, kind, status, signature, message_hash, wallet, challenge_address, payload')
+    .eq('profile_id', input.profileId)
+    .eq('idempotency_key', input.idempotencyKey)
+    .maybeSingle();
+  if (!row) return { ok: false, error: 'Request not found.' };
+  if (row.status === 'confirmed') return { ok: true, signature: row.signature as string };
+  if (row.status !== 'prepared') return { ok: false, error: 'This request was already handled.' };
+
+  const connection = serverConnection();
+  // The Blink client calls back once the transaction is confirmed; allow a little RPC lag.
+  let tx: Awaited<ReturnType<Connection['getTransaction']>> = null;
+  for (let i = 0; i < 5 && !tx; i++) {
+    tx = await connection.getTransaction(input.signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 }).catch(() => null);
+    if (!tx) await new Promise((r) => setTimeout(r, 1500));
+  }
+  if (!tx) return { ok: false, error: 'The transaction is not confirmed yet. It will still be picked up automatically.' };
+  if (tx.meta?.err) return { ok: false, error: 'That transaction failed on-chain.' };
+  const hash = createHash('sha256').update(tx.transaction.message.serialize()).digest('hex');
+  if (hash !== row.message_hash) return { ok: false, error: 'That signature belongs to a different transaction.' };
+
+  const { data: claimed } = await admin.from('relayer_requests').update({ status: 'submitting' }).eq('id', row.id).eq('status', 'prepared').select('id');
+  if (!claimed?.length) return { ok: true, signature: input.signature };
+  await finishConfirmed(connection, { ...row, kind: row.kind as SubmitKind }, input.profileId, input.signature);
+  return { ok: true, signature: input.signature };
 }

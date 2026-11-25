@@ -25,3 +25,4 @@ export * from './canonical.js';
 export * from './retry.js';
 export * from './rules-engine.js';
 export * from './widget.js';
+export * from './actions.js';

@@ -1668,3 +1668,25 @@ Phantom may take a while to re-index. Check Collectibles and its hidden list wit
 **Plain HTML page.** `/widget-demo.html?u=<username>` (also works saved to disk and opened from a file) embeds the iframe, the SVG, the PNG and the JPG with no framework.
 
 **Tests.** `packages/shared/src/widget.test.ts`: model, placeholder, URL parsing, escaping (a `<script>` name can't inject), no scripts or external resources in the SVG, HTML page without JavaScript linking to the profile, snippets.
+
+## Phase 39: Blinks (Solana Actions)
+
+**Endpoints** (public challenges only; private groups answer like unknown ones, so nothing about them leaks):
+- `GET /actions.json`: rules `/challenges/*` → `/api/actions/join/*` (a challenge link unfurls as its join Blink) and `/api/actions/**` → itself.
+- `GET|POST|OPTIONS /api/actions/join/<challenge>`: one "Join for <buy-in>" button, disabled with a reason when joining has closed or the challenge is full.
+- `GET|POST|OPTIONS /api/actions/sponsor/<challenge>?amount=`: three preset buttons plus a custom amount input (same limits as the app).
+- `POST /api/actions/{join,sponsor}/<challenge>/done?key=`: the `links.next` callback after the wallet's transaction confirms. It returns a `completed` card.
+- `GET /api/actions/icon/<challenge>.png`: 600×600 PNG icon (title, days, buy-in, players).
+
+**Headers.** Every response, errors and `OPTIONS` included, carries `Access-Control-Allow-Origin: *`, `Allow-Methods GET,POST,PUT,OPTIONS`, `Allow-Headers Content-Type, Authorization, Content-Encoding, Accept-Encoding` (plus the `X-Accept-*` ones), `Expose-Headers`, `X-Action-Version: 2.4` and `X-Blockchain-Ids: solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1` (devnet). Errors are `ActionError` JSON (`{ "message": … }`) with 4xx/5xx: malformed account, missing or bad amount (empty, not a number, negative, zero, too many decimals, below the minimum, above the maximum), challenge closed, not public, wallet not linked.
+
+**How a Blink transaction works with the entry gate (37.2).** POST reuses the app's relayer path (`prepareJoin` / `prepareSponsor`) for the CodeStreak account that verified the posting wallet, so every server check applies: moderation, linked coding accounts, balance, rules fingerprint, rate limit, SOL wrapping. The relayer is fee payer and entry-gate payer and **pre-signs**. The Actions spec allows a partially signed transaction, and the client must not change its fee payer or blockhash. The wallet adds only its own signature and sends it. The `done` callback accepts a signature only if that confirmed transaction's message hash equals the one prepared for this user and request, then mirrors it immediately (the same code as the in-app submit, now `finishConfirmed`). If the callback never comes, reconcile mirrors the join within 30 minutes.
+
+**Who can use it.** The wallet must be linked to a CodeStreak account (Dashboard → Wallet); otherwise a clear `ActionError` says so. Without an account nobody could verify the player's days (or apply moderation), and the relayer would be paying for strangers.
+
+**Try it.**
+- Blinks Inspector: https://www.blinks.xyz/inspector, paste `https://codestreak-k0uv.onrender.com/api/actions/join/<challenge address>`.
+- dial.to: `https://dial.to/?action=solana-action:https://codestreak-k0uv.onrender.com/api/actions/sponsor/<challenge address>&cluster=devnet`.
+- curl checks: `curl -i -X OPTIONS …/api/actions/join/<address>` (204 + headers), `curl -i -X POST '…/api/actions/sponsor/<address>?amount=abc' -H 'content-type: application/json' -d '{"account":"<wallet>"}'` → 400 `{"message":"Enter a number like 5."}`.
+
+**Tests.** `packages/shared/src/actions.test.ts`: headers, actions.json, account and amount validation (bad amounts → error), join/sponsor metadata (disabled states, presets, the `{amount}` parameter).
