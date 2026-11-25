@@ -11,7 +11,7 @@ import { Dialog, DialogDescription, DialogTitle, DialogTrigger, SheetContent } f
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { springs } from '@/lib/motion';
 import { cn } from '@/lib/utils';
-import { AuthNav } from '@/components/auth/auth-nav';
+import { accountLinks, AuthNav, useAuthState } from '@/components/auth/auth-nav';
 import { NotificationBell } from '@/components/notifications/notification-bell';
 import { Logo } from './logo';
 import { NAV_ITEMS } from './nav-config';
@@ -23,10 +23,12 @@ function isActive(pathname: string, href: string): boolean {
 export function SiteHeader() {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const auth = useAuthState();
+  const account = accountLinks(auth);
 
   return (
     <header className="surface-glass sticky top-0 z-40 border-b border-border">
-      <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-4 sm:px-6">
+      <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:gap-6 sm:px-6">
         <Link href="/" className="rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" aria-label="CodeStreak home">
           <Logo />
         </Link>
@@ -52,7 +54,7 @@ export function SiteHeader() {
           })}
         </nav>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-2">
           <Tooltip>
             <TooltipTrigger asChild>
               <Badge variant="primary" tabIndex={0} className="cursor-default outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -64,7 +66,7 @@ export function SiteHeader() {
           </Tooltip>
 
           <NotificationBell />
-          <AuthNav />
+          <AuthNav state={auth} />
 
           <Dialog open={menuOpen} onOpenChange={setMenuOpen}>
             <DialogTrigger asChild>
@@ -89,6 +91,21 @@ export function SiteHeader() {
                   </Link>
                 ))}
               </nav>
+              {account.length > 0 && (
+                <nav aria-label="Account" className="mt-4 flex flex-col gap-1 border-t border-border pt-4">
+                  {account.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMenuOpen(false)}
+                      aria-current={isActive(pathname, item.href) ? 'page' : undefined}
+                      className="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-[current=page]:bg-muted aria-[current=page]:text-foreground"
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </nav>
+              )}
             </SheetContent>
           </Dialog>
         </div>
