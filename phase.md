@@ -1703,3 +1703,19 @@ Phantom may take a while to re-index. Check Collectibles and its hidden list wit
 **No fake numbers anywhere.** No hard-coded figures, no "10,000+ developers", no sample cards. The only invented content is the single example verdict, and it's labeled as a demo.
 
 **Stats match database queries.** `supabase/tests/99m_landing_stats_test.sql` checks every figure of `landing_stats()` against the plain query, that the grid's 84 days add up to the recorded results of those days, that one new onboarded player moves "players" by exactly one, and that browsers can't call the function (service role only). Migration `landing_stats` is applied.
+
+## Phase 41: Polish pass (mobile, loading, empty, error, motion)
+
+**Phones (375 px).**
+- **Header:** with a signed-in user the bar needed ~450–510 px (logo, Devnet, bell, Control Center, Profile, Dashboard, menu). Below the `md` breakpoint it now keeps only logo, Devnet, bell and ☰; Dashboard, Your profile and Control Center (owner only) are in the menu sheet under an "Account" section. From `md` up nothing changes, except the Control Center label shows from `lg` (icon only on tablets). The auth state is now loaded once (`useAuthState`) and shared by the bar and the menu.
+- **Safety net:** `body { overflow-x: clip }`, so no page can scroll sideways as a whole (wide tables keep scrolling inside their own box; `clip` keeps the sticky header working). `.font-mono` wraps long addresses, signatures and IDs (`overflow-wrap: anywhere`); truncated ones are unaffected.
+- **Dialogs** never exceed the screen height (`max-h: 100dvh − 2rem`, scrolling inside), so the action, report and embed dialogs work on short phones.
+- **Dashboard** "Your public ID" row wraps on phones.
+
+**Loading states.** `app/loading.tsx` (any page) and `app/admin/loading.tsx` (inside the Control Center layout) show skeleton shapes while server data loads. Shapes only, no fake text or numbers, announced once to screen readers. The shimmer stops when motion is reduced.
+
+**Empty and error states.** Already in place from earlier phases and re-checked: every list has a plain-language empty state with a next step, and `error.tsx` / `not-found.tsx` / `global-error.tsx` cover failures. Nothing changed there.
+
+**Motion.** One set of timings (`lib/motion.ts`: 150/240/420 ms, two springs). Reduced motion covers Motion components (`MotionConfig`), CSS animations and transitions (`html[data-motion]`), counters (jump to the value) and the landing grid (no per-cell delay). Re-checked, no changes needed.
+
+**Manual checklist.** `docs/qa-checklist.md`: every page × (375 px, loading, empty, error, motion), signed out / user / owner, with what to look for. The starred rows are also checked at desktop width.

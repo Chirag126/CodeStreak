@@ -120,6 +120,14 @@
   body {
     @apply bg-background font-sans text-foreground antialiased;
     font-feature-settings: 'cv11', 'ss01';
+    /* Phase 41 safety net for phones: nothing may make the whole page scroll sideways. Wide
+       content (tables) scrolls inside its own box. `clip` (not hidden) keeps sticky headers working. */
+    overflow-x: clip;
+  }
+  /* Addresses, signatures and IDs are long unbroken strings: let them wrap instead of pushing the
+     layout wider on phones. Elements that truncate (nowrap + ellipsis) are unaffected. */
+  .font-mono {
+    overflow-wrap: anywhere;
   }
   ::selection {
     background: color-mix(in oklab, var(--primary) 30%, transparent);

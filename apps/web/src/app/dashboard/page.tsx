@@ -63,10 +63,10 @@ export default async function DashboardPage() {
             <CardTitle>Your public ID</CardTitle>
             <CardDescription>Share it so friends can add you to private groups.</CardDescription>
           </CardHeader>
-          <CardContent className="flex items-center gap-2">
-            <span className="font-mono text-2xl tracking-wider">{viewer.publicId}</span>
+          <CardContent className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-xl tracking-wider sm:text-2xl">{viewer.publicId}</span>
             <CopyButton value={viewer.publicId} label="Copy public ID" />
-            <Link className="ml-auto text-sm underline underline-offset-4" href={`/u/${viewer.username}`}>
+            <Link className="text-sm underline underline-offset-4 sm:ml-auto" href={`/u/${viewer.username}`}>
               Public profile @{viewer.username} ↗
             </Link>
           </CardContent>
