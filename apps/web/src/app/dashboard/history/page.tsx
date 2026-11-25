@@ -19,6 +19,7 @@ export const dynamic = 'force-dynamic';
 const VARIANT: Record<HistoryOutcome, 'success' | 'danger' | 'warning' | 'outline' | 'primary' | 'accent'> = {
   survived: 'success',
   failed: 'danger',
+  refunded: 'outline',
   voided: 'warning',
   cancelled: 'outline',
   running: 'primary',

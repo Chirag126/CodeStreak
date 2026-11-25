@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { cache } from 'react';
 import { Reveal } from '@/components/motion/primitives';
+import { RefreshOnFocus } from '@/components/motion/refresh-on-focus';
+import { AutoRefresh } from '@/components/profile/auto-refresh';
 import { ShareButton } from '@/components/profile/share-button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,13 +26,14 @@ export async function generateMetadata({ params }: { params: Promise<{ username:
   const p = await load((await params).username);
   if (!p) return { title: 'Profile not found' };
   const name = p.displayName ?? `@${p.username}`;
-  const description = `${name} on CodeStreak: longest streak ${p.stats.longestStreak} days, ${p.stats.survived} challenge${p.stats.survived === 1 ? '' : 's'} survived, ${p.badges.length} soulbound badge${p.badges.length === 1 ? '' : 's'}. Public challenges only.`;
+  const description = `${name} on CodeStreak: longest streak ${p.stats.longestStreak} days, ${p.stats.survived} challenge${p.stats.survived === 1 ? '' : 's'} survived, ${p.badges.length} soulbound badge${p.badges.length === 1 ? '' : 's'}.`;
   return { title: `${name} (@${p.username})`, description, openGraph: { title: `${name} on CodeStreak`, description } };
 }
 
 const VARIANT: Record<HistoryOutcome, 'success' | 'danger' | 'warning' | 'outline' | 'primary' | 'accent'> = {
   survived: 'success',
   failed: 'danger',
+  refunded: 'outline',
   voided: 'warning',
   cancelled: 'outline',
   running: 'primary',
@@ -64,6 +67,8 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-12 sm:px-6">
+      <RefreshOnFocus />
+      <AutoRefresh everyMs={60_000} />
       <Reveal trigger="mount">
         <Card>
           <CardContent className="flex flex-col gap-5 py-6 sm:flex-row sm:items-center">
@@ -107,10 +112,17 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat icon={<Flame className="size-3.5" aria-hidden />} label="Current streak" value={`${p.stats.currentStreak} day${p.stats.currentStreak === 1 ? '' : 's'}`} hint={`Longest ${p.stats.longestStreak}`} />
         <Stat label="Success rate" value={p.stats.successRate === null ? '—' : `${p.stats.successRate}%`} hint={`${p.stats.recordedDays} recorded day${p.stats.recordedDays === 1 ? '' : 's'}`} />
-        <Stat icon={<Trophy className="size-3.5" aria-hidden />} label="Survived" value={`${p.stats.survived} of ${p.stats.challenges}`} hint="Challenges kept to the end" />
+        <Stat
+          icon={<Trophy className="size-3.5" aria-hidden />}
+          label="Survived"
+          value={`${p.stats.survived} of ${p.stats.finished}`}
+          hint={`Finished challenges kept to the end · ${p.stats.challenges} joined`}
+        />
         <Stat label="Rewards earned" value={earned.length ? earned.join(' · ') : '—'} hint="Above the stake, after settlement" />
       </div>
-      <p className="-mt-3 text-xs text-muted-foreground">Public challenges only. Private groups are never shown here, not even in the totals.</p>
+      <p className="-mt-3 text-xs text-muted-foreground">
+        Totals include private groups as numbers only. A private group&apos;s name, members, dates and transactions are never shown.
+      </p>
 
       <Card>
         <CardHeader>
@@ -123,28 +135,36 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
         <CardContent>
           {p.badges.length ? (
             <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {p.badges.map((b) => (
-                <li key={b.mint} className="flex items-center gap-3 rounded-lg border border-border p-3">
+              {p.badges.map((b, i) => (
+                <li key={b.mint ?? `private-${b.numDays}-${i}`} className="flex items-center gap-3 rounded-lg border border-border p-3">
                   <div className="flex size-12 shrink-0 flex-col items-center justify-center rounded-full border-4 border-amber-500 text-sm font-bold leading-none">
                     {b.numDays}
                     <span className="text-[9px] font-medium tracking-widest text-amber-400">DAYS</span>
                   </div>
                   <div className="min-w-0 space-y-0.5">
-                    <Link className="block truncate text-sm font-medium hover:underline" href={`/challenges/${b.address}`}>
-                      {b.title}
-                    </Link>
+                    {b.address ? (
+                      <Link className="block truncate text-sm font-medium hover:underline" href={`/challenges/${b.address}`}>
+                        {b.title}
+                      </Link>
+                    ) : (
+                      <p className="truncate text-sm font-medium">
+                        {b.title} <span className="text-xs font-normal text-muted-foreground">(details hidden)</span>
+                      </p>
+                    )}
                     <p className="text-xs text-muted-foreground">
                       {b.inWallet === true ? 'Held in wallet · read from chain' : b.inWallet === false ? 'Not in the wallet right now' : 'Minted (chain busy, not re-checked)'}
                     </p>
-                    <a className="text-xs underline underline-offset-4" href={explorerAddressUrl(b.mint)} target="_blank" rel="noreferrer">
-                      Token on Explorer ↗
-                    </a>
+                    {b.mint && (
+                      <a className="text-xs underline underline-offset-4" href={explorerAddressUrl(b.mint)} target="_blank" rel="noreferrer">
+                        Token on Explorer ↗
+                      </a>
+                    )}
                   </div>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="py-4 text-center text-sm text-muted-foreground">No badges yet. A badge is minted for every public challenge survived.</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">No badges yet. A soulbound badge is minted for every challenge survived.</p>
           )}
         </CardContent>
       </Card>
@@ -218,11 +238,16 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
           ) : (
             <p className="py-4 text-center text-sm text-muted-foreground">No public challenges yet.</p>
           )}
+          {p.privateChallenges > 0 && (
+            <p className="pt-3 text-xs text-muted-foreground">
+              + {p.privateChallenges} private challenge{p.privateChallenges === 1 ? '' : 's'} (details hidden; counted in the totals above).
+            </p>
+          )}
         </CardContent>
       </Card>
 
       <p className="text-center text-xs text-muted-foreground">
-        Results, payouts and badges are read from Solana devnet records. Updated {utcAndIst(nowSecs())}.
+        Results, payouts and badges are read from Solana devnet records. Updated {utcAndIst(nowSecs())}; refreshes by itself every minute.
       </p>
     </div>
   );

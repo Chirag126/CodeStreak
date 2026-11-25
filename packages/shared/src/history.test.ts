@@ -29,6 +29,9 @@ describe('history outcome', () => {
     expect(historyOutcome('player', 'active', 'open', 10, 20)).toBe('awaiting_settlement');
     expect(historyOutcome('sponsor', 'active', 'open', 10, 5)).toBe('running');
     expect(historyOutcome('sponsor', 'active', 'settled', 10, 20)).toBe('sponsored');
+    // Nobody survived: a failed player was refunded in full.
+    expect(historyOutcome('player', 'failed', 'settled', 10, 20, 20_000_000n)).toBe('refunded');
+    expect(historyOutcome('player', 'failed', 'settled', 10, 20, null)).toBe('failed');
   });
 });
 

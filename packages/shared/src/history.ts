@@ -9,6 +9,7 @@ export type HistoryOutcome =
   | 'awaiting_settlement' // ended, not settled yet
   | 'survived'
   | 'failed'
+  | 'refunded' // failed, but nobody survived: every stake (and Shield) came back in full
   | 'voided'
   | 'cancelled'
   | 'sponsored'; // sponsor rows: the outcome is the challenge's
@@ -18,6 +19,7 @@ export const OUTCOME_LABELS: Record<HistoryOutcome, string> = {
   awaiting_settlement: 'Awaiting settlement',
   survived: 'Survived',
   failed: 'Failed',
+  refunded: 'Refunded · nobody survived',
   voided: 'Voided',
   cancelled: 'Cancelled',
   sponsored: 'Sponsored',
@@ -50,9 +52,13 @@ export function historyOutcome(
   poolState: 'open' | 'cancelled' | 'settled',
   endTs: number,
   now: number,
+  /** What the player was paid after settlement (null until paid). */
+  payout: bigint | null = null,
 ): HistoryOutcome {
   if (poolState === 'cancelled') return 'cancelled';
   if (role === 'sponsor') return poolState === 'open' && now < endTs ? 'running' : 'sponsored';
+  // A failed player is only ever paid when nobody survived (the full refund rule).
+  if (status === 'failed' && poolState === 'settled' && payout !== null && payout > 0n) return 'refunded';
   if (status !== 'active') return status;
   return now < endTs ? 'running' : 'awaiting_settlement';
 }

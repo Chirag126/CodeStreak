@@ -24,7 +24,7 @@ const NONE = '00000000-0000-0000-0000-000000000000';
 
 export async function loadHistory(supabase: SupabaseClient, profileId: string, now: number): Promise<HistoryRow[]> {
   const [{ data: members, error }, { data: sponsorships, error: sErr }, { data: receipts }, { data: badges }] = await Promise.all([
-    supabase.from('memberships').select(`id, status, deposited, challenge_id, challenges!inner(${CH})`).eq('profile_id', profileId).limit(1000),
+    supabase.from('memberships').select(`id, status, deposited, payout, challenge_id, challenges!inner(${CH})`).eq('profile_id', profileId).limit(1000),
     supabase.from('sponsorships').select(`id, amount, challenge_id, challenges!inner(${CH})`).eq('sponsor_id', profileId).limit(1000),
     supabase.from('receipts').select('challenge_id, kind, amount').eq('profile_id', profileId).limit(5000),
     supabase.from('badges').select('challenge_id, mint_address').eq('profile_id', profileId).eq('badge_code', 'survivor').limit(1000),
@@ -63,7 +63,7 @@ export async function loadHistory(supabase: SupabaseClient, profileId: string, n
       key: `p:${m.id}`,
       role: 'player',
       ...b,
-      outcome: historyOutcome('player', m.status as 'active', c.pool_state, b.endTs, now),
+      outcome: historyOutcome('player', m.status as 'active', c.pool_state, b.endTs, now, m.payout === null ? null : BigInt(m.payout as string)),
       ...(counts.get(m.id as string) ?? { verified: 0, failed: 0, shielded: 0, undecided: 0 }),
       put: BigInt(m.deposited as string),
       received: received(c.id, ['reward', 'refund']),

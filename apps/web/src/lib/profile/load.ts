@@ -7,9 +7,10 @@ import { serverConnection } from '@/lib/relayer/service';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 // Phase 37 - data for the public profile. Readable when logged out, so it uses the service role,
-// and therefore every query here is scoped by hand: one profile, PUBLIC challenges only (the
-// `challenges!inner(... visibility)` filter), only the columns the page shows. buildPublicProfile()
-// filters for visibility again. Never select emails, timezones, auth ids or private-group rows here.
+// and therefore every query here is scoped by hand to ONE profile and only the columns needed.
+// Private groups are read too (the player's own results count in the totals and badges), but
+// buildPublicProfile() is the gate: it never returns a private group's title, address, dates,
+// transactions or mint. Never select emails, timezones or auth ids here.
 
 export interface PublicProfile extends PublicProfileBody {
   username: string;
@@ -60,12 +61,11 @@ export async function loadPublicProfile(username: string, now: number): Promise<
       .from('memberships')
       .select('id, status, deposited, payout, wallet_address, participant_address, challenges!inner(id, title, onchain_address, token, visibility, start_at, day_length_secs, num_days, pool_state)')
       .eq('profile_id', profileId)
-      .eq('challenges.visibility', 'public')
       .limit(500),
   ]);
   if (mErr) throw new Error(`Loading the profile's challenges failed: ${mErr.message}`);
 
-  const ms = (members ?? []).filter((m) => one(m.challenges as unknown as ChallengeRow)?.visibility === 'public');
+  const ms = members ?? [];
   const ids = ms.length ? ms.map((m) => m.id as string) : [NONE];
   const challengeIds = ms.length ? ms.map((m) => one(m.challenges as unknown as ChallengeRow)!.id) : [NONE];
 
