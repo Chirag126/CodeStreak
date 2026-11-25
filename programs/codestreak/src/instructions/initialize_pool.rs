@@ -4,11 +4,13 @@ use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 use crate::constants::*;
 use crate::errors::CodeStreakError;
 use crate::events::PoolCreated;
+use crate::instructions::shared::check_entry_gate;
 use crate::state::{Challenge, Config, PoolState};
 use crate::validation::{validate_pool_params, InitializePoolParams};
 
 /// Creates a challenge and its token vault.
-/// `payer` (e.g. the CodeStreak relayer) pays rent; `creator` owns the challenge.
+/// `payer` (the CodeStreak relayer) pays rent; `creator` owns the challenge. With the entry gate set,
+/// the payer must be the gate authority, so CodeStreak approves every new challenge.
 #[derive(Accounts)]
 #[instruction(params: InitializePoolParams)]
 pub struct InitializePool<'info> {
@@ -19,6 +21,11 @@ pub struct InitializePool<'info> {
 
     #[account(seeds = [CONFIG_SEED], bump = config.bump)]
     pub config: Box<Account<'info, Config>>,
+
+    /// CHECK: the global entry gate PDA (address enforced by the seeds). Read in the handler: not
+    /// created yet = open; otherwise the payer must be its authority (the CodeStreak relayer).
+    #[account(seeds = [ENTRY_GATE_SEED], bump)]
+    pub entry_gate: UncheckedAccount<'info>,
 
     #[account(
         init,
@@ -53,6 +60,7 @@ pub struct InitializePool<'info> {
 
 pub fn initialize_pool_handler(ctx: Context<InitializePool>, params: InitializePoolParams) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
+    check_entry_gate(&ctx.accounts.entry_gate, &ctx.accounts.payer.key())?;
     let end_ts = validate_pool_params(&params, now)?;
 
     let challenge = &mut ctx.accounts.challenge;

@@ -93,6 +93,12 @@ pub mod codestreak {
         claim_sponsor_refund_handler(ctx)
     }
 
+    /// Admin-only (Phase 37.2): the key that must approve (pay for) new challenges, joins and
+    /// sponsorships. None = open. Claims, refunds, finalizing, settling and Shields are never gated.
+    pub fn set_entry_gate(ctx: Context<SetEntryGate>, authority: Option<Pubkey>) -> Result<()> {
+        set_entry_gate_handler(ctx, authority)
+    }
+
     /// Mints the soulbound Token-2022 survivor badge into a Survived player's wallet (anyone may pay).
     pub fn mint_badge(ctx: Context<MintBadge>) -> Result<()> {
         mint_badge_handler(ctx)

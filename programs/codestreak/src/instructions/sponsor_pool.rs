@@ -4,7 +4,7 @@ use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 use crate::constants::*;
 use crate::errors::CodeStreakError;
 use crate::events::PoolSponsored;
-use crate::instructions::shared::{check_join_authority, deposit_exact};
+use crate::instructions::shared::{check_entry_gate, check_join_authority, deposit_exact};
 use crate::state::{Challenge, ChallengePhase, SponsorReceipt};
 
 /// Anyone adds to a challenge's reward pool without participating. Allowed until the challenge
@@ -18,6 +18,11 @@ pub struct SponsorPool<'info> {
 
     /// Required only for private challenges (private sponsor link checked by the relayer).
     pub join_authority: Option<Signer<'info>>,
+
+    /// CHECK: the global entry gate PDA (address enforced by the seeds). Read in the handler: not
+    /// created yet = open; otherwise the payer must be its authority (the CodeStreak relayer).
+    #[account(seeds = [ENTRY_GATE_SEED], bump)]
+    pub entry_gate: UncheckedAccount<'info>,
 
     #[account(
         mut,
@@ -60,6 +65,7 @@ pub fn sponsor_pool_handler(ctx: Context<SponsorPool>, amount: u64) -> Result<()
         matches!(phase, ChallengePhase::Joining | ChallengePhase::Starting | ChallengePhase::Active),
         CodeStreakError::SponsorshipClosed
     );
+    check_entry_gate(&accounts.entry_gate, &accounts.payer.key())?;
     check_join_authority(&accounts.challenge, &accounts.join_authority)?;
 
     deposit_exact(accounts.token_program.key(), &accounts.sponsor_token, &accounts.mint, &mut accounts.vault, &accounts.sponsor, amount)?;

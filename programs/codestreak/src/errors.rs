@@ -104,4 +104,7 @@ pub enum CodeStreakError {
     NotSurvivor,
     #[msg("This player's badge was already minted")]
     BadgeAlreadyMinted,
+    // ---- Phase 37.2: entry gate ----
+    #[msg("CodeStreak must approve this action: start it from the CodeStreak app")]
+    EntryNotApproved,
 }

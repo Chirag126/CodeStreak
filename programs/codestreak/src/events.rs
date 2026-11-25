@@ -130,3 +130,8 @@ pub struct BadgeMinted {
     pub user: Pubkey,
     pub mint: Pubkey,
 }
+
+#[event]
+pub struct EntryGateUpdated {
+    pub authority: Option<Pubkey>,
+}
