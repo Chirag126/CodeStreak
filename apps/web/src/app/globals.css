@@ -165,3 +165,29 @@ html[data-motion='reduce'] *::after {
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Phase 40 landing: the streak grid fills in cell by cell. Off when motion is
+   reduced (app setting or OS), including the per-cell delay.
+   --------------------------------------------------------------------------- */
+@keyframes streak-cell-in {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.streak-cell {
+  animation: streak-cell-in 380ms ease-out both;
+}
+html[data-motion='reduce'] .streak-cell {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion='full']) .streak-cell {
+    animation: none;
+  }
+}

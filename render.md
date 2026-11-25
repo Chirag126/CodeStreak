@@ -100,3 +100,4 @@ new deploy (not just a restart).
 | 37.3 | No new variables and no migration. **Upgrade the program** (WSL): `bash scripts/wsl/deploy-devnet.sh`. Then once, on Windows: `pnpm devnet:seal-badges` (uses `RELAYER_KEYPAIR_PATH`, fees only) so badges minted earlier show as NFTs. New badges are minted that way already. |
 | 38 | No new variables and no migration. New web dependency **sharp** (JPG widget; it already came with Next, now listed directly). Social images use `APP_URL` (already set) for absolute URLs. |
 | 39 | No new variables and no migration. Blinks use `APP_URL` for absolute icon URLs and the existing relayer key. Optional: register the domain with Dialect (dial.to) so X/Twitter unfurls the Blinks. Inspector and dial.to work without it. |
+| 40 | No new variables. Migration `landing_stats` applied (`public.landing_stats()`, service role only). |

@@ -1690,3 +1690,16 @@ Phantom may take a while to re-index. Check Collectibles and its hidden list wit
 - curl checks: `curl -i -X OPTIONS …/api/actions/join/<address>` (204 + headers), `curl -i -X POST '…/api/actions/sponsor/<address>?amount=abc' -H 'content-type: application/json' -d '{"account":"<wallet>"}'` → 400 `{"message":"Enter a number like 5."}`.
 
 **Tests.** `packages/shared/src/actions.test.ts`: headers, actions.json, account and amount validation (bad amounts → error), join/sponsor metadata (disabled states, presets, the `{amount}` parameter).
+
+## Phase 40: Landing page
+
+**Kept short on purpose.** The same headline and devnet badge as before, improved, plus five compact sections:
+1. **Hero:** text and buttons on the left (Start a streak / Dashboard, Browse challenges). On the right, an **animated streak grid**: every UTC day of the last 12 weeks, filled from the day results recorded on-chain (all players together, no names). Cells fade in one by one. The app's Reduced setting and the OS setting turn that off, including the per-cell delay. A missed-only day gets a faint red ring.
+2. **One row of live numbers:** players, challenges, days verified on-chain, badges minted (**from the database**, `public.landing_stats()`), and **in escrow now** (**read from Solana**: the balances of the challenge vaults not yet paid out, one batched `getMultipleAccountsInfo`, cached 60 s, per token, never mixed). Each number names its source. A number that can't be read shows "—".
+3. **Open to join:** up to three **public** challenges still open for joining (soonest deadline first). Private groups never appear. With none, it says so and links to creating one.
+4. **How it works:** four steps, plus one example verdict clearly labeled **"Demo · example data"**.
+5. **Call to action**, then "Deployment details" (network, RPC, program) folded into a collapsed section.
+
+**No fake numbers anywhere.** No hard-coded figures, no "10,000+ developers", no sample cards. The only invented content is the single example verdict, and it's labeled as a demo.
+
+**Stats match database queries.** `supabase/tests/99m_landing_stats_test.sql` checks every figure of `landing_stats()` against the plain query, that the grid's 84 days add up to the recorded results of those days, that one new onboarded player moves "players" by exactly one, and that browsers can't call the function (service role only). Migration `landing_stats` is applied.
