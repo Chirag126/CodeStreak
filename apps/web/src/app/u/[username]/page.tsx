@@ -1,4 +1,4 @@
-import { formatAmount, normalizeUsername, OUTCOME_LABELS, TOKEN_DECIMALS, utcAndIst, type HistoryOutcome, type Token } from '@codestreak/shared';
+import { formatAmount, usernameFromPath, OUTCOME_LABELS, TOKEN_DECIMALS, utcAndIst, type HistoryOutcome, type Token } from '@codestreak/shared';
 import { explorerAddressUrl, explorerTxUrl } from '@codestreak/shared/program';
 import { Flame, GitBranch, Medal, Trophy } from 'lucide-react';
 import type { Metadata } from 'next';
@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
 
 // One load per request, shared by the page and its metadata.
 const load = cache(async (raw: string) => {
-  const username = normalizeUsername(raw);
+  const username = usernameFromPath(raw);
   return username ? loadPublicProfile(username, nowSecs()) : null;
 });
 

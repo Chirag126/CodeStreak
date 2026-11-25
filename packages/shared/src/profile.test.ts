@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPublicProfile, normalizeUsername, type ProfileChallengeInput } from './profile.js';
+import { buildPublicProfile, usernameFromPath, type ProfileChallengeInput } from './profile.js';
 
 const DAY = 86_400;
 const NOW = Date.UTC(2026, 10, 25, 12) / 1000;
@@ -96,11 +96,11 @@ describe('public profile', () => {
 
 describe('usernames in URLs', () => {
   it('normalises and rejects anything that is not a username', () => {
-    expect(normalizeUsername('Chirag')).toBe('chirag');
-    expect(normalizeUsername('%40chirag')).toBe('chirag');
-    expect(normalizeUsername('ab')).toBeNull();
-    expect(normalizeUsername('a/b')).toBeNull();
-    expect(normalizeUsername("x' or 1=1")).toBeNull();
-    expect(normalizeUsername('%E0%A4%A')).toBeNull();
+    expect(usernameFromPath('Chirag')).toBe('chirag');
+    expect(usernameFromPath('%40chirag')).toBe('chirag');
+    expect(usernameFromPath('ab')).toBeNull();
+    expect(usernameFromPath('a/b')).toBeNull();
+    expect(usernameFromPath("x' or 1=1")).toBeNull();
+    expect(usernameFromPath('%E0%A4%A')).toBeNull();
   });
 });

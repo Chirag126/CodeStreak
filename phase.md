@@ -1544,7 +1544,7 @@ description). It shows:
   in the output, and that its failed days don't move the success rate.
 - The page says "Public challenges only".
 
-**URLs.** `normalizeUsername` accepts `Chirag`, `@chirag` and `%40chirag`. Anything else, malformed
+**URLs.** `usernameFromPath` accepts `Chirag`, `@chirag` and `%40chirag`. Anything else, malformed
 escapes included, is a 404 with the friendly not-found page.
 
 **Links.** Dashboard → *Public profile @you*, and every name on the leaderboards links to that player's

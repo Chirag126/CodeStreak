@@ -133,7 +133,7 @@ export function buildPublicProfile(rows: ProfileChallengeInput[], now: number): 
 }
 
 /** Usernames are lowercase a-z, 0-9, _ (3-20). Anything else is not a profile URL. */
-export function normalizeUsername(raw: string): string | null {
+export function usernameFromPath(raw: string): string | null {
   let u: string;
   try {
     u = decodeURIComponent(raw);
