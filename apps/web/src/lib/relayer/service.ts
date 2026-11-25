@@ -21,6 +21,7 @@ import {
   challengePhase,
   challengeTimes,
   configPda,
+  entryGatePda,
   createProgram,
   rulesHash,
   participantPda,
@@ -634,6 +635,7 @@ export async function prepareCreate(input: {
       payer: relayer.publicKey,
       creator,
       config: configPda(),
+      entryGate: entryGatePda(),
       challenge: challengeKey,
       mint: new PublicKey(input.mint),
       vault: vaultPda(challengeKey),
@@ -694,6 +696,16 @@ export async function submitRelayed(input: { profileId: string; idempotencyKey: 
       : checkRelayedTransaction(tx, { relayer: relayer.publicKey, user, programId: PROGRAM_ID, allowed: [KIND_INSTRUCTION[kind]], wrap });
   if (!policy.ok) return { ok: false, error: `Refused: ${policy.errors.join('; ')}`, code: 'relayer.policy', title: 'Refused by the relayer' };
   if (!tx.verifySignatures(true)) return { ok: false, error: 'Missing or invalid signature.' };
+  // Re-check moderation at send time too: the account may have been suspended since it was prepared.
+  if (kind !== 'unwrap') {
+    const isGroup = kind === 'create' && (row.payload as { visibility?: string } | null)?.visibility === 'private';
+    const feature = kind === 'sponsor' ? 'sponsorship' : 'challenges';
+    const blocked = (await moderationBlock(input.profileId, feature)) ?? (isGroup ? await moderationBlock(input.profileId, 'groups') : null);
+    if (blocked) {
+      await admin.from('relayer_requests').update({ status: 'failed', error: `${blocked.code}: ${blocked.error}`.slice(0, 500) }).eq('id', row.id).eq('status', 'prepared');
+      return blocked;
+    }
+  }
   if ((await connection.getBlockHeight('confirmed')) >= Number(row.last_valid_block_height)) {
     return { ok: false, error: 'The transaction expired. Start again.' };
   }

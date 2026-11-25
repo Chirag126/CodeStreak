@@ -1598,7 +1598,7 @@ Anyone else gets a plain 404. The header "Control Center" button shows only for 
 - relayer: join, Shield, create (`challenges`), private create (`groups`), sponsor (`sponsorship`) check `account_gate`, failing closed;
 - database trigger: blocked users can't send invitations;
 - public profile: hidden, banned or deleted → 404 (same as missing).
-Expired suspensions read as active at once and are cleared by pg_cron every 10 minutes. Payouts and refunds are never blocked (the backend never moves escrow funds). **Limitation:** the program is permissionless, so a moderated user paying their own fees could still call it directly; the app, relayer and database refuse them.
+Expired suspensions read as active at once and are cleared by pg_cron every 10 minutes. Payouts and refunds are never blocked (the backend never moves escrow funds). The program itself refuses entries that skip these checks once its entry gate is on (Phase 37.2).
 
 **Deletion.** Scheduled with a 1–30 day grace period (appealable, cancellable). Finalizing anonymizes the profile, removes linked accounts, wallets and notifications, and locks Auth login. On-chain history and financial receipts stay (they are public and needed for audit).
 
@@ -1609,3 +1609,23 @@ Expired suspensions read as active at once and are cleared by pg_cron every 10 m
 **Tests.** `supabase/tests/99l_control_center_test.sql` (owner checks, idempotency, failed actions change nothing, confirmations, self-ban refused, username uniqueness, deletion grace, chain verify + tamper detection, user cannot write moderation state or read reasons, appeals, report limits), `lib/admin/identity.test.ts`, `lib/auth/routes.test.ts` (blocked redirect).
 
 **Try it.** Sign in as the owner → header "Control Center" → Users → search → open a user → Take action → Warn (reason) → the user gets a notification, Audit Logs shows the entry, "Verify hash chain" says intact. Suspend a test user for 1 hour → as them, every protected page goes to `/dashboard/account` with the reason and an appeal form → submit → back as owner, Reports & Moderation → Accept & reinstate.
+
+## Phase 37.2: On-chain entry gate
+
+**Problem.** Phase 37.1 blocked moderated users in the app, the relayer and the database, but the program was open: a suspended user with devnet SOL could build a join, create or sponsor transaction themselves. The reconcile job would then mirror that join (it comes from their verified wallet) and the verifier would record their days.
+
+**Fix.** A global `EntryGate` account (PDA `["entry_gate"]`) set by the config admin with `set_entry_gate(authority)`. When it holds a key, `initialize_pool`, `join_pool` and `sponsor_pool` require that key as the rent **payer**. In production that is the relayer, which signs only after the server's checks. A direct transaction fails on-chain with `EntryNotApproved`. It applies to every challenge at once, old ones included, because the gate is global and read on each entry.
+
+**Never gated** (so funds can't be trapped): `claim_reward`, `claim_refund`, `claim_sponsor_refund`, `finalize_participant`, `settle_challenge`, `cancel_pool`, `mint_badge`, `record_verification`, and `activate_shield` (it only protects a stake already in). If CodeStreak's server is down, nobody can enter a challenge, but everyone can still leave with their money.
+
+**Where the checks live (all server-side).** The relayer service checks `account_gate` when it prepares a transaction and again when the signed transaction is submitted, then co-signs as payer. A blocked user gets one clear message from the server (status, reason, where to appeal), not a hidden button. Someone who sends a transaction directly gets `EntryNotApproved`, shown as "CodeStreak has to approve this action...". The relayer policy also refuses a rent payer other than the relayer and a wrong gate account.
+
+**Remaining window.** The relayer pre-signs at prepare time, so a user who is suspended in the ~60–90 seconds before that blockhash expires could still broadcast the already-approved transaction themselves. After that it can't be replayed.
+
+**Rollout (no downtime).** Until `set_entry_gate` runs, the gate account doesn't exist and entry stays open exactly as before, so the upgraded program and the new web build can go out in either order:
+1. merge, let Render deploy the web app;
+2. WSL: `bash scripts/wsl/deploy-devnet.sh` (upgrades the program);
+3. Windows, repo root: set `ADMIN_KEYPAIR_PATH` in `.env.local` (path to `admin.json`), then `pnpm devnet:set-entry-gate`.
+Undo in an emergency: `pnpm devnet:set-entry-gate --off`.
+
+**Tests.** `programs/codestreak/tests/entry_gate.rs`: open without a gate (backwards compatible), only the admin sets it, a self-paid join, sponsor or create is refused, the relayer path works, a fake gate account fails the seeds check, Shields and refunds stay open with the gate on, clearing it reopens entry. `packages/shared/src/relayer/index.test.ts`: gate PDA filled automatically, wrong gate and non-relayer payer refused.

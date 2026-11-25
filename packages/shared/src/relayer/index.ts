@@ -3,7 +3,7 @@
 import { PublicKey, SystemProgram, TransactionInstruction, type Transaction } from '@solana/web3.js';
 
 import { CODESTREAK_IDL_JSON } from '../program/idl/codestreak.idl.js';
-import { ASSOCIATED_TOKEN_PROGRAM_ID, PROGRAM_ID, TOKEN_PROGRAM_ID } from '../program/pdas.js';
+import { ASSOCIATED_TOKEN_PROGRAM_ID, entryGatePda, PROGRAM_ID, TOKEN_PROGRAM_ID } from '../program/pdas.js';
 
 export const COMPUTE_BUDGET_PROGRAM_ID = new PublicKey('ComputeBudget111111111111111111111111111111');
 
@@ -45,7 +45,8 @@ export function buildCodestreakInstruction(
   const idl = byName.get(name);
   if (!idl) throw new Error(`unknown instruction ${name}`);
   const keys = accountsOf(idl).map((a) => {
-    const value = accounts[a.name] ?? (a.address ? new PublicKey(a.address) : null);
+    // The entry gate has one fixed address (a PDA of constant seeds), so it is filled in here.
+    const value = accounts[a.name] ?? (a.name === 'entry_gate' ? entryGatePda(programId) : a.address ? new PublicKey(a.address) : null);
     if (!value) {
       if (a.optional) return { pubkey: programId, isSigner: false, isWritable: false };
       throw new Error(`${name}: missing account ${a.name}`);
@@ -226,6 +227,8 @@ export function checkRelayedTransaction(tx: Transaction, ctx: PolicyContext): Po
         if (account.name === 'join_authority' && !key.equals(programId) && !key.equals(ctx.relayer)) {
           errors.push('join authority must be the relayer');
         }
+        if (account.name === 'payer' && !key.equals(ctx.relayer)) errors.push('the relayer must pay the rent');
+        if (account.name === 'entry_gate' && !key.equals(entryGatePda(programId))) errors.push('wrong entry gate account');
         if (account.signer && !RELAYER_ROLES.has(account.name) && !key.equals(ctx.user)) {
           errors.push(`${account.name} must be your linked wallet`);
         }

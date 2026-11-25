@@ -190,6 +190,8 @@ export const SPEC = [
   { name: 'RELAYER_KEYPAIR_PATH', phase: 9, validate: keypairPath, secret: true, altName: 'RELAYER_KEYPAIR_JSON' },
   // Local only (one-time `pnpm devnet:init-config`); never set on Render.
   { name: 'UPGRADE_AUTHORITY_KEYPAIR_PATH', phase: 9, validate: keypairPath, secret: true, optional: true },
+  // Local only (one-time `pnpm devnet:set-entry-gate`, Phase 37.2); never set on Render.
+  { name: 'ADMIN_KEYPAIR_PATH', phase: 37, validate: keypairPath, secret: true, optional: true },
   { name: 'VERIFIER_KEYPAIR_PATH', phase: 28, validate: keypairPath, secret: true, altName: 'VERIFIER_KEYPAIR_JSON' },
 ];
 

@@ -14,6 +14,7 @@ export const SEEDS = {
   vault: enc.encode('vault'),
   participant: enc.encode('participant'),
   sponsor: enc.encode('sponsor'),
+  entryGate: enc.encode('entry_gate'),
   badge: enc.encode('badge'),
   badgeAuthority: enc.encode('badge_authority'),
 } as const;
@@ -30,6 +31,11 @@ const find = (seeds: Uint8Array[], programId: PublicKey): PublicKey => PublicKey
 
 export function configPda(programId = PROGRAM_ID): PublicKey {
   return find([SEEDS.config], programId);
+}
+
+/** The global entry gate (Phase 37.2): who must approve (pay for) new challenges, joins and sponsorships. */
+export function entryGatePda(programId = PROGRAM_ID): PublicKey {
+  return find([SEEDS.entryGate], programId);
 }
 
 export function challengePda(creator: PublicKey, challengeId: bigint, programId = PROGRAM_ID): PublicKey {

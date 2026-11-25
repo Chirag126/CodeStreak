@@ -6,7 +6,7 @@ pub use anchor_lang::prelude::{Clock, Pubkey};
 pub use anchor_lang::solana_program::instruction::Instruction;
 pub use anchor_lang::{AccountDeserialize, AccountSerialize, InstructionData, Space, ToAccountMetas};
 pub use codestreak::constants::*;
-pub use codestreak::state::{Challenge, Config, DayResult, Participant, ParticipantStatus, SponsorReceipt};
+pub use codestreak::state::{Challenge, Config, DayResult, EntryGate, Participant, ParticipantStatus, SponsorReceipt};
 pub use codestreak::InitializePoolParams;
 pub use litesvm::LiteSVM;
 pub use litesvm_token::{CreateAssociatedTokenAccount, CreateMint, MintTo};
@@ -42,6 +42,9 @@ pub fn vault_pda(challenge: &Pubkey) -> Pubkey {
 }
 pub fn participant_pda(challenge: &Pubkey, user: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(&[PARTICIPANT_SEED, challenge.as_ref(), user.as_ref()], &codestreak::ID).0
+}
+pub fn entry_gate_pda() -> Pubkey {
+    Pubkey::find_program_address(&[ENTRY_GATE_SEED], &codestreak::ID).0
 }
 pub fn receipt_pda(challenge: &Pubkey, sponsor: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(&[SPONSOR_SEED, challenge.as_ref(), sponsor.as_ref()], &codestreak::ID).0
@@ -110,6 +113,7 @@ pub fn create_pool_with(env: &mut Env, id: u64, private: bool, max_participants:
             payer: env.relayer.pubkey(),
             creator: env.creator.pubkey(),
             config: Pubkey::find_program_address(&[CONFIG_SEED], &codestreak::ID).0,
+            entry_gate: entry_gate_pda(),
             challenge,
             mint: env.usdc,
             vault: vault_pda(&challenge),
@@ -151,6 +155,7 @@ pub fn join_ix(payer: &Pubkey, user: &Pubkey, challenge: &Pubkey, a: &Accts) -> 
             payer: *payer,
             user: *user,
             join_authority: a.join_authority,
+            entry_gate: entry_gate_pda(),
             challenge: *challenge,
             participant: participant_pda(challenge, user),
             mint: a.mint,
@@ -171,6 +176,7 @@ pub fn sponsor_ix(payer: &Pubkey, sponsor: &Pubkey, challenge: &Pubkey, a: &Acct
             payer: *payer,
             sponsor: *sponsor,
             join_authority: a.join_authority,
+            entry_gate: entry_gate_pda(),
             challenge: *challenge,
             receipt: receipt_pda(challenge, sponsor),
             mint: a.mint,

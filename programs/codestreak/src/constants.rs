@@ -5,6 +5,8 @@ pub const CHALLENGE_SEED: &[u8] = b"challenge";
 pub const VAULT_SEED: &[u8] = b"vault";
 pub const PARTICIPANT_SEED: &[u8] = b"participant";
 pub const SPONSOR_SEED: &[u8] = b"sponsor";
+/// Global entry gate (Phase 37.2): who must approve creating, joining and sponsoring.
+pub const ENTRY_GATE_SEED: &[u8] = b"entry_gate";
 /// Soulbound survivor badge: one Token-2022 mint per Participant, minted by the program's PDA.
 pub const BADGE_MINT_SEED: &[u8] = b"badge";
 pub const BADGE_AUTHORITY_SEED: &[u8] = b"badge_authority";

@@ -18,6 +18,7 @@
     "dev:worker": "pnpm --filter @codestreak/shared build && pnpm --filter @codestreak/worker dev",
     "devnet:init-config": "pnpm --filter @codestreak/shared build && pnpm --filter @codestreak/devnet-tools init-config",
     "devnet:seed-demo": "pnpm --filter @codestreak/shared build && pnpm --filter @codestreak/devnet-tools seed-demo",
+    "devnet:set-entry-gate": "pnpm --filter @codestreak/shared build && pnpm --filter @codestreak/devnet-tools set-entry-gate",
     "devnet:close-challenges": "pnpm --filter @codestreak/shared build && pnpm --filter @codestreak/devnet-tools close-challenges",
     "sync:idl": "node scripts/sync-idl.mjs",
     "build": "pnpm -r run build",

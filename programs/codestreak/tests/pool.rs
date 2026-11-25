@@ -107,6 +107,7 @@ fn pool_ix(payer: &Pubkey, creator: &Pubkey, mint: &Pubkey, p: InitializePoolPar
             payer: *payer,
             creator: *creator,
             config: config_pda(),
+            entry_gate: Pubkey::find_program_address(&[ENTRY_GATE_SEED], &codestreak::ID).0,
             challenge,
             mint: *mint,
             vault: vault_pda(&challenge),

@@ -4,7 +4,22 @@ use anchor_spl::token_interface::{transfer_checked, Mint, TokenAccount, Transfer
 
 use crate::constants::CHALLENGE_SEED;
 use crate::errors::CodeStreakError;
-use crate::state::Challenge;
+use crate::state::{Challenge, EntryGate};
+
+/// Phase 37.2 entry gate. `gate` is the ["entry_gate"] PDA (its address is enforced by a seeds
+/// constraint in each instruction, so it can't be swapped or left out). Never created (not owned by
+/// this program, or empty) = open. Otherwise, if an authority is set, the payer must be it.
+pub fn check_entry_gate(gate: &AccountInfo, payer: &Pubkey) -> Result<()> {
+    if gate.owner != &crate::ID || gate.data_is_empty() {
+        return Ok(());
+    }
+    let data = gate.try_borrow_data()?;
+    let state = EntryGate::try_deserialize(&mut &data[..])?;
+    if let Some(authority) = state.authority {
+        require_keys_eq!(*payer, authority, CodeStreakError::EntryNotApproved);
+    }
+    Ok(())
+}
 
 /// Private challenges require their join authority (the CodeStreak relayer, after it checked the
 /// invite) to co-sign. Public challenges ignore the optional signer.

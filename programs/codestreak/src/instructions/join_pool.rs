@@ -4,7 +4,7 @@ use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 use crate::constants::*;
 use crate::errors::CodeStreakError;
 use crate::events::ParticipantJoined;
-use crate::instructions::shared::{check_join_authority, deposit_exact};
+use crate::instructions::shared::{check_entry_gate, check_join_authority, deposit_exact};
 use crate::state::{Challenge, ChallengePhase, Participant, ParticipantStatus};
 
 /// A user joins a challenge by depositing the buy-in into the vault.
@@ -18,6 +18,11 @@ pub struct JoinPool<'info> {
 
     /// Required only for private challenges.
     pub join_authority: Option<Signer<'info>>,
+
+    /// CHECK: the global entry gate PDA (address enforced by the seeds). Read in the handler: not
+    /// created yet = open; otherwise the payer must be its authority (the CodeStreak relayer).
+    #[account(seeds = [ENTRY_GATE_SEED], bump)]
+    pub entry_gate: UncheckedAccount<'info>,
 
     #[account(
         mut,
@@ -57,6 +62,7 @@ pub fn join_pool_handler(ctx: Context<JoinPool>) -> Result<()> {
     let challenge = &accounts.challenge;
 
     require!(challenge.phase(now) == ChallengePhase::Joining, CodeStreakError::JoinClosed);
+    check_entry_gate(&accounts.entry_gate, &accounts.payer.key())?;
     check_join_authority(challenge, &accounts.join_authority)?;
     require!(challenge.participant_count < challenge.max_participants, CodeStreakError::PoolFull);
 

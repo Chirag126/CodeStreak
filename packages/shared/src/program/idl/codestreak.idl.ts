@@ -688,6 +688,31 @@ export const CODESTREAK_IDL_JSON = {
           }
         },
         {
+          "name": "entry_gate",
+          "docs": [
+            "created yet = open; otherwise the payer must be its authority (the CodeStreak relayer)."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  116,
+                  114,
+                  121,
+                  95,
+                  103,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
           "name": "challenge",
           "writable": true,
           "pda": {
@@ -796,6 +821,31 @@ export const CODESTREAK_IDL_JSON = {
           ],
           "signer": true,
           "optional": true
+        },
+        {
+          "name": "entry_gate",
+          "docs": [
+            "created yet = open; otherwise the payer must be its authority (the CodeStreak relayer)."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  116,
+                  114,
+                  121,
+                  95,
+                  103,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "challenge",
@@ -1125,6 +1175,86 @@ export const CODESTREAK_IDL_JSON = {
       ]
     },
     {
+      "name": "set_entry_gate",
+      "docs": [
+        "Admin-only (Phase 37.2): the key that must approve (pay for) new challenges, joins and",
+        "sponsorships. None = open. Claims, refunds, finalizing, settling and Shields are never gated."
+      ],
+      "discriminator": [
+        95,
+        81,
+        98,
+        23,
+        128,
+        101,
+        254,
+        97
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "entry_gate",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  116,
+                  114,
+                  121,
+                  95,
+                  103,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "authority",
+          "type": {
+            "option": "pubkey"
+          }
+        }
+      ]
+    },
+    {
       "name": "settle_challenge",
       "docs": [
         "Permissionless once everyone is finalized: fixes the payout split (moves no funds)."
@@ -1207,6 +1337,31 @@ export const CODESTREAK_IDL_JSON = {
           ],
           "signer": true,
           "optional": true
+        },
+        {
+          "name": "entry_gate",
+          "docs": [
+            "created yet = open; otherwise the payer must be its authority (the CodeStreak relayer)."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  116,
+                  114,
+                  121,
+                  95,
+                  103,
+                  97,
+                  116,
+                  101
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "challenge",
@@ -1389,6 +1544,19 @@ export const CODESTREAK_IDL_JSON = {
       ]
     },
     {
+      "name": "EntryGate",
+      "discriminator": [
+        201,
+        112,
+        209,
+        146,
+        242,
+        187,
+        39,
+        196
+      ]
+    },
+    {
       "name": "Participant",
       "discriminator": [
         32,
@@ -1492,6 +1660,19 @@ export const CODESTREAK_IDL_JSON = {
         221,
         163,
         182
+      ]
+    },
+    {
+      "name": "EntryGateUpdated",
+      "discriminator": [
+        23,
+        145,
+        40,
+        235,
+        165,
+        133,
+        140,
+        202
       ]
     },
     {
@@ -1818,6 +1999,11 @@ export const CODESTREAK_IDL_JSON = {
       "code": 6048,
       "name": "BadgeAlreadyMinted",
       "msg": "This player's badge was already minted"
+    },
+    {
+      "code": 6049,
+      "name": "EntryNotApproved",
+      "msg": "CodeStreak must approve this action: start it from the CodeStreak app"
     }
   ],
   "types": [
@@ -2282,6 +2468,47 @@ export const CODESTREAK_IDL_JSON = {
           },
           {
             "name": "Indeterminate"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EntryGate",
+      "docs": [
+        "Global entry gate, one per program. PDA seeds: [\"entry_gate\"].",
+        "",
+        "When `authority` is set, creating a challenge, joining one and sponsoring one need that key as the",
+        "rent `payer` (in production the CodeStreak relayer, which signs only after the server's account",
+        "checks, e.g. moderation). Everything that returns money (claims, refunds), finalizing, settling",
+        "and Shields for an existing stake stay open to anyone, so the gate can never trap funds.",
+        "Not created yet, or `authority` = None: entry is open (the behaviour before Phase 37.2)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EntryGateUpdated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": {
+              "option": "pubkey"
+            }
           }
         ]
       }

@@ -45,3 +45,11 @@ describe('friendly transaction errors', () => {
     }
   });
 });
+
+describe('entry gate error (Phase 37.2)', () => {
+  it('explains that the action must come from the app', () => {
+    const f = errorFromLogs(['Program log: AnchorError occurred. Error Code: EntryNotApproved. Error Number: 6000. Error Message: x.']);
+    expect(f?.code).toBe('program.EntryNotApproved');
+    expect(f?.message).toMatch(/CodeStreak app/);
+  });
+});
