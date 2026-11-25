@@ -54,6 +54,10 @@ export async function loadPublicProfile(username: string, now: number): Promise<
   if (error) throw new Error(`Loading the profile failed: ${error.message}`);
   if (!p) return null;
   const profileId = p.id as string;
+  // Phase 37.1: hidden, banned and deleted accounts have no public page (same 404 as a missing one,
+  // so the page doesn't reveal that a moderated account exists).
+  const { data: mod } = await db.from('account_moderation').select('status, restrictions').eq('profile_id', profileId).maybeSingle();
+  if (mod && (['banned', 'deleted', 'pending_deletion'].includes(mod.status as string) || ((mod.restrictions as string[] | null) ?? []).includes('profile_hidden'))) return null;
 
   const [{ data: linked }, { data: members, error: mErr }] = await Promise.all([
     db.from('linked_accounts').select('provider, provider_username').eq('profile_id', profileId),

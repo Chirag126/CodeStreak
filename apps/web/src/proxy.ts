@@ -48,11 +48,18 @@ export async function proxy(request: NextRequest) {
     // Only pages whose guard depends on the username pay for this lookup.
     const needsProfile = isProtected(pathname) || pathname === SIGN_IN_PATH || pathname === USERNAME_PATH;
     let hasUsername = true;
+    let blocked = false;
     if (needsProfile) {
-      const { data: profile } = await supabase.from('profiles').select('username').eq('id', userId).maybeSingle();
+      const [{ data: profile }, { data: status }] = await Promise.all([
+        supabase.from('profiles').select('username').eq('id', userId).maybeSingle(),
+        // Moderation (Phase 37.1): the user's own effective status, via a narrow definer function.
+        supabase.rpc('my_account_status'),
+      ]);
       hasUsername = Boolean(profile?.username);
+      const s = (status as { status?: string } | null)?.status;
+      blocked = s === 'suspended' || s === 'banned' || s === 'pending_deletion' || s === 'deleted';
     }
-    viewer = { signedIn: true, hasUsername };
+    viewer = { signedIn: true, hasUsername, blocked };
   }
 
   const target = routeDecision(pathname, search, viewer);

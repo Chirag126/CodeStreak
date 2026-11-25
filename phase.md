@@ -1578,3 +1578,34 @@ Tests:
 - Profiles re-read their data every minute while open, and when you come back to the tab.
 - Data: *Demo challenge 6HLS* was re-queued after the new worker deployed (the old worker had marked
   it done first). Its 1 USDC refund is now recorded.
+
+## Phase 37.1: Developer Control Center (`/admin`)
+
+**Who can open it.** Exactly one owner, no roles:
+- env `CODESTREAK_OWNER_ID` + `CODESTREAK_OWNER_EMAIL_SHA256` (or the plain `CODESTREAK_OWNER_EMAIL`), compared in constant time against the Auth server's user (`getUser()`, not a cookie claim), and the email must be confirmed;
+- and the single row in `public.admins` (a unique index on `((true))` makes a second admin impossible);
+- and every database function re-checks with `private.assert_owner(p_actor)`. Admin functions are executable by `service_role` only.
+Anyone else gets a plain 404. The header "Control Center" button shows only for the owner (`am_i_admin`), but it is a convenience: the server checks every page and action.
+
+**Sensitive actions** (ban, permanent suspension, scheduling or finalizing deletion, username change) need a sign-in within the last 30 minutes and the username typed to confirm.
+
+**Writes.** One call, `admin_moderate(actor, target, action, reason, params, request_id)`: validates, changes state, records the action with before/after snapshots, appends the audit entry and notifies the user, all in one transaction. A reason (5+ characters) is mandatory, self-moderation is refused, and the same `request_id` replays instead of acting twice (double-clicks, retries).
+
+**Audit.** `admin_audit` is append-only (triggers refuse update/delete/truncate). Each row stores `hash = sha256(prev_hash || canonical row)`; appends are serialized with an advisory lock. "Verify hash chain" recomputes everything and names the first broken entry. Opening a user's full record is logged too (`view.user_detail`).
+
+**Enforcement.** In the app, not Supabase Auth bans, so a suspended or banned user can still sign in, see why at `/dashboard/account`, and appeal:
+- proxy: suspended / banned / pending deletion → only `/dashboard/account`;
+- relayer: join, Shield, create (`challenges`), private create (`groups`), sponsor (`sponsorship`) check `account_gate`, failing closed;
+- database trigger: blocked users can't send invitations;
+- public profile: hidden, banned or deleted → 404 (same as missing).
+Expired suspensions read as active at once and are cleared by pg_cron every 10 minutes. Payouts and refunds are never blocked (the backend never moves escrow funds). **Limitation:** the program is permissionless, so a moderated user paying their own fees could still call it directly; the app, relayer and database refuse them.
+
+**Deletion.** Scheduled with a 1–30 day grace period (appealable, cancellable). Finalizing anonymizes the profile, removes linked accounts, wallets and notifications, and locks Auth login. On-chain history and financial receipts stay (they are public and needed for audit).
+
+**Reports & appeals.** Users report a profile from its page (`report_user`: signed in, not yourself, 5 a day, one open per person) and appeal from `/dashboard/account` (one open at a time). Users see only the action and date of their history (column grants), never internal reasons or notes.
+
+**Chat moderation (future, not built).** `report_target` already has `message`. When chats exist: users report a message, the report stores the message id plus a SHA-256 of its text at report time (tamper evidence), the Control Center shows only reported messages with a little surrounding context, and every view is an audited `view.message` entry. No browsing of private chats.
+
+**Tests.** `supabase/tests/99l_control_center_test.sql` (owner checks, idempotency, failed actions change nothing, confirmations, self-ban refused, username uniqueness, deletion grace, chain verify + tamper detection, user cannot write moderation state or read reasons, appeals, report limits), `lib/admin/identity.test.ts`, `lib/auth/routes.test.ts` (blocked redirect).
+
+**Try it.** Sign in as the owner → header "Control Center" → Users → search → open a user → Take action → Warn (reason) → the user gets a notification, Audit Logs shows the entry, "Verify hash chain" says intact. Suspend a test user for 1 hour → as them, every protected page goes to `/dashboard/account` with the reason and an appeal form → submit → back as owner, Reports & Moderation → Accept & reinstate.

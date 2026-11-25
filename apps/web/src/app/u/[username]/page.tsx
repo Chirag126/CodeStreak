@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { nowSecs } from '@/lib/insights/load';
 import { loadPublicProfile } from '@/lib/profile/load';
+import { ReportButton } from './report-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,7 +105,10 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
                 <p className="text-xs text-muted-foreground">No linked coding accounts yet.</p>
               )}
             </div>
-            <ShareButton path={`/u/${p.username}`} title={`${name} on CodeStreak`} />
+            <div className="flex gap-2">
+              <ShareButton path={`/u/${p.username}`} title={`${name} on CodeStreak`} />
+              <ReportButton username={p.username} />
+            </div>
           </CardContent>
         </Card>
       </Reveal>
