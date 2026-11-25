@@ -1,7 +1,7 @@
 import { ComputeBudgetProgram, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
 import { describe, expect, it } from 'vitest';
 
-import { challengePda, participantPda, PROGRAM_ID, vaultPda } from '../program/pdas.js';
+import { challengePda, entryGatePda, participantPda, PROGRAM_ID, vaultPda } from '../program/pdas.js';
 import {
   buildCodestreakInstruction,
   checkRelayedTransaction,
@@ -247,5 +247,31 @@ describe('activate_shield (Phase 32)', () => {
   });
   it('rejects a day that is not a u16', () => {
     expect(() => buildCodestreakInstruction('activate_shield', {}, { day: -1 })).toThrow();
+  });
+});
+
+describe('entry gate (Phase 37.2)', () => {
+  const gateIndex = () => {
+    const keys = joinIx().keys;
+    return keys.findIndex((k) => k.pubkey.equals(entryGatePda()));
+  };
+
+  it('fills in the entry gate PDA by itself', () => {
+    expect(gateIndex()).toBeGreaterThanOrEqual(0);
+    expect(checkRelayedTransaction(tx(joinIx()), ctx).ok).toBe(true);
+  });
+
+  it('refuses a different entry gate account', () => {
+    const ix = joinIx();
+    ix.keys[gateIndex()] = { pubkey: attacker, isSigner: false, isWritable: false };
+    const r = checkRelayedTransaction(tx(ix), ctx);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors).toContain('wrong entry gate account');
+  });
+
+  it('refuses a rent payer other than the relayer', () => {
+    const r = checkRelayedTransaction(tx(joinIx({ payer: user })), ctx);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors).toContain('the relayer must pay the rent');
   });
 });

@@ -35,6 +35,7 @@ const OVERRIDES: Record<string, string> = {
   TransferAmountMismatch: 'This token is not supported (it charges a transfer fee).',
   InvalidVault: 'Wrong vault for this challenge.',
   NotSurvivor: 'Only players who kept their streak every day (Survived, after settlement) get a badge.',
+  EntryNotApproved: 'CodeStreak has to approve this action, so it only works from the CodeStreak app. If the app refused it, your account page says why.',
   BadgeAlreadyMinted: 'This badge is already minted. There is exactly one per player per challenge.',
 };
 
