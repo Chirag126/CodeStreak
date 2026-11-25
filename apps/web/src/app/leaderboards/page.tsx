@@ -31,7 +31,7 @@ export default async function LeaderboardsPage({ searchParams }: { searchParams:
   if (!data) notFound(); // unknown, or a private group the viewer is not in
 
   type Row = { title: string; onchain_address: string; pool_state: string; start_at: string; num_days: number; day_length_secs: number };
-  const now = Date.now();
+  const now = nowSecs() * 1000; // the same server clock helper the boards use (pure render)
   const groups = ((mine.data ?? []) as unknown as { challenges: Row | Row[] }[])
     .map((m) => (Array.isArray(m.challenges) ? m.challenges[0] : m.challenges))
     .filter((c): c is Row => Boolean(c?.onchain_address))
