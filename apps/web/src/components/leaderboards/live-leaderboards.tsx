@@ -155,7 +155,13 @@ function Board({ board }: { board: BoardView }) {
                   {e.rank === 1 ? '🥇' : e.rank === 2 ? '🥈' : e.rank === 3 ? '🥉' : `#${e.rank}`}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{e.name}</p>
+                  {e.username ? (
+                    <Link className="block truncate font-medium hover:underline" href={`/u/${e.username}`}>
+                      {e.name}
+                    </Link>
+                  ) : (
+                    <p className="truncate font-medium">{e.name}</p>
+                  )}
                   <p className="truncate text-xs text-muted-foreground">
                     {e.username && e.name !== `@${e.username}` ? `@${e.username} · ` : ''}
                     {e.detail}
