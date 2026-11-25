@@ -4,6 +4,7 @@ import { BOARD_LABELS, rankChanges, type BoardKind, type Token } from '@codestre
 import { ArrowDown, ArrowUp, Sparkles } from 'lucide-react';
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -189,62 +190,142 @@ function Board({ board }: { board: BoardView }) {
   );
 }
 
-export function LiveLeaderboards({ initial, groups }: { initial: LeaderboardData; groups: { address: string; title: string }[] }) {
+export interface GroupOption {
+  address: string;
+  title: string;
+  state: 'running' | 'finished' | 'cancelled';
+  /** YYYY-MM-DD (UTC). */
+  startDay: string;
+}
+
+const GROUP_LABEL: Record<GroupOption['state'], string> = { running: 'Running', finished: 'Finished', cancelled: 'Cancelled' };
+
+/** Global / one of your groups: a switch plus one tidy dropdown instead of a wall of chips. */
+function ScopePicker({ current, groups }: { current: string; groups: GroupOption[] }) {
+  const router = useRouter();
+  const isGlobal = current === 'global';
+  const firstGroup = groups.find((g) => g.state === 'running') ?? groups[0];
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <div role="radiogroup" aria-label="Leaderboard scope" className="inline-flex rounded-lg bg-muted p-1">
+        <Link
+          href="/leaderboards"
+          role="radio"
+          aria-checked={isGlobal}
+          className={`rounded-md px-4 py-1.5 text-sm transition-colors ${isGlobal ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Global
+        </Link>
+        {firstGroup ? (
+          <Link
+            href={`/leaderboards?group=${isGlobal ? firstGroup.address : current}`}
+            role="radio"
+            aria-checked={!isGlobal}
+            className={`rounded-md px-4 py-1.5 text-sm transition-colors ${!isGlobal ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            My groups
+          </Link>
+        ) : (
+          <span className="cursor-not-allowed rounded-md px-4 py-1.5 text-sm text-muted-foreground/60" title="Join a challenge to see its group board">
+            My groups
+          </span>
+        )}
+      </div>
+      {!isGlobal && groups.length > 0 && (
+        <label className="flex min-w-0 items-center gap-2 text-sm">
+          <span className="sr-only">Group</span>
+          <select
+            value={current}
+            onChange={(e) => router.push(`/leaderboards?group=${e.target.value}`)}
+            className="h-9 max-w-[22rem] min-w-0 truncate rounded-md border border-input bg-background px-2 text-sm"
+          >
+            {(['running', 'finished', 'cancelled'] as const).map((state) => {
+              const items = groups.filter((g) => g.state === state);
+              if (!items.length) return null;
+              return (
+                <optgroup key={state} label={GROUP_LABEL[state]}>
+                  {items.map((g) => (
+                    <option key={g.address} value={g.address}>
+                      {g.title} · {g.startDay}
+                    </option>
+                  ))}
+                </optgroup>
+              );
+            })}
+          </select>
+        </label>
+      )}
+    </div>
+  );
+}
+
+const MEDAL = ['🥇', '🥈', '🥉'];
+
+/** Top three as a podium (2 · 1 · 3), then the rest as an aligned table. */
+function Podium({ board }: { board: BoardView }) {
+  const top = board.entries.filter((e) => e.rank <= 3).slice(0, 3);
+  if (top.length < 2) return null;
+  const order = top.length === 3 ? [top[1]!, top[0]!, top[2]!] : top;
+  return (
+    <div className={`grid gap-3 ${order.length === 3 ? 'grid-cols-3' : 'grid-cols-2'} items-end`}>
+      {order.map((e) => (
+        <div
+          key={e.profileId}
+          className={`flex flex-col items-center gap-1 rounded-xl border border-border bg-muted/30 px-2 text-center ${e.rank === 1 ? 'py-5' : 'py-3'}`}
+        >
+          <span className={e.rank === 1 ? 'text-3xl' : 'text-2xl'} aria-hidden>
+            {MEDAL[e.rank - 1]}
+          </span>
+          <span className="w-full truncate text-sm font-medium">{e.name}</span>
+          <span className="font-mono text-lg font-semibold tabular-nums">{e.score}</span>
+          <span className="w-full truncate text-xs text-muted-foreground">{e.detail}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function LiveLeaderboards({ initial, groups }: { initial: LeaderboardData; groups: GroupOption[] }) {
   const { data, live } = useLiveLeaderboards(initial);
   const [tab, setTab] = useState(tabKey(TABS[0]!));
   const board = data.boards.find((b) => tabKey(b) === tab) ?? data.boards[0]!;
   const current = data.scope.kind === 'group' ? data.scope.address : 'global';
+  const scopeTitle = data.scope.kind === 'group' ? data.scope.title : 'Global';
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <nav aria-label="Scope" className="flex flex-wrap gap-2">
-          <Link href="/leaderboards" className={`rounded-full border px-3 py-1 text-sm ${current === 'global' ? 'border-electric-400 text-foreground' : 'border-border text-muted-foreground hover:text-foreground'}`}>
-            Global
-          </Link>
-          {groups.map((g) => (
-            <Link
-              key={g.address}
-              href={`/leaderboards?group=${g.address}`}
-              className={`max-w-[14rem] truncate rounded-full border px-3 py-1 text-sm ${current === g.address ? 'border-electric-400 text-foreground' : 'border-border text-muted-foreground hover:text-foreground'}`}
-            >
-              {g.title}
-            </Link>
-          ))}
-        </nav>
-        <p className="flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
-          <span className={`inline-flex size-2 rounded-full ${live.status === 'live' ? 'bg-electric-400' : 'bg-warning-400'}`} />
-          {live.status === 'live' ? 'Live' : live.status === 'connecting' ? 'Connecting…' : 'Reconnecting… (showing the last update)'} · {data.players} player{data.players === 1 ? '' : 's'}
-        </p>
-      </div>
-
-      <div role="tablist" aria-label="Leaderboard" className="flex flex-wrap gap-1 rounded-lg bg-muted p-1">
-        {TABS.map((t) => (
-          <button
-            key={tabKey(t)}
-            role="tab"
-            type="button"
-            aria-selected={tab === tabKey(t)}
-            onClick={() => setTab(tabKey(t))}
-            className={`rounded-md px-3 py-1.5 text-sm transition-colors ${tab === tabKey(t) ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+    <div className="space-y-5">
+      <ScopePicker current={current} groups={groups} />
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            {BOARD_LABELS[board.kind].title}
-            {board.token ? ` · ${board.token.toUpperCase()}` : ''}
-            {data.scope.kind === 'group' ? ` · ${data.scope.title}` : ' · Global'}
-          </CardTitle>
-          <CardDescription>
-            {BOARD_LABELS[board.kind].rule} {data.scope.kind === 'global' ? 'Global boards count public challenges only.' : ''}
-          </CardDescription>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+          <div className="min-w-0 space-y-1">
+            <CardTitle className="truncate text-xl">{scopeTitle}</CardTitle>
+            <CardDescription>
+              {data.scope.kind === 'group' ? 'Players in this challenge only.' : 'Everyone in public challenges. Private groups never appear here.'}
+            </CardDescription>
+          </div>
+          <p className="flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
+            <span className={`inline-flex size-2 rounded-full ${live.status === 'live' ? 'bg-electric-400' : 'bg-warning-400'}`} />
+            {live.status === 'live' ? 'Live' : live.status === 'connecting' ? 'Connecting…' : 'Reconnecting…'} · {data.players} player{data.players === 1 ? '' : 's'}
+          </p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-5">
+          <div role="tablist" aria-label="Leaderboard" className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 sm:grid-cols-5">
+            {TABS.map((t) => (
+              <button
+                key={tabKey(t)}
+                role="tab"
+                type="button"
+                aria-selected={tab === tabKey(t)}
+                onClick={() => setTab(tabKey(t))}
+                className={`truncate rounded-md px-2 py-1.5 text-sm transition-colors ${tab === tabKey(t) ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">{BOARD_LABELS[board.kind].rule}</p>
+          <Podium board={board} />
           <Board key={`${current}:${tab}`} board={board} />
         </CardContent>
       </Card>
