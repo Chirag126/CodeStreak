@@ -23,6 +23,8 @@ export type WidgetModel =
       username: string;
       /** Display name only when it is plain printable text (image renderers lack other glyphs). */
       name: string;
+      /** Second line: the @handle, unless the name already is the handle. */
+      subtitle: string;
       initials: string;
       current: number;
       longest: number;
@@ -48,6 +50,7 @@ export function widgetModel(p: WidgetProfileInput | null): WidgetModel {
     found: true,
     username: p.username,
     name,
+    subtitle: name === `@${p.username}` ? 'CodeStreak profile' : `@${p.username}`,
     initials: (display && PRINTABLE.test(display) ? display : p.username).slice(0, 2).toUpperCase(),
     current: p.stats.currentStreak,
     longest: p.stats.longestStreak,
@@ -116,7 +119,7 @@ export function widgetSvg(m: WidgetModel, theme: WidgetTheme = 'dark'): string {
     `<circle cx="44" cy="46" r="22" fill="${c.bg}" stroke="${c.border}"/>`,
     `<text x="44" y="51" text-anchor="middle" font-size="14" font-weight="700" fill="${c.text}">${escapeXml(m.initials)}</text>`,
     `<text x="78" y="42" font-size="17" font-weight="700" fill="${c.text}">${escapeXml(m.name)}</text>`,
-    `<text x="78" y="61" font-size="12" fill="${c.muted}">@${escapeXml(m.username)}</text>`,
+    `<text x="78" y="61" font-size="12" fill="${c.muted}">${escapeXml(m.subtitle)}</text>`,
     `<text x="20" y="98" font-size="13" fill="${c.streak}" font-weight="600">🔥 ${m.current} day${m.current === 1 ? '' : 's'} current streak</text>`,
     stat(20, String(m.longest), 'longest streak'),
     stat(130, m.successRate, 'success rate'),

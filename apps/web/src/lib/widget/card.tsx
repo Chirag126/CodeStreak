@@ -51,7 +51,7 @@ function Card({ m, theme, big }: { m: WidgetModel; theme: WidgetTheme; big: bool
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', marginLeft: big ? 32 : 12 }}>
             <div style={{ fontSize: big ? 56 : 18, fontWeight: 700 }}>{m.name}</div>
-            <div style={{ fontSize: big ? 28 : 12, color: c.muted }}>{`@${m.username}`}</div>
+            <div style={{ fontSize: big ? 28 : 12, color: c.muted }}>{m.subtitle}</div>
           </div>
         </div>
         {brand}
