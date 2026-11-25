@@ -107,4 +107,7 @@ pub enum CodeStreakError {
     // ---- Phase 37.2: entry gate ----
     #[msg("CodeStreak must approve this action: start it from the CodeStreak app")]
     EntryNotApproved,
+    // ---- Phase 37.3: badge as an NFT ----
+    #[msg("This is not a CodeStreak badge mint")]
+    NotABadge,
 }

@@ -1,25 +1,27 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program::{allocate, assign, transfer, Allocate, Assign, Transfer};
 use anchor_spl::associated_token::{self, AssociatedToken, Create};
-use anchor_spl::token_2022::{initialize_mint2, mint_to, InitializeMint2, MintTo, Token2022};
+use anchor_spl::token_2022::{initialize_mint2, mint_to, set_authority, InitializeMint2, MintTo, SetAuthority, Token2022};
 use anchor_spl::token_2022_extensions::spl_token_metadata_interface::state::TokenMetadata;
 use anchor_spl::token_2022_extensions::{
     metadata_pointer_initialize, non_transferable_mint_initialize, token_metadata_initialize, MetadataPointerInitialize,
     NonTransferableMintInitialize, TokenMetadataInitialize,
 };
-use anchor_spl::token_interface::spl_token_2022::{extension::ExtensionType, state::Mint as SplMint};
+use anchor_spl::token_interface::spl_token_2022::{extension::ExtensionType, instruction::AuthorityType, state::Mint as SplMint};
 
 use crate::constants::*;
 use crate::errors::CodeStreakError;
 use crate::events::BadgeMinted;
 use crate::state::{Challenge, Participant, ParticipantStatus};
 
-/// Mints the soulbound survivor badge: a Token-2022 NFT (supply 1, 0 decimals) with the
-/// NonTransferable extension and on-mint metadata, into the player's own token account.
+/// Mints the soulbound survivor badge: a Token-2022 NFT (supply 1, 0 decimals, no mint or freeze
+/// authority afterwards) with the NonTransferable extension and on-mint metadata, into the player's
+/// own token account.
 ///
 /// Gated by the chain, not by a server: only a finalized Survived participant qualifies. The mint
 /// is a PDA of the participant (one badge per player per challenge, ever), its mint and metadata
-/// authority is the program's badge PDA (nobody can mint more or rewrite it), and name, symbol and
+/// authority is the program's badge PDA (its mint authority is removed right after the single
+/// badge is minted, so nobody can mint more; nobody can rewrite the metadata), and name, symbol and
 /// URI are fixed here (the payer can't choose them). Anyone may pay for it; it always goes to the
 /// participant's own wallet.
 #[derive(Accounts)]
@@ -96,7 +98,8 @@ pub fn mint_badge_handler(ctx: Context<MintBadge>) -> Result<()> {
     allocate(CpiContext::new_with_signer(system, Allocate { account_to_allocate: a.badge_mint.to_account_info() }, &[mint_seeds]), space as u64)?;
     assign(CpiContext::new_with_signer(system, Assign { account_to_assign: a.badge_mint.to_account_info() }, &[mint_seeds]), &token)?;
 
-    // 2. Extensions (before the mint is initialized), then the mint: 0 decimals, PDA authority.
+    // 2. Extensions (before the mint is initialized), then the mint: 0 decimals, PDA mint authority,
+    //    no freeze authority (nothing needs to freeze a soulbound badge).
     non_transferable_mint_initialize(CpiContext::new(
         token,
         NonTransferableMintInitialize { token_program_id: a.token_program.to_account_info(), mint: a.badge_mint.to_account_info() },
@@ -110,7 +113,7 @@ pub fn mint_badge_handler(ctx: Context<MintBadge>) -> Result<()> {
         CpiContext::new(token, InitializeMint2 { mint: a.badge_mint.to_account_info() }),
         0,
         &a.badge_authority.key(),
-        Some(&a.badge_authority.key()),
+        None,
     )?;
 
     // 3. Metadata on the mint itself (wallets and explorers read it from there).
@@ -150,6 +153,19 @@ pub fn mint_badge_handler(ctx: Context<MintBadge>) -> Result<()> {
             &[authority_seeds],
         ),
         1,
+    )?;
+
+    // 5. Phase 37.3: remove the mint authority, so the supply is fixed at 1 for ever. Wallets and
+    //    indexers only treat a token as an NFT (a collectible) when it has 0 decimals, supply 1 and
+    //    no mint authority; with an authority left they show it as a fungible token.
+    set_authority(
+        CpiContext::new_with_signer(
+            token,
+            SetAuthority { current_authority: a.badge_authority.to_account_info(), account_or_mint: a.badge_mint.to_account_info() },
+            &[authority_seeds],
+        ),
+        AuthorityType::MintTokens,
+        None,
     )?;
 
     emit!(BadgeMinted { challenge: a.challenge.key(), participant: participant_key, user: a.participant.user, mint: a.badge_mint.key() });
