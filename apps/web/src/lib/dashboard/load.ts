@@ -45,7 +45,7 @@ export interface ActiveView {
 export interface ReceiptView {
   id: string;
   at: number;
-  kind: 'day' | 'reward' | 'refund' | 'sponsor_refund';
+  kind: 'day' | 'join' | 'sponsor' | 'shield' | 'reward' | 'refund' | 'sponsor_refund';
   title: string;
   detail: string;
   /** Challenge page anchor or null. */
@@ -67,6 +67,15 @@ export interface DashboardView {
   activityTotal: number;
 }
 
+const RECEIPT_LABEL: Record<Exclude<ReceiptView['kind'], 'day'>, string> = {
+  join: 'Stake paid',
+  sponsor: 'Sponsorship',
+  shield: 'Shield bought',
+  reward: 'Reward',
+  refund: 'Refund',
+  sponsor_refund: 'Sponsor refund',
+};
+const OUTGOING = new Set<string>(['join', 'sponsor', 'shield']);
 const amount = (units: bigint, token: Token) => `${formatAmount(units, TOKEN_DECIMALS[token])} ${token.toUpperCase()}`;
 const secs = (iso: string) => Math.floor(Date.parse(iso) / 1000);
 const one = <T>(v: T | T[] | null): T | null => (Array.isArray(v) ? (v[0] ?? null) : v);
@@ -241,8 +250,9 @@ export async function loadDashboard(supabase: SupabaseClient, profileId: string,
       id: `pay:${p.id}`,
       at: secs(p.confirmed_at as string),
       kind,
-      title: `${c?.title ?? 'Challenge'} · ${kind === 'reward' ? 'Reward' : kind === 'refund' ? 'Refund' : 'Sponsor refund'}`,
-      detail: amount(BigInt(p.amount as string), token),
+      title: `${c?.title ?? 'Challenge'} · ${RECEIPT_LABEL[kind as Exclude<ReceiptView['kind'], 'day'>] ?? 'Payment'}`,
+      // Money out of your wallet (stake, Shield, sponsorship) shows as −, money back as +.
+      detail: `${OUTGOING.has(kind) ? '−' : '+'}${amount(BigInt(p.amount as string), token)}`,
       href: c?.onchain_address ? `/challenges/${c.onchain_address}` : null,
       tx: p.tx_signature as string,
     };

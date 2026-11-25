@@ -1485,3 +1485,38 @@ Verified correct in the recordings (no change needed):
 - non-admins get 404 on `/admin/disputes`;
 - **reconcile reset your `participant_count` edit from 5 back to 2** at 15:05 UTC and logged
   `reconcile.challenge_fixed`.
+
+## Video 2 review fixes
+
+Checked against both recordings, the database and the live endpoints.
+
+**Verified correct (no change needed).** Scene 3's data was right:
+- Video2 Demo's days were recorded on-chain about 3 minutes after each day ended;
+- the matching "Day N verified / missed" notifications fired in the same second;
+- the deadline warning went **only** to the player whose day wasn't met yet.
+
+Also correct:
+- the badge mint on Explorer: Token-2022, supply 1, decimals 0, NonTransferable + MetadataPointer +
+  TokenMetadata;
+- the metadata JSON at `/api/badges/<participant>` (the black page in the video was Render waking up).
+
+**Fixes**
+- **A Shield was offered for a day that had already passed its check.** A bought one, and it was wasted
+  when the day was verified. When your latest "Check now" for a day met the goal (and it isn't recorded
+  as missed), the Shield row now says *Goal met · no Shield needed* and hides the buy buttons behind
+  *Buy one anyway*. The check is a preview, so the option stays. A day the chain recorded as verified was
+  already blocked.
+- **Recent receipts mislabelled payments.** A join stake showed as "Sponsor refund". Every receipt kind
+  now has its own label (Stake paid, Shield bought, Sponsorship, Reward, Refund, Sponsor refund), with −
+  for money out and + for money back.
+- **Leaderboards layout redesigned.**
+  - Before: every challenge was a chip in one wrapped row.
+  - Now a **Global / My groups** switch, and your groups in **one dropdown** grouped into Running /
+    Finished / Cancelled with start dates, newest first.
+  - The selected board has a header card (name, who it covers, Live dot, player count).
+  - Equal-width tabs, the rule in one line, a **top-3 podium**, then the ranked list.
+- **The badge in wallets.**
+  - The artwork is now a **PNG** (Next `ImageResponse`, no new dependency); many wallets refuse SVG.
+  - The Badges page explains that Phantom's devnet view doesn't list Token-2022 badges that keep their
+    metadata on the token, and that Explorer always shows them. The badge *is* in the wallet: the page
+    checks the token account on-chain.

@@ -31,6 +31,13 @@ export default async function BadgesPage() {
         </p>
       </Reveal>
       <BadgeGallery badges={badges} />
+      {badges.some((b) => b.state !== 'pending') && (
+        <p className="max-w-2xl rounded-lg border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+          <strong className="text-foreground">Not under Collectibles in Phantom?</strong> The badge is in your wallet (the check above reads your token account
+          on-chain), but Phantom&apos;s devnet view doesn&apos;t list Token-2022 badges that keep their metadata on the token itself. Solana Explorer always shows
+          it: <em>Token on Explorer</em> lists the owner, supply 1 and the Non-Transferable extension.
+        </p>
+      )}
     </div>
   );
 }

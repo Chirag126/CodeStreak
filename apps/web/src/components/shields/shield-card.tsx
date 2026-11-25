@@ -29,6 +29,8 @@ export interface ShieldCardProps {
   participant: Omit<ShieldParticipant, 'shieldedDays' | 'verifiedDays'> & { shieldedDays: string; verifiedDays: string };
   /** Day results recorded so far, by day (to say "recorded as failed" in the grace). */
   recorded: Record<number, 'verified' | 'failed' | 'indeterminate'>;
+  /** Days whose latest "Check now" already met the goal (not recorded yet): a Shield isn't needed. */
+  checkedMet?: Record<number, boolean>;
   /** Chain time minus browser time when the page was rendered (countdowns follow the chain's clock). */
   clockSkewSecs: number;
 }
@@ -96,6 +98,7 @@ function ShieldDayRow({
   endsIn,
   inGrace,
   dayResult,
+  checkedMet,
 }: ShieldCardProps & { day: number; block: ReturnType<typeof shieldableDays>[number]['block']; closesIn: number; endsIn: number; inGrace: boolean; dayResult?: string }) {
   const router = useRouter();
   const toast = useToast();
@@ -106,6 +109,10 @@ function ShieldDayRow({
   const [idempotencyKey, setKey] = useState(() => crypto.randomUUID());
   const busy = state.status === 'running';
   const urgent = closesIn <= 120;
+  // Goal already met at the latest check and not recorded as missed: paying for a Shield would most
+  // likely be wasted, so the buttons sit behind an explicit "Buy one anyway".
+  const notNeeded = block === null && dayResult !== 'failed' && dayResult !== 'indeterminate' && Boolean(checkedMet?.[day]);
+  const [buyAnyway, setBuyAnyway] = useState(false);
 
   async function shield(w: Wallet) {
     setActive(w.name);
@@ -144,7 +151,9 @@ function ShieldDayRow({
             {inGrace ? `ended · ${dayResult === 'failed' ? 'recorded as missed' : dayResult === 'indeterminate' ? "couldn't be verified" : 'result not recorded yet'}` : `today · ends in ${formatCountdown(endsIn)}`}
           </span>
         </p>
-        {block === null ? (
+        {notNeeded && !buyAnyway ? (
+          <Badge variant="success">Goal met · no Shield needed</Badge>
+        ) : block === null ? (
           <span role="timer" aria-live="off" className={`tabular-nums text-xs ${urgent ? 'font-semibold text-warning-400' : 'text-muted-foreground'}`}>
             {inGrace ? 'Grace ends in' : 'Shield closes in'} {formatCountdown(closesIn)}
           </span>
@@ -154,6 +163,13 @@ function ShieldDayRow({
       </div>
       {block !== null ? (
         <p className="text-xs text-muted-foreground">{SHIELD_BLOCK_TEXT[block]}</p>
+      ) : notNeeded && !buyAnyway ? (
+        <p className="text-xs text-muted-foreground">
+          Your latest check already met this day&apos;s goal, so you don&apos;t need a Shield: it only helps if the day ends up recorded as missed.{' '}
+          <button type="button" className="underline underline-offset-4 hover:text-foreground" onClick={() => setBuyAnyway(true)}>
+            Buy one anyway
+          </button>
+        </p>
       ) : wallets.length === 0 ? (
         <p className="text-xs text-muted-foreground">No Solana wallet found in this browser. Install Phantom and reload.</p>
       ) : (
@@ -165,7 +181,7 @@ function ShieldDayRow({
           ))}
         </div>
       )}
-      {block === null && <p className="text-xs text-muted-foreground">{isSol ? 'Your SOL is wrapped for the payment in the same transaction.' : 'Paid from your USDC; CodeStreak pays the fee.'}</p>}
+      {block === null && !(notNeeded && !buyAnyway) && <p className="text-xs text-muted-foreground">{isSol ? 'Your SOL is wrapped for the payment in the same transaction.' : 'Paid from your USDC; CodeStreak pays the fee.'}</p>}
       {state.status !== 'idle' && <TxStepper state={state} />}
     </div>
   );

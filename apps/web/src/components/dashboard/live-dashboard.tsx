@@ -300,7 +300,7 @@ export function LiveDashboard({ view }: { view: DashboardView }) {
             Recent receipts
           </CardTitle>
           <CardDescription>
-            Sealed day receipts recorded on-chain, and payouts. Each one links to its devnet transaction.{' '}
+            Sealed day receipts recorded on-chain, plus every payment in or out (stake, Shield, sponsorship, reward, refund). Each one links to its devnet transaction.{' '}
             <Link className="underline underline-offset-4" href="/dashboard/history">
               Full history
             </Link>

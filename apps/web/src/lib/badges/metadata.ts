@@ -39,7 +39,7 @@ export function badgeMetadataJson(row: BadgeMetadataRow, origin: string, partici
       { trait_type: 'Soulbound', value: 'Yes' },
       { trait_type: 'Network', value: 'Solana devnet' },
     ],
-    properties: { category: 'image', files: [{ uri: `${origin}/api/badges/${participant}/image`, type: 'image/svg+xml' }] },
+    properties: { category: 'image', files: [{ uri: `${origin}/api/badges/${participant}/image`, type: 'image/png' }] },
   };
 }
 
