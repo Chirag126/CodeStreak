@@ -46,11 +46,16 @@ export default async function DashboardPage() {
           <p className="text-sm text-muted-foreground">Signed in as {viewer.email}</p>
           <h1 className="text-3xl font-semibold tracking-tight">Hi, {viewer.displayName ?? viewer.username}</h1>
         </div>
-        <form action={signOut}>
-          <Button type="submit" variant="outline" size="sm">
-            Sign out
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild size="sm">
+            <Link href={`/u/${viewer.username}`}>View public profile</Link>
           </Button>
-        </form>
+          <form action={signOut}>
+            <Button type="submit" variant="outline" size="sm">
+              Sign out
+            </Button>
+          </form>
+        </div>
       </Reveal>
 
       <LiveDashboard view={view} />
