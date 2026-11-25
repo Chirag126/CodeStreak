@@ -1649,3 +1649,22 @@ Phantom may take a while to re-index. Check Collectibles and its hidden list wit
 **Tests.** `programs/codestreak/tests/badges.rs`: a new badge has no mint or freeze authority; an old-style badge is sealed by anyone, keeps supply, owner and metadata, and re-sealing is a no-op; sealing fails for a player without a badge.
 
 **Later, only if still needed:** Metaplex Core (bigger change, new dependency, higher rent per badge).
+
+## Phase 38: Widget and share card
+
+**Widget, three ways** (public, no sign-in, `?theme=light` optional; dark by default):
+- **Image:** `/api/widget/<username>.svg`, `.png`, `.jpg`. For a GitHub README: `[![me on CodeStreak](…/api/widget/me.svg)](…/u/me)`. The SVG is hand-built: no scripts, no external resources, user text XML-escaped, served with a `default-src 'none'` CSP and `nosniff`. PNG is drawn with Next's ImageResponse; JPG is that PNG re-encoded with sharp (already shipped with Next, now a direct dependency); if sharp is missing it redirects to the PNG.
+- **iframe:** `/embed/<username>`, a complete tiny HTML page with inline CSS and **no JavaScript**, allowed in frames on any site (`frame-ancestors *`), `noindex`, linking to the profile in a new tab.
+- **Profile page → Embed:** preview, dark/light, and copy buttons for Markdown, HTML image and iframe, plus SVG/PNG/JPG links.
+
+**Dynamic social image.** `/u/<username>` now has `opengraph-image` and `twitter-image` (1200×630, same design) and `summary_large_image` metadata, so pasting a profile link into X, LinkedIn, Slack or WhatsApp shows the card. `metadataBase` comes from `APP_URL`, so image URLs are the public ones on Render.
+
+**Data and privacy.** Everything comes from the Phase 37 public-profile loader. Private groups count as numbers only, and hidden, banned or deleted accounts look exactly like unknown ones. No avatar is fetched (initials only), so a profile can't make the server request arbitrary URLs. Display names that image renderers can't draw (emoji, other scripts) fall back to `@username`.
+
+**Unknown user.** Any unknown, hidden or malformed name returns a clean "Profile not found" card in the requested format with status 200 (so every `<img>` and iframe shows it) and `X-CodeStreak-Profile: not-found`. If the database lookup itself fails, the placeholder is sent with `no-store` so it isn't cached.
+
+**Caching.** Real cards: `max-age=600, stale-while-revalidate=86400` (updates within about 10 minutes). Placeholders: 60 seconds.
+
+**Plain HTML page.** `/widget-demo.html?u=<username>` (also works saved to disk and opened from a file) embeds the iframe, the SVG, the PNG and the JPG with no framework.
+
+**Tests.** `packages/shared/src/widget.test.ts`: model, placeholder, URL parsing, escaping (a `<script>` name can't inject), no scripts or external resources in the SVG, HTML page without JavaScript linking to the profile, snippets.

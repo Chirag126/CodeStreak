@@ -1,0 +1,44 @@
+<!doctype html>
+<!--
+  Phase 38: a plain HTML page (no framework, no build) that embeds the CodeStreak widget the way
+  any other website would. Open /widget-demo.html?u=<username> on the running app, or save this
+  file anywhere: opened from disk it uses the live app's address.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>CodeStreak widget on a plain page</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; color: #111; }
+      h2 { margin-top: 32px; font-size: 16px; }
+      code { background: #f1f5f9; padding: 1px 4px; border-radius: 4px; }
+      img { max-width: 100%; height: auto; display: block; margin-bottom: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>CodeStreak widget demo</h1>
+    <p>Profile: <code id="who"></code>. Try <code>?u=someone</code>, or <code>?u=nobody_here</code> for the placeholder.</p>
+
+    <h2>1. iframe</h2>
+    <iframe id="frame" width="480" height="180" style="border:0;max-width:100%" title="CodeStreak profile" loading="lazy"></iframe>
+
+    <h2>2. SVG image, light theme (links to the profile)</h2>
+    <a id="link"><img id="svg" width="480" height="180" alt="CodeStreak profile" /></a>
+
+    <h2>3. PNG and JPG</h2>
+    <img id="png" width="480" height="180" alt="CodeStreak profile (PNG)" />
+    <img id="jpg" width="480" height="180" alt="CodeStreak profile (JPG)" />
+
+    <script>
+      var BASE = location.protocol === 'file:' ? 'https://codestreak-k0uv.onrender.com' : location.origin;
+      var u = (new URLSearchParams(location.search).get('u') || 'chirag').replace(/[^a-zA-Z0-9_]/g, '');
+      document.getElementById('who').textContent = u;
+      document.getElementById('frame').src = BASE + '/embed/' + u;
+      document.getElementById('link').href = BASE + '/u/' + u;
+      document.getElementById('svg').src = BASE + '/api/widget/' + u + '.svg?theme=light';
+      document.getElementById('png').src = BASE + '/api/widget/' + u + '.png';
+      document.getElementById('jpg').src = BASE + '/api/widget/' + u + '.jpg';
+    </script>
+  </body>
+</html>

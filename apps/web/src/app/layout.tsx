@@ -9,7 +9,18 @@ import './globals.css';
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
+// Absolute URLs for social images (og:image, twitter:image). Behind Render's proxy the request
+// host is internal, so the public APP_URL is used; locally Next falls back to localhost.
+const metadataBase = (() => {
+  try {
+    return process.env.APP_URL ? new URL(process.env.APP_URL) : undefined;
+  } catch {
+    return undefined;
+  }
+})();
+
 export const metadata: Metadata = {
+  metadataBase,
   title: { default: 'CodeStreak', template: '%s · CodeStreak' },
   description: 'Put your money where your commits are. Coding accountability on Solana devnet.',
 };
