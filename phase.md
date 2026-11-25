@@ -1551,3 +1551,30 @@ escapes included, is a 404 with the friendly not-found page.
 profile.
 
 No migration and no new environment variables.
+
+### Phase 37 follow-up: your achievements count, private details stay hidden
+
+Feedback: "@chirag" showed 0 survived and no badge, although the 3-day badge and the win came from
+**Video1 Demo, a private group**. Hiding private groups entirely was too strict.
+
+**What a profile shows now:**
+- **Totals** (streak, success rate, survived, rewards) include private groups as **numbers only**. They
+  match the dashboard.
+- **Badges** include private ones as **"Private challenge (details hidden)"**: no title, link, mint or
+  transaction. The on-chain wallet check still runs.
+- **History** lists public challenges, then "+ N private challenges (details hidden)".
+- **Survived** reads "N of M finished" (cancelled and running challenges no longer count against you).
+
+**Never shown for a private group:** its title, address, dates, members, days, transactions or badge
+mint. `buildPublicProfile()` builds each private badge field by field, so nothing can be copied across.
+Tests:
+- no private title, address, join tx, mint or mint tx appears anywhere;
+- private days do move the success rate;
+- the anonymous badge has exactly the expected fields.
+
+**Other changes:**
+- New result **Refunded · nobody survived**, for a failed player paid back in full because nobody
+  survived. Video2 Demo: 0.01 → 0.02 SOL, which is stake + Shield. Used in History and on profiles.
+- Profiles re-read their data every minute while open, and when you come back to the tab.
+- Data: *Demo challenge 6HLS* was re-queued after the new worker deployed (the old worker had marked
+  it done first). Its 1 USDC refund is now recorded.

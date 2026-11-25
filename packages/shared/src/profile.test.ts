@@ -45,16 +45,35 @@ const SECRET = row({
 });
 
 describe('public profile', () => {
-  it('never leaks anything from a private group, in any field', () => {
+  it('never leaks a private group\'s details, in any field', () => {
     const out = buildPublicProfile([row({}), SECRET], NOW);
     const json = JSON.stringify(out, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
     for (const secret of ['Secret Squad', 'PrivAddr9', 'privJoinSig', 'MintPriv', 'privMintSig']) expect(json).not.toContain(secret);
-    // Its days don't move the numbers either: 3 verified public days → 100 %, streak 3.
-    expect(out.stats).toMatchObject({ challenges: 1, survived: 1, successRate: 100, longestStreak: 3, recordedDays: 3 });
+    expect(out.history.map((h) => h.title)).toEqual(['Ship daily']);
+    expect(out.privateChallenges).toBe(1);
   });
 
-  it('also drops rows without an on-chain address', () => {
+  it('but the player\'s own achievements in private groups still count, anonymously', () => {
+    const won = row({ ...SECRET, status: 'survived', payout: 140_000_000n, results: [{ day: 0, result: 'verified' }] });
+    const out = buildPublicProfile([row({}), won], NOW);
+    // 3 public verified days + 1 private verified day.
+    expect(out.stats).toMatchObject({ challenges: 2, finished: 2, survived: 2, recordedDays: 4, successRate: 100 });
+    expect(out.stats.earned).toEqual({ sol: 180_000_000n }); // 0.09 + 0.09
+    const priv = out.badges.find((b) => b.isPrivate)!;
+    expect(priv).toEqual({ title: 'Private challenge', address: null, numDays: 3, mint: null, tx: null, isPrivate: true, inWallet: true });
+  });
+
+  it('a private failure lowers the success rate (numbers only)', () => {
+    const out = buildPublicProfile([row({}), SECRET], NOW);
+    // 3 public verified + 2 private failed → 3 / 5 = 60 %.
+    expect(out.stats).toMatchObject({ successRate: 60, recordedDays: 5, survived: 1 });
+  });
+
+  it('drops rows without an on-chain address, and labels a nobody-survived refund', () => {
     expect(buildPublicProfile([row({ address: null })], NOW).history).toEqual([]);
+    const refunded = buildPublicProfile([row({ status: 'failed', payout: 20_000_000n, deposited: 10_000_000n, badge: null })], NOW);
+    expect(refunded.history[0]!.outcome).toBe('refunded');
+    expect(refunded.stats.earned).toEqual({});
   });
 
   it('stats, earnings above the stake per token, history and on-chain badges', () => {
@@ -85,7 +104,7 @@ describe('public profile', () => {
       ['Lost one', 'failed'],
     ]);
     expect(out.history.find((h) => h.title === 'Lost one')).toMatchObject({ verified: 1, failed: 1, shielded: 0 });
-    expect(out.badges).toEqual([{ title: 'Ship daily', address: 'PubAddr1', numDays: 3, mint: 'MintPub', tx: 'mintSig', inWallet: true }]);
+    expect(out.badges).toEqual([{ title: 'Ship daily', address: 'PubAddr1', numDays: 3, mint: 'MintPub', tx: 'mintSig', isPrivate: false, inWallet: true }]);
   });
 
   it('a Shield-covered missed day is shielded, not failed', () => {
