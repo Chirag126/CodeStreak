@@ -45,3 +45,18 @@ describe('route guard', () => {
     expect(safeNext('/dashboard?x=1')).toBe('/dashboard?x=1');
   });
 });
+
+describe('moderation', () => {
+  const blocked = { signedIn: true as const, hasUsername: true, blocked: true };
+  it('sends a suspended or banned account to its account page, and nowhere else signed-in', () => {
+    expect(routeDecision('/dashboard', '', blocked)).toBe('/dashboard/account');
+    expect(routeDecision('/challenges/new', '', blocked)).toBe('/dashboard/account');
+    expect(routeDecision('/admin', '', blocked)).toBe('/dashboard/account');
+    expect(routeDecision('/dashboard/account', '', blocked)).toBeNull();
+    expect(routeDecision('/leaderboards', '', blocked)).toBeNull(); // public pages stay public
+  });
+  it('/admin needs a sign-in (the owner check happens on the server after that)', () => {
+    expect(routeDecision('/admin', '', { signedIn: false })).toBe('/sign-in?next=%2Fadmin');
+  });
+});
+

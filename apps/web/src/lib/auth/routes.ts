@@ -5,9 +5,12 @@ export const USERNAME_PATH = '/onboarding/username';
 export const HOME_AFTER_SIGN_IN = '/dashboard';
 
 /** Pages that need a signed-in user. */
-const PROTECTED_PREFIXES = ['/dashboard', '/onboarding', '/challenges/new'];
+const PROTECTED_PREFIXES = ['/dashboard', '/onboarding', '/challenges/new', '/admin'];
 
-export type ViewerState = { signedIn: false } | { signedIn: true; hasUsername: boolean };
+/** Where a suspended / banned / deleting account is sent (it can read its status and appeal there). */
+export const ACCOUNT_PATH = '/dashboard/account';
+
+export type ViewerState = { signedIn: false } | { signedIn: true; hasUsername: boolean; /** Suspended, banned or being deleted. */ blocked?: boolean };
 
 export function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -37,6 +40,8 @@ export function routeDecision(pathname: string, search: string, viewer: ViewerSt
     if (pathname === SIGN_IN_PATH) return `${USERNAME_PATH}?next=${encodeURIComponent(safeNext(next))}`;
     return isProtected(pathname) ? `${USERNAME_PATH}?next=${encodeURIComponent(here)}` : null;
   }
+  // A blocked account can only open its account page (status + appeal) among the signed-in pages.
+  if (viewer.blocked && isProtected(pathname) && pathname !== ACCOUNT_PATH) return ACCOUNT_PATH;
   if (pathname === SIGN_IN_PATH || pathname === USERNAME_PATH) return safeNext(next);
   return null;
 }

@@ -45,6 +45,7 @@ import {
   type WrapContext,
 } from '@codestreak/shared/relayer';
 import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction, VersionedTransaction, type TransactionInstruction } from '@solana/web3.js';
+import { moderationBlock } from '@/lib/moderation/gate';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { linkedProviders } from '@/lib/accounts/github';
 import { syncChallenge, syncJoin, syncShield, syncSponsor } from '@/lib/sync/chain';
@@ -266,6 +267,8 @@ export async function prepareJoin(input: {
   /** The on-chain rules fingerprint (hex) of the rules the user read and accepted. */
   acknowledgedRulesHash: string;
 }): Promise<RelayResult<{ transaction: string } | { signature: string }>> {
+  const blocked = await moderationBlock(input.profileId, 'challenges');
+  if (blocked) return blocked;
   const prior = await existingOrRateLimit(input);
   if (prior.done) return prior.done;
 
@@ -389,6 +392,8 @@ export async function prepareSponsor(input: {
   message: string | null;
   sponsorToken?: string;
 }): Promise<RelayResult<{ transaction: string } | { signature: string }>> {
+  const blocked = await moderationBlock(input.profileId, 'sponsorship');
+  if (blocked) return blocked;
   const prior = await existingOrRateLimit(input);
   if (prior.done) return prior.done;
 
@@ -496,6 +501,8 @@ export async function prepareShield(input: {
   idempotencyKey: string;
   day: number;
 }): Promise<RelayResult<{ transaction: string } | { signature: string }>> {
+  const blocked = await moderationBlock(input.profileId, 'challenges');
+  if (blocked) return blocked;
   const prior = await existingOrRateLimit(input);
   if (prior.done) return prior.done;
 
@@ -587,6 +594,9 @@ export async function prepareCreate(input: {
   rulesHash: number[];
   details: ChallengeDetails;
 }): Promise<RelayResult<{ transaction: string; challenge: string } | { signature: string; challenge: string }>> {
+  // Creating a public challenge needs 'challenges'; a private group also needs 'groups'.
+  const blocked = (await moderationBlock(input.profileId, 'challenges')) ?? (input.details.visibility === 'private' ? await moderationBlock(input.profileId, 'groups') : null);
+  if (blocked) return blocked;
   const connection = serverConnection();
   const relayer = relayerKeypair();
   const creator = new PublicKey(input.wallet);
