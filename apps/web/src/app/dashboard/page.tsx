@@ -64,7 +64,9 @@ export default async function DashboardPage() {
           <CardContent className="flex items-center gap-2">
             <span className="font-mono text-2xl tracking-wider">{viewer.publicId}</span>
             <CopyButton value={viewer.publicId} label="Copy public ID" />
-            <Badge className="ml-auto">@{viewer.username}</Badge>
+            <Link className="ml-auto text-sm underline underline-offset-4" href={`/u/${viewer.username}`}>
+              Public profile @{viewer.username} ↗
+            </Link>
           </CardContent>
         </Card>
       </Reveal>

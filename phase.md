@@ -1520,3 +1520,34 @@ Also correct:
   - The Badges page explains that Phantom's devnet view doesn't list Token-2022 badges that keep their
     metadata on the token, and that Explorer always shows them. The badge *is* in the wallet: the page
     checks the token account on-chain.
+
+## Phase 37: Public profile `/u/[username]` (M)
+
+A shareable profile that works **logged out** (no sign-in redirect, with Open Graph title and
+description). It shows:
+- **Header:** avatar (the profile's own, else the GitHub picture, else initials), display name,
+  @username, public ID, member since, **linked accounts** (GitHub / LeetCode handles linking to their
+  public pages), and **Share profile** (system share sheet, or copy the link).
+- **Stats:** current and longest streak, success rate, survived N of M, **rewards earned** (above the
+  stake, per token). Same rules as Insights: on-chain-recorded days only, and Shields keep a day.
+- **Soulbound badges, read from chain:** each badge's Token-2022 account balance is read on-chain (cached
+  60 s), shown as *Held in wallet · read from chain*, with an Explorer link.
+- **History:** every public challenge with dates, result, days ✓/✗/🛡, stake → received and **tx links**
+  (Join, Payout, Badge on Explorer).
+
+**Private groups never leak.**
+- The loader is the only service-role reader. Every query is scoped to the one profile **and**
+  `challenges.visibility = 'public'`, and selects only displayed columns: no email, timezone or auth id.
+- `buildPublicProfile()` (shared, pure) drops every non-public or address-less row **again**, so a private
+  group can't affect a list or even a total.
+- The test checks that a private group's title, address, join tx, badge mint and mint tx appear nowhere
+  in the output, and that its failed days don't move the success rate.
+- The page says "Public challenges only".
+
+**URLs.** `normalizeUsername` accepts `Chirag`, `@chirag` and `%40chirag`. Anything else, malformed
+escapes included, is a 404 with the friendly not-found page.
+
+**Links.** Dashboard → *Public profile @you*, and every name on the leaderboards links to that player's
+profile.
+
+No migration and no new environment variables.
