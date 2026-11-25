@@ -15,6 +15,7 @@ describe('widget model', () => {
       found: true,
       username: 'chirag',
       name: 'Chirag P',
+      subtitle: '@chirag',
       initials: 'CH',
       current: 4,
       longest: 9,
@@ -30,7 +31,9 @@ describe('widget model', () => {
   });
 
   it('falls back to the username for names image renderers cannot draw, and clips long ones', () => {
-    expect(widgetModel(profile({ displayName: '🚀 rocket' })).found && widgetModel(profile({ displayName: '🚀 rocket' }))).toMatchObject({ name: '@chirag' });
+    // No name it can draw: the handle once, not twice.
+    expect(widgetModel(profile({ displayName: '🚀 rocket' }))).toMatchObject({ name: '@chirag', subtitle: 'CodeStreak profile' });
+    expect(widgetModel(profile({ displayName: null }))).toMatchObject({ name: '@chirag', subtitle: 'CodeStreak profile' });
     const long = widgetModel(profile({ displayName: 'A'.repeat(60) }));
     expect(long.found && long.name.length).toBe(28);
     const none = widgetModel(profile({ stats: { ...profile().stats, successRate: null, earned: {} } }));

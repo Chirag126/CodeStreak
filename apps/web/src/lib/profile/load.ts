@@ -13,6 +13,8 @@ import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 // transactions or mint. Never select emails, timezones or auth ids here.
 
 export interface PublicProfile extends PublicProfileBody {
+  /** Server only (used to tell whether the viewer is the owner); never rendered. */
+  profileId: string;
   username: string;
   displayName: string | null;
   publicId: string;
@@ -116,6 +118,7 @@ export async function loadPublicProfile(username: string, now: number): Promise<
   const github = linkedAccounts.find((l) => l.provider === 'github');
 
   return {
+    profileId,
     username: p.username as string,
     displayName: (p.display_name as string | null) ?? null,
     publicId: p.public_id as string,

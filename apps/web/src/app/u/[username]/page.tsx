@@ -13,6 +13,7 @@ import { ShareButton } from '@/components/profile/share-button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { nowSecs } from '@/lib/insights/load';
+import { getViewer } from '@/lib/supabase/server';
 import { loadPublicProfile } from '@/lib/profile/load';
 import { ReportButton } from './report-button';
 
@@ -66,7 +67,7 @@ function Stat({ label, value, hint, icon }: { label: string; value: string; hint
 }
 
 export default async function PublicProfilePage({ params }: { params: Promise<{ username: string }> }) {
-  const p = await load((await params).username);
+  const [p, viewer] = await Promise.all([load((await params).username), getViewer()]);
   if (!p) notFound();
   const name = p.displayName ?? `@${p.username}`;
   const initials = (p.displayName ?? p.username).slice(0, 2).toUpperCase();
@@ -114,7 +115,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
             <div className="flex gap-2">
               <ShareButton path={`/u/${p.username}`} title={`${name} on CodeStreak`} />
               <EmbedDialog username={p.username} />
-              <ReportButton username={p.username} />
+              {viewer?.userId !== p.profileId && <ReportButton username={p.username} />}
             </div>
           </CardContent>
         </Card>

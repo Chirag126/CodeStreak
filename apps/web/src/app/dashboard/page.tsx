@@ -47,9 +47,6 @@ export default async function DashboardPage() {
           <h1 className="text-3xl font-semibold tracking-tight">Hi, {viewer.displayName ?? viewer.username}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button asChild size="sm">
-            <Link href={`/u/${viewer.username}`}>View public profile</Link>
-          </Button>
           <form action={signOut}>
             <Button type="submit" variant="outline" size="sm">
               Sign out

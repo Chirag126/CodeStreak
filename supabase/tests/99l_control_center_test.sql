@@ -36,6 +36,11 @@ begin
   end;
 
   -- Search by email, wallet-less user, status filter.
+  -- Every owner read runs (the overview once failed on an ambiguous column at runtime only).
+  res := public.admin_overview('cc000000-0000-0000-0000-0000000000a1');
+  if (res->>'users')::int < 3 or jsonb_array_length(res->'series') <> 30 then raise exception 'overview wrong: %', res - 'series'; end if;
+  if public.admin_auth_info('cc000000-0000-0000-0000-0000000000a1', 'cc000000-0000-0000-0000-0000000000a2')->>'email' <> 'alice@example.com' then raise exception 'auth info wrong'; end if;
+  if not (public.admin_verify_audit_chain('cc000000-0000-0000-0000-0000000000a1')->>'ok')::boolean then raise exception 'empty chain should verify'; end if;
   res := public.admin_list_users('cc000000-0000-0000-0000-0000000000a1', 'alice@EXAMPLE', null, null, 10, 0);
   assert (res->>'total')::int = 1 and res->'rows'->0->>'username' = 'cc_alice', res::text;
   -- LIKE wildcards in the query are literal.
