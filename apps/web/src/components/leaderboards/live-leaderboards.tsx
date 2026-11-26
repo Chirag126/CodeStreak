@@ -232,7 +232,7 @@ function ScopePicker({ current, groups }: { current: string; groups: GroupOption
             My groups
           </Link>
         ) : (
-          <span className="cursor-not-allowed rounded-md px-4 py-1.5 text-sm text-muted-foreground/60" title="Join a challenge to see its group board">
+          <span className="cursor-not-allowed rounded-md px-4 py-1.5 text-sm text-muted-foreground/60" title="Sign in and join a challenge to see your group boards">
             My groups
           </span>
         )}

@@ -84,9 +84,14 @@ export function AnimatedNumber({ value, format = formatInteger, duration = durat
     return () => controls.stop();
   }, [value, reduce, duration, format]);
 
+  // Screen readers (and anything reading the page without scripts) get the real value right away;
+  // only the visible digits count up.
   return (
-    <span ref={ref} className={className} aria-label={format(value)}>
-      {format(reduce ? value : 0)}
+    <span className={className}>
+      <span ref={ref} aria-hidden>
+        {format(reduce ? value : 0)}
+      </span>
+      <span className="sr-only">{format(value)}</span>
     </span>
   );
 }

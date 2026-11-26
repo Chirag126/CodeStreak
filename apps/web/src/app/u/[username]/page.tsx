@@ -82,7 +82,8 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
             <div className="min-w-0 flex-1 space-y-1.5">
               <h1 className="truncate text-2xl font-semibold tracking-tight">{name}</h1>
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-                <span>@{p.username}</span>
+                {/* The heading already shows @username when there is no display name. */}
+                {p.displayName && <span>@{p.username}</span>}
                 <span className="font-mono">{p.publicId}</span>
                 <span>Member since {p.memberSince}</span>
               </p>
@@ -111,7 +112,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
         </Card>
       </Reveal>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat tone="warning" icon={<Flame aria-hidden />} label="Current streak" value={`${p.stats.currentStreak} day${p.stats.currentStreak === 1 ? '' : 's'}`} hint={`Longest ${p.stats.longestStreak}`} />
         <Stat tone="success" icon={<Target aria-hidden />} label="Success rate" value={p.stats.successRate === null ? '—' : `${p.stats.successRate}%`} hint={`${p.stats.recordedDays} recorded day${p.stats.recordedDays === 1 ? '' : 's'}`} />
         <Stat

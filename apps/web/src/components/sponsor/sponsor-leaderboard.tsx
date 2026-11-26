@@ -6,7 +6,7 @@ import type { SponsorRow } from '@/lib/sponsor/load';
 const explorer = (kind: 'tx' | 'address', id: string) => `https://explorer.solana.com/${kind}/${id}?cluster=devnet`;
 
 /** Sponsors, biggest first, each with links to their on-chain receipt and latest transaction. */
-export function SponsorLeaderboard({ sponsors, decimals, symbol, totalSponsor, action }: { sponsors: SponsorRow[]; decimals: number; symbol: string; totalSponsor: string; action?: React.ReactNode }) {
+export function SponsorLeaderboard({ sponsors, decimals, symbol, totalSponsor, action, open = true }: { sponsors: SponsorRow[]; decimals: number; symbol: string; totalSponsor: string; action?: React.ReactNode; open?: boolean }) {
   return (
     <Card>
       <CardHeader>
@@ -21,7 +21,7 @@ export function SponsorLeaderboard({ sponsors, decimals, symbol, totalSponsor, a
       </CardHeader>
       <CardContent>
         {sponsors.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No sponsors yet. Be the first.</p>
+          <p className="text-sm text-muted-foreground">{open ? 'No sponsors yet. Be the first.' : 'Nobody sponsored this challenge.'}</p>
         ) : (
           <ol className="divide-y divide-border">
             {sponsors.map((s, i) => (

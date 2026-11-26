@@ -94,12 +94,12 @@ export function ChallengeCard({ row, now }: { row: OverviewRow; now: Date }) {
             {row.is_demo && <Badge variant="warning">DEMO</Badge>}
             {row.visibility === 'private' && <Badge variant="accent">Private</Badge>}
           </div>
-          <span className="shrink-0 rounded-md border border-border px-1.5 py-0.5 font-mono text-[10px] tracking-wide text-muted-foreground">{row.token}</span>
+          <span className="shrink-0 rounded-md border border-border px-1.5 py-0.5 font-mono text-[10px] tracking-wide text-muted-foreground uppercase">{row.token}</span>
         </div>
         <CardTitle className="line-clamp-2 text-lg">{row.title}</CardTitle>
         <p className="text-xs text-muted-foreground">{when}</p>
       </CardHeader>
-      <CardContent className="space-y-4 pb-4">
+      <CardContent className="space-y-4 pt-4 pb-4">
         <div className="flex items-end justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Pool</p>

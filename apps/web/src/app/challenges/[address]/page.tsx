@@ -31,7 +31,19 @@ import { cachedRead, throttled } from '@/lib/chain/read-cache';
 import { listGroupInvites } from '@/lib/groups/invites';
 import { JoinButton } from './join-button';
 
-export const metadata: Metadata = { title: 'Challenge' };
+/** The tab and link-preview title is the challenge's own (only if this viewer may see it: RLS hides private groups). */
+export async function generateMetadata({ params }: { params: Promise<{ address: string }> }): Promise<Metadata> {
+  const { address } = await params;
+  if (!isSolanaAddress(address)) return { title: 'Challenge not found' };
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase.from('challenges').select('title, visibility').eq('onchain_address', address).maybeSingle();
+  if (!data?.title) return { title: 'Challenge' };
+  return {
+    title: data.title as string,
+    // Private groups stay out of search results even for members who share the link.
+    ...(data.visibility === 'private' ? { robots: { index: false, follow: false } } : {}),
+  };
+}
 
 /**
  * The cluster's clock (falls back to this server's clock if the RPC has no block time). Read at most
@@ -305,7 +317,8 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
           </CardContent>
         </Card>
 
-        {phase !== 'cancelled' && (
+        {/* An estimate only helps while the result is still open. */}
+        {phase !== 'cancelled' && phase !== 'settled' && (
         <Card>
           <CardHeader>
             <CardTitle>Reward estimate</CardTitle>
@@ -353,6 +366,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
         decimals={decimals}
         symbol={symbol}
         totalSponsor={account.totalSponsor.toString()}
+        open={sponsorOpen}
         action={
           !sponsorOpen ? (
             <span className="text-xs text-muted-foreground">Sponsorship closed</span>

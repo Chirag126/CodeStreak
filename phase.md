@@ -1758,3 +1758,14 @@ Checked what was already there first; nothing that existed was replaced or added
 **Secret scan.** The scanner (pre-commit, pre-push, `pnpm check`) was already there. Added `--history`, which scans every file version ever committed on any branch, so a key that was committed and later deleted is still caught; CI runs it on every push. The full history is clean.
 
 **Advisors.** Security and performance: no warnings left except "Leaked password protection", which only applies to password sign-in. CodeStreak has no passwords (email codes and wallet signatures), and the switch is a Supabase dashboard setting on paid plans, so it stays as is.
+
+## Walkthrough fixes (signed-out tour of the live app, desktop and phone width)
+
+- **Challenge page:** the tab and link-preview title is now the challenge's name (private groups only for members, and never indexed) instead of "Challenge". A settled challenge no longer shows the "Reward estimate" slider (the result is final), and its sponsors box says "Nobody sponsored this challenge." instead of "Be the first." when sponsoring is closed.
+- **Challenge cards:** token tag in capitals (SOL / USDC) and a little space between the date line and "Pool".
+- **Profile:** "@chirag" no longer appears twice when there is no display name. Stat tiles sit two per row on phones (dashboard too) instead of one long column.
+- **Landing:** the streak grid stretches to fill its card at every width; the fifth number spans the row on phones instead of leaving an empty grey cell; counters give screen readers (and anything reading the page without scripts) the real value instead of "0".
+- **Sign-in:** with no Solana wallet in the browser, the page now says so and how to fix it, instead of promising wallet sign-in and showing nothing.
+- **Leaderboards:** the disabled "My groups" hint says to sign in and join a challenge.
+- **PNG / JPG widget:** rounded, bordered frame like the SVG.
+- Checked and fine: every public page, 404s, leaderboard tabs, embed iframe and SVG, Blink endpoints, server logs (no errors since the 25 Nov fix).
