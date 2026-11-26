@@ -18,6 +18,8 @@ set role authenticated;
 set request.jwt.claim.sub = 'dd000000-0000-0000-0000-0000000000a2';
 do $$ begin
   assert public.report_user('dd_owner', 'cheating', null) is not null;
+end $$;
+do $$ begin
   perform public.report_user('dd_owner', 'other', 'again');
   raise exception 'NOT REJECTED: duplicate open report';
 exception when unique_violation then null;
