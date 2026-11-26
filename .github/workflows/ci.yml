@@ -19,6 +19,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history for the secret scan below
+
+      - name: Secret scan of the whole git history
+        run: node scripts/check-secrets.mjs --history
 
       - uses: pnpm/action-setup@v4 # version comes from "packageManager" in package.json
 

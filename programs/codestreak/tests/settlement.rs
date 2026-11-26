@@ -368,3 +368,67 @@ fn undersubscribed_challenge_that_ran_cannot_settle_and_is_cancelled_instead() {
     }
     assert_fully_paid_out(&env, &s);
 }
+
+// ---------------------------------------------------------------- negative suite (Phase 41.1)
+// Cases not covered above: who can take money out of a settled pool, and account substitution on claims.
+
+#[test]
+fn losers_strangers_and_sponsors_cannot_take_from_a_pool_with_survivors() {
+    let mut env = setup();
+    let plans: [Plan; 2] = [(ALL_VERIFIED, None), ([Some(Failed), Some(Failed), Some(Failed)], None)];
+    let s = settled(&mut env, 21, &plans, 1_000_000);
+
+    // The failed player gets neither a reward nor a refund; the sponsorship went to the survivor.
+    expect_anchor_error(claim_reward(&mut env, &s, 1), "NothingToClaim");
+    expect_anchor_error(claim_refund(&mut env, &s, 1), "NothingToClaim");
+    expect_anchor_error(claim_sponsor(&mut env, &s), "NothingToClaim");
+
+    // Someone who never joined has no participant account to claim with.
+    let (stranger, ata) = funded_usdc(&mut env, 1);
+    let ix = claim_reward_ix(&s.challenge, &stranger.pubkey(), &env.usdc, &ata);
+    assert!(send(&mut env.svm, ix, &[&env.relayer]).is_err());
+    let ix = claim_refund_ix(&s.challenge, &stranger.pubkey(), &env.usdc, &ata);
+    assert!(send(&mut env.svm, ix, &[&env.relayer]).is_err());
+
+    // The survivor takes everything; the vault ends at exactly 0.
+    claim_reward(&mut env, &s, 0).unwrap();
+    assert_eq!(bal(&env, &s.players[0].ata), SHIELD + 2 * BUY_IN + 1_000_000);
+    assert_fully_paid_out(&env, &s);
+}
+
+#[test]
+fn claims_reject_a_swapped_vault_mint_token_program_or_forged_challenge() {
+    let mut env = setup();
+    let s = settled(&mut env, 22, &[(ALL_VERIFIED, None), (ALL_VERIFIED, None)], 0);
+    let (user, ata) = (s.players[0].kp.pubkey(), s.players[0].ata);
+    // Account order: challenge, participant, mint, destination, vault, token_program.
+
+    // Another token account of the same mint posing as the vault.
+    let (_, other_ata) = funded_usdc(&mut env, 1);
+    let mut ix = claim_reward_ix(&s.challenge, &user, &env.usdc, &ata);
+    ix.accounts[4].pubkey = other_ata;
+    expect_anchor_error(send(&mut env.svm, ix, &[&env.relayer]), "InvalidVault");
+
+    // A different mint.
+    let ix = claim_reward_ix(&s.challenge, &user, &env.other_mint, &ata);
+    expect_anchor_error(send(&mut env.svm, ix, &[&env.relayer]), "InvalidMint");
+
+    // A different token program.
+    let mut ix = claim_reward_ix(&s.challenge, &user, &env.usdc, &ata);
+    ix.accounts[5].pubkey = anchor_spl::token_2022::ID;
+    assert!(send(&mut env.svm, ix, &[&env.relayer]).is_err());
+
+    // A byte-for-byte copy of the challenge at another address (owned by the program) is not the challenge.
+    let real = env.svm.get_account(&s.challenge).unwrap();
+    let fake = Pubkey::new_unique();
+    env.svm.set_account(fake, real).unwrap();
+    let mut ix = claim_reward_ix(&s.challenge, &user, &env.usdc, &ata);
+    ix.accounts[0].pubkey = fake;
+    expect_anchor_error(send(&mut env.svm, ix, &[&env.relayer]), "ConstraintSeeds");
+
+    // None of that moved money; the real claim still pays in full.
+    assert_eq!(vault_balance(&env, &s), 2 * BUY_IN);
+    claim_reward(&mut env, &s, 0).unwrap();
+    claim_reward(&mut env, &s, 1).unwrap();
+    assert_fully_paid_out(&env, &s);
+}

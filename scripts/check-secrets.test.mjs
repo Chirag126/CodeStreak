@@ -115,3 +115,31 @@ test('pre-commit hook blocks a commit containing a fake key, and allows a clean 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('--history finds a secret that was committed and later deleted', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'cs-history-'));
+  try {
+    const run = (args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8' });
+    run(['init', '-q']);
+    run(['config', 'user.name', 'test']);
+    run(['config', 'user.email', 'test@example.com']);
+    const scanner = path.join(here, 'check-secrets.mjs');
+    const scan = () => spawnSync(process.execPath, [scanner, '--history'], { cwd: dir, encoding: 'utf8' });
+
+    writeFileSync(path.join(dir, 'ok.ts'), 'export const x = 1;\n');
+    run(['add', '.']);
+    run(['commit', '-q', '-m', 'clean']);
+    assert.equal(scan().status, 0, 'clean history passes');
+
+    writeFileSync(path.join(dir, 'leak.ts'), `export const token = "${fake.githubPat()}";\n`);
+    run(['add', '.']);
+    run(['commit', '-q', '--no-verify', '-m', 'leak']);
+    run(['rm', '-q', 'leak.ts']);
+    run(['commit', '-q', '--no-verify', '-m', 'remove leak']);
+    const found = scan();
+    assert.equal(found.status, 1, 'a deleted secret is still in history');
+    assert.match(found.stderr, /leak\.ts/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

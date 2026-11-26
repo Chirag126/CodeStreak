@@ -1735,3 +1735,26 @@ Phantom may take a while to re-index. Check Collectibles and its hidden list wit
 - Appeals: one day between a decision and the next appeal (the error gives the time), at most 5 appeals in 30 days. One open appeal at a time was already enforced.
 
 **Cards.** Challenge cards now have a status-coloured stripe, a token chip, the pool as the headline number, a players progress bar, and a footer with length · survival rate · "View →", with a small lift on hover (off with reduced motion). The stat tiles on the dashboard and public profiles share one `KpiTile` with a coloured icon chip and a soft glow.
+
+## Phase 41.1: Security hardening
+
+Checked what was already there first; nothing that existed was replaced or added twice.
+
+**RLS audit** (every table, view, policy and function grant in `public` and `private`).
+- Already correct and kept: every table has RLS on; all four views run as the caller (`security_invoker`) and aren't updatable; every policy is read-only (writes go through server code or checked functions); `profiles` updates are limited to username / display name / avatar / timezone by column grants and to your own row by policy; length and format checks on every free-text column (reasons, details, messages, links).
+- **Fixed:** the 7 functions signed-in users call through the API (`report_user`, `submit_appeal`, `open_dispute`, `review_dispute`, `mark_notifications_read`, `my_account_status`, `am_i_admin`) ran with elevated rights straight from the API schema. They now live in `private` (not reachable through the API); `public` keeps a same-name wrapper that runs with the caller's rights, so nothing in the app changed. When changing one of them later, edit `private.<name>`.
+- **Fixed:** 9 tables only the server touches (admin audit / notes / list, moderation flags, LeetCode codes and snapshots, released accounts, sign-in attempts, wallet login challenges) still carried the default grants for signed-out and signed-in users. RLS already blocked them; the grants are now revoked and an explicit "no direct access" policy documents it.
+- **Added:** 7 indexes for foreign keys that had none (performance advisor).
+- `supabase/tests/99o_security_hardening_test.sql` turns these into rules every future migration must pass: RLS on every table, invoker views, no elevated function callable from the API, a policy on every RLS table, no grants on server-only tables, and the wrappers still work.
+
+**Rate-limit review.**
+- Already in place (database-backed, kept): email and wallet sign-in attempts, the relayer (every money transaction, including Blink joins/sponsors), claims, LeetCode verification codes, reports (5/day, one open per user), appeals (one open, 1 day after a decision, 5 per 30 days), disputes (2 per day).
+- **Added:** the signed-out endpoints had no cap. `lib/http/rate-limit.ts` limits each network address to 120 requests/min for widgets, embeds, Blink metadata and icons, live boards and badge metadata, and 20/min for Blink transaction builds and callbacks. Over the limit → 429 with `Retry-After` (Blinks get it as an ActionError the wallet shows). Blink callbacks also reject over-long signatures.
+
+**Input fuzzing.** `packages/shared/src/fuzz.test.ts` throws 3000 seeded random / hostile strings (unicode digits, control characters, path tricks, URL encoding, 200 KB inputs, non-strings) at every parser of untrusted input: amounts, sponsor amounts and messages, usernames, widget file names, wallet addresses, Blink bodies, repo lists, file filters, history filters. None may throw, and anything accepted must satisfy the parser's own rules (limits, patterns, round-trips). No bugs found.
+
+**Program negative suite.** The existing 50 LiteSVM tests already cover the wrong signer, admin, verifier, vault, mint, token account, group authority and entry gate, double join / finalize / claim, late or early actions, and overflow-safe payouts. Added the two gaps: who can take money out of a pool with survivors (a failed player, a stranger, a sponsor: all refused, vault ends at 0), and claims with a swapped vault, mint or token program, or a byte-for-byte copy of the challenge at another address (all refused, nothing moves).
+
+**Secret scan.** The scanner (pre-commit, pre-push, `pnpm check`) was already there. Added `--history`, which scans every file version ever committed on any branch, so a key that was committed and later deleted is still caught; CI runs it on every push. The full history is clean.
+
+**Advisors.** Security and performance: no warnings left except "Leaked password protection", which only applies to password sign-in. CodeStreak has no passwords (email codes and wallet signatures), and the switch is a Supabase dashboard setting on paid plans, so it stays as is.
