@@ -6,12 +6,15 @@ import { actionError, actionJson, actionOptions, readJsonBody } from '@/lib/acti
 import { appOrigin } from '@/lib/app-origin';
 import { nowSecs } from '@/lib/insights/load';
 import { prepareSponsor } from '@/lib/relayer/service';
+import { ACTION_WRITE, PUBLIC_READ, overLimit } from '@/lib/http/rate-limit';
 
 export const dynamic = 'force-dynamic';
 type Ctx = { params: Promise<{ address: string }> };
 
 /** Blink metadata: sponsor a public challenge (preset amounts and a custom one). */
 export async function GET(req: NextRequest, { params }: Ctx) {
+  const wait = overLimit(req, PUBLIC_READ);
+  if (wait) return actionError(`Too many requests. Try again in ${wait} s.`, 429);
   const { address } = await params;
   const c = await loadActionChallenge(address, nowSecs());
   if (!c) return actionError(NOT_PUBLIC, 404);
@@ -21,6 +24,8 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 
 /** Builds the sponsorship transaction. A missing, malformed or out-of-range amount is an ActionError. */
 export async function POST(req: NextRequest, { params }: Ctx) {
+  const wait = overLimit(req, ACTION_WRITE);
+  if (wait) return actionError(`Too many requests. Try again in ${wait} s.`, 429);
   const { address } = await params;
   const parsed = parseActionAccount(await readJsonBody(req));
   if (!parsed.ok) return actionError(parsed.error);

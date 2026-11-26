@@ -3,6 +3,7 @@ import { type NextRequest } from 'next/server';
 import { appOrigin } from '@/lib/app-origin';
 import { widgetImage } from '@/lib/widget/card';
 import { loadWidget, widgetCache } from '@/lib/widget/load';
+import { PUBLIC_READ, overLimit, tooManyRequests } from '@/lib/http/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,8 @@ export const dynamic = 'force-dynamic';
  * "Profile not found" card (status 200, so every <img> shows it; X-CodeStreak-Profile says why).
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ file: string }> }) {
+  const wait = overLimit(req, PUBLIC_READ);
+  if (wait) return tooManyRequests(wait);
   const { file } = await params;
   const parsed = parseWidgetFile(file);
   // A bad name still gets a placeholder in the format it asked for.

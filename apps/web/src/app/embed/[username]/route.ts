@@ -2,6 +2,7 @@ import { widgetHtml, widgetTheme } from '@codestreak/shared';
 import { type NextRequest } from 'next/server';
 import { appOrigin } from '@/lib/app-origin';
 import { loadWidget, widgetCache } from '@/lib/widget/load';
+import { PUBLIC_READ, overLimit, tooManyRequests } from '@/lib/http/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,8 @@ export const dynamic = 'force-dynamic';
  * the same clean placeholder.
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ username: string }> }) {
+  const wait = overLimit(req, PUBLIC_READ);
+  if (wait) return tooManyRequests(wait);
   const { model, ok } = await loadWidget((await params).username);
   const html = widgetHtml(model, widgetTheme(req.nextUrl.searchParams.get('theme')), appOrigin(req.nextUrl.origin));
   return new Response(html, {

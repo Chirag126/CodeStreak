@@ -14,6 +14,7 @@
     "check:setup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/doctor.ps1",
     "check:env": "node scripts/check-env.mjs",
     "check:secrets": "node scripts/check-secrets.mjs --all",
+    "check:secrets:history": "node scripts/check-secrets.mjs --history",
     "dev:web": "pnpm --filter @codestreak/shared build && pnpm --filter @codestreak/web dev",
     "dev:worker": "pnpm --filter @codestreak/shared build && pnpm --filter @codestreak/worker dev",
     "devnet:init-config": "pnpm --filter @codestreak/shared build && pnpm --filter @codestreak/devnet-tools init-config",

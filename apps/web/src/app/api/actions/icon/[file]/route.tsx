@@ -3,6 +3,7 @@ import { ImageResponse } from 'next/og';
 import { type NextRequest } from 'next/server';
 import { loadActionChallenge } from '@/lib/actions/challenge';
 import { nowSecs } from '@/lib/insights/load';
+import { PUBLIC_READ, overLimit, tooManyRequests } from '@/lib/http/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,9 @@ export const dynamic = 'force-dynamic';
  * Phase 39: the Blink icon for a public challenge, 600×600 PNG (the Actions spec allows PNG, SVG or
  * WebP). Unknown or private challenges get the plain CodeStreak mark, never their details.
  */
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ file: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ file: string }> }) {
+  const wait = overLimit(req, PUBLIC_READ);
+  if (wait) return tooManyRequests(wait);
   const address = (await params).file.replace(/\.png$/i, '');
   const c = await loadActionChallenge(address, nowSecs()).catch(() => null);
   const title = c ? (c.title.length > 40 ? `${c.title.slice(0, 39)}…` : c.title) : null;

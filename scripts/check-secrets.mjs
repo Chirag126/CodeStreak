@@ -4,6 +4,7 @@
 // Usage:
 //   node scripts/check-secrets.mjs --staged     # scan the staged version of staged files (pre-commit)
 //   node scripts/check-secrets.mjs --all        # scan every tracked file
+//   node scripts/check-secrets.mjs --history    # scan every file version ever committed (all branches)
 //   node scripts/check-secrets.mjs <file> ...   # scan specific files
 //
 // Exit code 1 when anything is found. A line containing "secret-scan:allow"
@@ -202,6 +203,25 @@ function readStaged(file) {
   return execFileSync('git', ['show', `:${file}`], { maxBuffer: 64 * 1024 * 1024 });
 }
 
+/** Every distinct file version reachable from any ref: "<blob> <path>" pairs (first path seen wins). */
+function historyBlobs() {
+  const seen = new Map();
+  for (const line of git(['rev-list', '--objects', '--all']).split('\n')) {
+    const sp = line.indexOf(' ');
+    if (sp < 0) continue; // commits have no path
+    const [sha, file] = [line.slice(0, sp), line.slice(sp + 1)];
+    if (!seen.has(sha)) seen.set(sha, file);
+  }
+  const blobs = [];
+  if (seen.size === 0) return blobs;
+  const types = git(['cat-file', '--batch-check=%(objectname) %(objecttype)'], { input: [...seen.keys()].join('\n') + '\n' });
+  for (const line of types.split('\n')) {
+    const [sha, type] = line.split(' ');
+    if (type === 'blob') blobs.push({ sha, file: seen.get(sha) });
+  }
+  return blobs;
+}
+
 function main(argv) {
   const args = argv.slice(2);
   let targets;
@@ -210,6 +230,11 @@ function main(argv) {
   if (args.includes('--staged')) {
     targets = stagedFiles();
     reader = readStaged;
+  } else if (args.includes('--history')) {
+    const blobs = historyBlobs();
+    const bySha = new Map(blobs.map((b) => [`@${b.sha.slice(0, 8)}/${b.file}`, b.sha]));
+    targets = [...bySha.keys()];
+    reader = (label) => execFileSync('git', ['cat-file', 'blob', bySha.get(label)], { maxBuffer: 64 * 1024 * 1024 });
   } else if (args.includes('--all')) {
     targets = trackedFiles();
     reader = (f) => (existsSync(f) && statSync(f).isFile() ? readFileSync(f) : null);
@@ -217,7 +242,7 @@ function main(argv) {
     targets = args;
     reader = (f) => readFileSync(f);
   } else {
-    console.error('Usage: check-secrets.mjs --staged | --all | <file...>');
+    console.error('Usage: check-secrets.mjs --staged | --all | --history | <file...>');
     return 2;
   }
 
