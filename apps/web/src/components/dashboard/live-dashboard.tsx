@@ -1,7 +1,8 @@
 'use client';
 
 import { countdownText, crossedWarning, TODAY_LABELS, zonedClock, type TodayStatus } from '@codestreak/shared';
-import { Bell, BellOff, Flame, Receipt, Timer } from 'lucide-react';
+import { Activity, Bell, BellOff, Coins, Flame, Receipt, Target, Timer } from 'lucide-react';
+import { KpiTile, type KpiTone } from '@/components/ui/kpi-tile';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -112,19 +113,8 @@ function DualClock({ at }: { at: number }) {
   );
 }
 
-function Tile({ label, value, hint, icon }: { label: string; value: string; hint?: string; icon?: React.ReactNode }) {
-  return (
-    <Card className="h-full">
-      <CardContent className="space-y-1 py-5">
-        <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
-          {icon}
-          {label}
-        </p>
-        <p className="text-2xl font-semibold tabular-nums">{value}</p>
-        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-      </CardContent>
-    </Card>
-  );
+function Tile(props: { label: string; value: string; hint?: string; icon?: React.ReactNode; tone?: KpiTone }) {
+  return <KpiTile {...props} />;
 }
 
 function ActiveCard({ a, now }: { a: ActiveView; now: number }) {
@@ -210,20 +200,21 @@ export function LiveDashboard({ view }: { view: DashboardView }) {
       <Stagger className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StaggerItem>
           <Tile
-            icon={<Flame className="size-3.5" aria-hidden />}
+            tone="warning"
+            icon={<Flame aria-hidden />}
             label="Current streak"
             value={`${view.streak.current} day${view.streak.current === 1 ? '' : 's'}`}
             hint={view.streak.recordedDays ? `Longest ${view.streak.longest}` : 'Starts with your first verified day'}
           />
         </StaggerItem>
         <StaggerItem>
-          <Tile label="Success rate" value={view.streak.successRate === null ? '—' : `${view.streak.successRate}%`} hint={`${view.streak.recordedDays} recorded day${view.streak.recordedDays === 1 ? '' : 's'}`} />
+          <Tile tone="success" icon={<Target aria-hidden />} label="Success rate" value={view.streak.successRate === null ? '—' : `${view.streak.successRate}%`} hint={`${view.streak.recordedDays} recorded day${view.streak.recordedDays === 1 ? '' : 's'}`} />
         </StaggerItem>
         <StaggerItem>
-          <Tile label="Active challenges" value={String(view.active.length)} hint={view.active.length ? undefined : 'None running'} />
+          <Tile tone="accent" icon={<Activity aria-hidden />} label="Active challenges" value={String(view.active.length)} hint={view.active.length ? undefined : 'None running'} />
         </StaggerItem>
         <StaggerItem>
-          <Tile label="Stake at risk" value={view.atRisk.length ? view.atRisk.map((r) => r.amount).join(' + ') : '0'} hint="In challenges still running" />
+          <Tile tone="primary" icon={<Coins aria-hidden />} label="Stake at risk" value={view.atRisk.length ? view.atRisk.map((r) => r.amount).join(' + ') : '0'} hint="In challenges still running" />
         </StaggerItem>
       </Stagger>
 

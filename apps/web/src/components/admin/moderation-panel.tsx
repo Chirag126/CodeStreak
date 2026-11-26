@@ -58,7 +58,7 @@ export function ModerationPanel({ userId, username, current, flags, actions = Ob
   const [f, setF] = useState<Record<string, string>>({});
   const [permanent, setPermanent] = useState(false);
   const [restrict, setRestrict] = useState<Record<string, boolean>>(() => Object.fromEntries(RESTRICTIONS.map((r) => [r.key, current.restrictions.includes(r.key)])));
-  const [stage, setStage] = useState<'form' | 'confirm'>('form');
+  const [stage, setStage] = useState<'form' | 'confirm' | 'done'>('form');
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, start] = useTransition();
@@ -89,6 +89,10 @@ export function ModerationPanel({ userId, username, current, flags, actions = Ob
 
   const needsConfirm = spec.irreversible || (action === 'suspend' && permanent);
   const reasonOk = reason.trim().length >= 5;
+  // The server re-checks this; checking here too stops a typo from reaching the confirm step.
+  const showConfirm = has('confirm') || (action === 'suspend' && permanent);
+  const typed = (f.confirm ?? '').trim().toLowerCase();
+  const confirmOk = !showConfirm || (username ? typed === username.toLowerCase() : typed !== '');
 
   function reset(next: AdminAction) {
     setAction(next);
@@ -103,10 +107,13 @@ export function ModerationPanel({ userId, username, current, flags, actions = Ob
     start(async () => {
       const res = await moderateAction({ target: userId, action, reason, params, requestId });
       if (res.ok) {
+        // Clear every field and show only the result, so the same action can't be sent twice by accident.
         setResult({ ok: true, text: res.message });
         setReason('');
+        setF({});
+        setPermanent(false);
         setRequestId(crypto.randomUUID()); // the next action is a new request
-        setStage('form');
+        setStage('done');
         router.refresh();
       } else {
         setResult({ ok: false, text: res.error });
@@ -130,11 +137,17 @@ export function ModerationPanel({ userId, username, current, flags, actions = Ob
       </DialogTrigger>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{stage === 'confirm' ? 'Confirm' : 'Moderate'} @{username ?? 'user'}</DialogTitle>
-          <DialogDescription>{stage === 'confirm' ? 'This is irreversible or high impact. Check the summary.' : 'Every action needs a reason and is written to the audit log.'}</DialogDescription>
+          <DialogTitle>{stage === 'confirm' ? 'Confirm' : stage === 'done' ? 'Done' : 'Moderate'} @{username ?? 'user'}</DialogTitle>
+          <DialogDescription>
+            {stage === 'confirm' ? 'This is irreversible or high impact. Check the summary.' : stage === 'done' ? 'Recorded in the audit log.' : 'Every action needs a reason and is written to the audit log.'}
+          </DialogDescription>
         </DialogHeader>
 
-        {stage === 'form' ? (
+        {stage === 'done' ? (
+          <p className="text-sm text-success" role="status">
+            {result?.text ?? 'Done.'}
+          </p>
+        ) : stage === 'form' ? (
           <div className="space-y-3 text-sm">
             {actions.length > 1 && (
               <label className="block space-y-1">
@@ -206,8 +219,11 @@ export function ModerationPanel({ userId, username, current, flags, actions = Ob
               </label>
             )}
             {has('public_reason') && <input className={input} placeholder="Message the user sees (optional)" value={f.public_reason ?? ''} onChange={(e) => setF({ ...f, public_reason: e.target.value })} maxLength={500} />}
-            {(has('confirm') || (action === 'suspend' && permanent)) && (
-              <input className={input} placeholder={`Type ${username ?? 'the public ID'} to confirm`} value={f.confirm ?? ''} onChange={(e) => setF({ ...f, confirm: e.target.value })} autoComplete="off" />
+            {showConfirm && (
+              <div className="space-y-1">
+                <input className={input} placeholder={`Type ${username ?? 'the public ID'} to confirm`} value={f.confirm ?? ''} onChange={(e) => setF({ ...f, confirm: e.target.value })} autoComplete="off" aria-invalid={typed !== '' && !confirmOk} />
+                {typed !== '' && !confirmOk && <p className="text-xs text-destructive-text">That doesn&apos;t match @{username}.</p>}
+              </div>
             )}
             <textarea className={cn(input, 'h-20 py-2')} placeholder="Reason (required, recorded in the audit log)" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -225,6 +241,15 @@ export function ModerationPanel({ userId, username, current, flags, actions = Ob
         )}
 
         <DialogFooter>
+          {stage === 'done' ? (
+            <>
+              <Button variant="ghost" onClick={() => reset(action)}>
+                Another action
+              </Button>
+              <Button onClick={() => { setOpen(false); reset(action); }}>Close</Button>
+            </>
+          ) : (
+          <>
           {stage === 'confirm' && (
             <Button variant="ghost" onClick={() => setStage('form')} disabled={busy}>
               Back
@@ -232,12 +257,14 @@ export function ModerationPanel({ userId, username, current, flags, actions = Ob
           )}
           <Button
             variant={spec.danger ? 'destructive' : 'default'}
-            disabled={!reasonOk || busy}
+            disabled={!reasonOk || !confirmOk || busy}
             loading={busy}
             onClick={() => (needsConfirm && stage === 'form' ? setStage('confirm') : submit())}
           >
             {needsConfirm && stage === 'form' ? 'Review' : spec.label}
           </Button>
+          </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -248,11 +275,24 @@ export function ModerationPanel({ userId, username, current, flags, actions = Ob
 export function DecisionButton({ userId, username, action, params, label, variant = 'outline' }: { userId: string; username: string | null; action: 'appeal_decide' | 'report_set'; params: Record<string, unknown>; label: string; variant?: 'outline' | 'default' | 'destructive' }) {
   const router = useRouter();
   const [reason, setReason] = useState('');
-  const [msg, setMsg] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, start] = useTransition();
-  const [requestId] = useState(() => crypto.randomUUID());
+  const [open, setOpen] = useState(false);
+  const [requestId, setRequestId] = useState(() => crypto.randomUUID());
+  const done = msg?.ok === true;
   return (
-    <Dialog>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) {
+          // Fresh form (and a new request id) the next time it opens.
+          setReason('');
+          setMsg(null);
+          setRequestId(crypto.randomUUID());
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button size="sm" variant={variant}>
           {label}
@@ -263,22 +303,30 @@ export function DecisionButton({ userId, username, action, params, label, varian
           <DialogTitle>{label}</DialogTitle>
           <DialogDescription>@{username ?? 'user'} · recorded in the audit log.</DialogDescription>
         </DialogHeader>
-        <textarea className={cn(input, 'h-20 py-2')} placeholder="Reason (required)" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />
-        {msg && <p className="text-sm text-muted-foreground">{msg}</p>}
+        {!done && <textarea className={cn(input, 'h-20 py-2')} placeholder="Reason (required)" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />}
+        {msg && (
+          <p className={cn('text-sm', msg.ok ? 'text-success' : 'text-destructive-text')} role="status">
+            {msg.text}
+          </p>
+        )}
         <DialogFooter>
+          {done ? (
+            <Button onClick={() => setOpen(false)}>Close</Button>
+          ) : (
           <Button
             disabled={reason.trim().length < 5 || busy}
             loading={busy}
             onClick={() =>
               start(async () => {
                 const res = await moderateAction({ target: userId, action, reason, params: { ...params, note: reason, resolution: reason }, requestId });
-                setMsg(res.ok ? res.message : res.error);
+                setMsg(res.ok ? { ok: true, text: res.message } : { ok: false, text: res.error });
                 if (res.ok) router.refresh();
               })
             }
           >
             Confirm
           </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

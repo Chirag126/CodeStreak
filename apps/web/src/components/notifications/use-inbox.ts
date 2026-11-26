@@ -44,9 +44,13 @@ export function useInbox(limit = 20) {
       if (data.session) await supabase.realtime.setAuth(data.session.access_token);
       if (disposed) return;
       await load();
+      // Unmounted while loading: don't open a channel nobody will close.
+      if (disposed) return;
       let wasDown = false;
+      // One channel per hook instance: the bell and the dashboard both use this hook on the same
+      // client, and a shared name made the second one add callbacks to an already-subscribed channel.
       channel = supabase
-        .channel(`inbox:${userId}`)
+        .channel(`inbox:${userId}:${crypto.randomUUID()}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `profile_id=eq.${userId}` }, (payload) => {
           if (payload.eventType === 'DELETE') return;
           dispatch({ type: 'upsert', item: payload.new as NotificationItem });

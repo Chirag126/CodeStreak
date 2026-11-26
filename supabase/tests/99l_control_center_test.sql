@@ -179,11 +179,11 @@ do $$ begin
   raise exception 'NOT REJECTED: self report';
 exception when invalid_parameter_value then null;
 end $$;
+-- A banned account can't file reports (99n covers the duplicate-report rule with an active reporter).
 do $$ begin
-  assert public.report_user('cc_owner', 'other', 'test report') is not null;
-  perform public.report_user('cc_owner', 'other', 'again');
-  raise exception 'NOT REJECTED: duplicate open report';
-exception when unique_violation then null;
+  perform public.report_user('cc_owner', 'other', 'test report');
+  raise exception 'NOT REJECTED: report from a banned account';
+exception when insufficient_privilege then null;
 end $$;
 reset role;
 reset request.jwt.claim.sub;

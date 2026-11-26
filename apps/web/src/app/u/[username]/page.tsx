@@ -1,6 +1,7 @@
 import { formatAmount, usernameFromPath, OUTCOME_LABELS, TOKEN_DECIMALS, utcAndIst, type HistoryOutcome, type Token } from '@codestreak/shared';
 import { explorerAddressUrl, explorerTxUrl } from '@codestreak/shared/program';
-import { Flame, GitBranch, Medal, Trophy } from 'lucide-react';
+import { Coins, Flame, GitBranch, Medal, Target, Trophy } from 'lucide-react';
+import { KpiTile, type KpiTone } from '@/components/ui/kpi-tile';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -31,7 +32,7 @@ export async function generateMetadata({ params }: { params: Promise<{ username:
   const name = p.displayName ?? `@${p.username}`;
   const description = `${name} on CodeStreak: longest streak ${p.stats.longestStreak} days, ${p.stats.survived} challenge${p.stats.survived === 1 ? '' : 's'} survived, ${p.badges.length} soulbound badge${p.badges.length === 1 ? '' : 's'}.`;
   return {
-    title: `${name} (@${p.username})`,
+    title: p.displayName ? `${name} (@${p.username})` : name,
     description,
     openGraph: { title: `${name} on CodeStreak`, description, type: 'profile' },
     twitter: { card: 'summary_large_image', title: `${name} on CodeStreak`, description },
@@ -51,19 +52,8 @@ const VARIANT: Record<HistoryOutcome, 'success' | 'danger' | 'warning' | 'outlin
 const amount = (units: bigint, token: Token) => `${formatAmount(units, TOKEN_DECIMALS[token])} ${token.toUpperCase()}`;
 const date = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
 
-function Stat({ label, value, hint, icon }: { label: string; value: string; hint?: string; icon?: React.ReactNode }) {
-  return (
-    <Card>
-      <CardContent className="space-y-1 py-4">
-        <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
-          {icon}
-          {label}
-        </p>
-        <p className="text-2xl font-semibold tabular-nums">{value}</p>
-        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-      </CardContent>
-    </Card>
-  );
+function Stat(props: { label: string; value: string; hint?: string; icon?: React.ReactNode; tone?: KpiTone }) {
+  return <KpiTile {...props} />;
 }
 
 export default async function PublicProfilePage({ params }: { params: Promise<{ username: string }> }) {
@@ -122,15 +112,16 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       </Reveal>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat icon={<Flame className="size-3.5" aria-hidden />} label="Current streak" value={`${p.stats.currentStreak} day${p.stats.currentStreak === 1 ? '' : 's'}`} hint={`Longest ${p.stats.longestStreak}`} />
-        <Stat label="Success rate" value={p.stats.successRate === null ? '—' : `${p.stats.successRate}%`} hint={`${p.stats.recordedDays} recorded day${p.stats.recordedDays === 1 ? '' : 's'}`} />
+        <Stat tone="warning" icon={<Flame aria-hidden />} label="Current streak" value={`${p.stats.currentStreak} day${p.stats.currentStreak === 1 ? '' : 's'}`} hint={`Longest ${p.stats.longestStreak}`} />
+        <Stat tone="success" icon={<Target aria-hidden />} label="Success rate" value={p.stats.successRate === null ? '—' : `${p.stats.successRate}%`} hint={`${p.stats.recordedDays} recorded day${p.stats.recordedDays === 1 ? '' : 's'}`} />
         <Stat
-          icon={<Trophy className="size-3.5" aria-hidden />}
+          tone="accent"
+          icon={<Trophy aria-hidden />}
           label="Survived"
           value={`${p.stats.survived} of ${p.stats.finished}`}
           hint={`Finished challenges kept to the end · ${p.stats.challenges} joined`}
         />
-        <Stat label="Rewards earned" value={earned.length ? earned.join(' · ') : '—'} hint="Above the stake, after settlement" />
+        <Stat tone="primary" icon={<Coins aria-hidden />} label="Rewards earned" value={earned.length ? earned.join(' · ') : '—'} hint="Above the stake, after settlement" />
       </div>
       <p className="-mt-3 text-xs text-muted-foreground">
         Totals include private groups as numbers only. A private group&apos;s name, members, dates and transactions are never shown.

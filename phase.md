@@ -1719,3 +1719,19 @@ Phantom may take a while to re-index. Check Collectibles and its hidden list wit
 **Motion.** One set of timings (`lib/motion.ts`: 150/240/420 ms, two springs). Reduced motion covers Motion components (`MotionConfig`), CSS animations and transitions (`html[data-motion]`), counters (jump to the value) and the landing grid (no per-cell delay). Re-checked, no changes needed.
 
 **Manual checklist.** `docs/qa-checklist.md`: every page × (375 px, loading, empty, error, motion), signed out / user / owner, with what to look for. The starred rows are also checked at desktop width.
+
+## Review fixes (Phase 37–41 test videos)
+
+**Bugs.**
+- **Console error "cannot add `postgres_changes` callbacks … after `subscribe()`".** The bell and the dashboard both open the inbox feed on the same Supabase client with the same channel name, so the second joined an already-subscribed channel. Each hook instance now gets its own channel, and an unmounted hook never opens one.
+- **Owner couldn't clear reports about the owner account.** Dismiss / Actioned on a report against @chirag answered "The owner account can't moderate itself." Resolving a report is now allowed on yourself; every account action (warn, suspend, ban…) on yourself is still refused.
+- **Moderation dialog after "Done."** It stayed open with the old message/confirmation filled in. It now clears every field and shows only the result with Close / Another action, so the same action can't be sent twice by accident. The report/appeal decision dialog does the same and starts fresh (new request id) next time.
+- **Ban / deletion confirmation typo.** "Review" stayed enabled with a mistyped username and the server refused only at the end. It now says "That doesn't match @user" and stays disabled until it matches (the server still checks).
+- **WhatsApp / Telegram link previews.** Next 16 streams `generateMetadata` into the body for browsers; crawlers on its built-in list get it in `<head>`. The list is extended (`htmlLimitedBots`) with chat-app previewers. The profile `<title>` no longer reads "@chirag (@chirag)". Note: on Render's free plan the first request after ~15 idle minutes waits for the app to start, and some previewers give up before that. Open the link once yourself, then share it.
+- **Blinks.** dial.to now returns "deployment paused" and blinks.xyz is a parked domain, so neither can be used to test; the endpoints themselves answer correctly (`/actions.json`, GET metadata with `disabled` + reason when joining is closed). The description no longer says `"days"` in quotes or "the coding accounts above".
+
+**Moderation loopholes closed** (migration `moderation_loopholes`, test `99n_moderation_loopholes_test.sql`).
+- Suspended, banned and departing accounts can't file reports ("Your account is suspended, so you can't send reports right now").
+- Appeals: one day between a decision and the next appeal (the error gives the time), at most 5 appeals in 30 days. One open appeal at a time was already enforced.
+
+**Cards.** Challenge cards now have a status-coloured stripe, a token chip, the pool as the headline number, a players progress bar, and a footer with length · survival rate · "View →", with a small lift on hover (off with reduced motion). The stat tiles on the dashboard and public profiles share one `KpiTile` with a coloured icon chip and a soft glow.
