@@ -73,7 +73,7 @@ export interface ActionChallenge {
 }
 
 const amountText = (v: bigint, t: Token) => `${formatAmount(v, TOKEN_DECIMALS[t])} ${t.toUpperCase()}`;
-const dayText = (secs: number) => (secs >= 86_400 ? 'days' : `"days" of ${Math.round(secs / 60)} min (demo)`);
+const dayText = (secs: number) => (secs >= 86_400 ? 'days' : `demo days of ${Math.round(secs / 60)} min`);
 
 function description(c: ActionChallenge, extra: string): string {
   const proof = c.providers.length ? `Proof: ${c.providers.join(' or ')} activity each day, checked automatically.` : '';
@@ -97,7 +97,7 @@ export function joinActionMetadata(c: ActionChallenge, origin: string, icon: str
     title: `CodeStreak: ${c.title}`,
     description: description(
       c,
-      `Survivors split the pool. Needs a wallet linked to a CodeStreak account with the coding accounts above. Rules: ${origin}/challenges/${c.address}`,
+      `Survivors split the pool. Needs a wallet linked to a CodeStreak account with GitHub/LeetCode linked. Rules: ${origin}/challenges/${c.address}`,
     ),
     label: `Join for ${amountText(c.buyIn, c.token)}`,
     disabled: Boolean(reason),
