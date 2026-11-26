@@ -197,7 +197,7 @@ export function LiveDashboard({ view }: { view: DashboardView }) {
 
       {view.isNew && <Welcome linked={view.linked} />}
 
-      <Stagger className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <Stagger className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StaggerItem>
           <Tile
             tone="warning"

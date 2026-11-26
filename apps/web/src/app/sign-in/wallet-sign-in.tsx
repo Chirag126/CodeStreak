@@ -63,7 +63,15 @@ export function WalletSignIn({ next, onStart }: { next: string; onStart?: () => 
     });
   }
 
-  if (wallets.length === 0) return null;
+  // The page promises wallet sign-in, so say why there is no button instead of showing nothing.
+  if (wallets.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Wallet sign-in: no Solana wallet was found in this browser. Open this page in a browser with Phantom or Solflare (or in the wallet&apos;s own browser
+        on a phone) to sign in with a wallet you linked.
+      </p>
+    );
+  }
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3 text-xs text-muted-foreground">

@@ -87,7 +87,7 @@ export default async function HomePage() {
         <Reveal>
           <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-5">
             {numbers.map((n) => (
-              <div key={n.label} className="bg-background p-4">
+              <div key={n.label} className="bg-background p-4 last:col-span-2 sm:last:col-span-1">
                 <dd className="text-xl font-semibold tabular-nums">{typeof n.value === 'number' ? <AnimatedNumber value={n.value} /> : (n.value ?? '—')}</dd>
                 <dt className="mt-1 text-xs text-muted-foreground">{n.label}</dt>
                 <span className="mt-1 block text-[10px] tracking-wide text-muted-foreground/70 uppercase">{n.source === 'chain' ? 'read from Solana' : 'from the database'}</span>

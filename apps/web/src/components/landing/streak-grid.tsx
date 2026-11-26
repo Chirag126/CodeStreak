@@ -22,14 +22,20 @@ export function StreakGrid({ days }: { days: Day[] }) {
   for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
   return (
     <figure className="space-y-3">
-      <div className="flex gap-1" role="img" aria-label={`${total} coding days verified on-chain in the last 12 weeks`}>
+      {/* One column per week, stretched to the card's width so the grid fills it on every screen. */}
+      <div
+        className="grid gap-1"
+        style={{ gridTemplateColumns: `repeat(${Math.max(1, weeks.length)}, minmax(0, 1fr))` }}
+        role="img"
+        aria-label={`${total} coding days verified on-chain in the last 12 weeks`}
+      >
         {weeks.map((week, w) => (
           <div key={w} className="flex flex-col gap-1">
             {week.map((d, i) => (
               <span
                 key={d.date}
                 title={`${d.date}: ${d.verified} verified${d.failed ? `, ${d.failed} missed` : ''}`}
-                className={cn('streak-cell block size-3.5 rounded-[3px] sm:size-4', LEVELS[level(d.verified, max)], d.verified === 0 && d.failed > 0 && 'ring-1 ring-danger-400/50 ring-inset')}
+                className={cn('streak-cell block aspect-square w-full rounded-[3px]', LEVELS[level(d.verified, max)], d.verified === 0 && d.failed > 0 && 'ring-1 ring-danger-400/50 ring-inset')}
                 style={{ animationDelay: `${(w * 7 + i) * 12}ms` }}
               />
             ))}

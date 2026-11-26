@@ -19,10 +19,13 @@ function Stat({ value, label, c, big }: { value: string; label: string; c: (type
 function Card({ m, theme, big }: { m: WidgetModel; theme: WidgetTheme; big: boolean }) {
   const c = WIDGET_COLORS[theme];
   const pad = big ? 72 : 22;
+  // The small widget gets the SVG's rounded, bordered frame (corners stay transparent in the PNG);
+  // the 1200×630 social image stays a full-bleed rectangle.
+  const frame = big ? {} : { borderRadius: 16, border: `1px solid ${c.border}` };
   const brand = <div style={{ display: 'flex', fontSize: big ? 26 : 12, fontWeight: 700, letterSpacing: big ? 4 : 1.5, color: c.accent }}>CODESTREAK</div>;
   if (!m.found) {
     return (
-      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: c.card, color: c.text, fontFamily: 'sans-serif' }}>
+      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: c.card, color: c.text, fontFamily: 'sans-serif', ...frame }}>
         {brand}
         <div style={{ display: 'flex', marginTop: big ? 28 : 10, fontSize: big ? 52 : 20, fontWeight: 600 }}>Profile not found</div>
         <div style={{ display: 'flex', marginTop: big ? 12 : 4, fontSize: big ? 26 : 12, color: c.muted }}>This CodeStreak profile doesn&apos;t exist or isn&apos;t public.</div>
@@ -30,7 +33,7 @@ function Card({ m, theme, big }: { m: WidgetModel; theme: WidgetTheme; big: bool
     );
   }
   return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: pad, background: c.card, color: c.text, fontFamily: 'sans-serif' }}>
+    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: pad, background: c.card, color: c.text, fontFamily: 'sans-serif', ...frame }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <div
