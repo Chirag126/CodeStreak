@@ -66,8 +66,8 @@ export function RepoPicker({
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [query, setQuery] = useState('');
 
+  // Fetches a page; the caller shows "loading" first (the first load starts in that state).
   const fetchPage = useCallback(async (p: number) => {
-    setLoad({ status: 'loading' });
     try {
       const res = await fetch(`/api/github/repos?page=${p}`, { cache: 'no-store' });
       const body = (await res.json().catch(() => ({}))) as { repos?: PickerRepo[]; hasMore?: boolean; error?: string; code?: string };
@@ -87,6 +87,10 @@ export function RepoPicker({
   useEffect(() => {
     void fetchPage(1);
   }, [fetchPage]);
+  const loadPage = (p: number) => {
+    setLoad({ status: 'loading' });
+    void fetchPage(p);
+  };
 
   const chosen = useMemo(() => new Set(selected.map((s) => s.toLowerCase())), [selected]);
   const visible = useMemo(() => {
@@ -191,13 +195,13 @@ export function RepoPicker({
       {load.status === 'error' && (
         <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive-text">
           {load.message}
-          <Button size="sm" variant="outline" onClick={() => void fetchPage(repos.length ? page + 1 : 1)}>
+          <Button size="sm" variant="outline" onClick={() => loadPage(repos.length ? page + 1 : 1)}>
             Retry
           </Button>
         </div>
       )}
       {hasMore && load.status !== 'error' && (
-        <Button size="sm" variant="outline" loading={load.status === 'loading' && repos.length > 0} onClick={() => void fetchPage(page + 1)}>
+        <Button size="sm" variant="outline" loading={load.status === 'loading' && repos.length > 0} onClick={() => loadPage(page + 1)}>
           Load more repositories
         </Button>
       )}
