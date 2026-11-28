@@ -74,7 +74,8 @@ export function speakable(text: string, max = 80): string {
     .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, ' ')
     .replace(/\b[1-9A-HJ-NP-Za-km-z]{32,}\b/g, ' ')
     .replace(/\b\d{9,}\b/g, ' ')
-    .replace(/[<>{}[\]\\`|]/g, ' ')
+    .replace(/\s*[·•|]\s*/g, ', ')
+    .replace(/[<>{}[\]\\`]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   if (cleaned.length <= max) return cleaned;

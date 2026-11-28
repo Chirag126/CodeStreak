@@ -124,7 +124,7 @@ function VoiceSection({ voice, overview, usage }: { voice: ReturnType<typeof voi
             </p>
           )}
           <p className="mt-1 text-xs text-muted-foreground">
-            This month: {fmt(m?.briefings ?? 0)} briefings and {fmt(m?.announcements ?? 0)} announcements for {fmt(m?.users ?? 0)} players. {fmt(overview?.clips.count ?? 0)} clips cached.
+            This month: {fmt(m?.briefings ?? 0)} briefings and {fmt(m?.announcements ?? 0)} announcements for {fmt(m?.users ?? 0)} player{(m?.users ?? 0) === 1 ? '' : 's'}. {fmt(overview?.clips.count ?? 0)} clips cached.
           </p>
         </div>
         {overview && overview.recent_errors.length > 0 && (
