@@ -23,6 +23,7 @@ import { SponsorLinkPanel } from '@/components/sponsor/sponsor-link-panel';
 import { listSponsors } from '@/lib/sponsor/load';
 import { loadBoard } from '@/lib/board/load';
 import { MyDayCard } from '@/components/checks/my-day-card';
+import { VoiceBriefing } from '@/components/voice/voice-briefing';
 import { DisputePanel } from '@/components/disputes/dispute-panel';
 import { ShieldPanel } from '@/components/shields/shield-panel';
 import { MyDaysExplained } from '@/components/explain/my-days-explained';
@@ -338,6 +339,9 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
         </Card>
         )}
       </div>
+
+      {/* Phase 41.2: members of a running challenge can ask for their spoken update right here. */}
+      {viewerJoined && (phase === 'active' || phase === 'starting') && <VoiceBriefing />}
 
       {myDay && (
         <MyDayCard

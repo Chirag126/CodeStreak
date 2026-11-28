@@ -51,6 +51,8 @@ Copy these from your `.env.local` as they are.
 | `SUPABASE_SERVICE_ROLE_KEY` | **secret**. Web: wallet linking (Phase 13). Worker: writes `worker.wake` to the audit log (Phase 14) | web, worker |
 | `UPGRADE_AUTHORITY_PUBKEY`, `RELAYER_PUBKEY`, `VERIFIER_PUBKEY`, `ADMIN_PUBKEY` | public keys, safe. The worker also needs `VERIFIER_PUBKEY`: it refuses a `VERIFIER_KEYPAIR_JSON` that is a different key | web (worker: `VERIFIER_PUBKEY`) |
 | `GITHUB_API_TOKEN`, `FIRECRAWL_API_KEY` | **secret** | worker |
+| `ELEVENLABS_API_KEY` | **secret**, optional (Phase 41.2). Restrict it to *Text to Speech* + *User: read*. Without it, briefings are read by the browser's own voice | web |
+| `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID` | optional; defaults `EXAVITQu4vr4xnSDxMaL` (Sarah) and `eleven_flash_v2_5` | web |
 
 `NEXT_PUBLIC_*` values are built into the browser bundle: after changing one on Render, trigger a
 new deploy (not just a restart).
@@ -101,3 +103,4 @@ new deploy (not just a restart).
 | 38 | No new variables and no migration. New web dependency **sharp** (JPG widget; it already came with Next, now listed directly). Social images use `APP_URL` (already set) for absolute URLs. |
 | 39 | No new variables and no migration. Blinks use `APP_URL` for absolute icon URLs and the existing relayer key. Optional: register the domain with Dialect (dial.to) so X/Twitter unfurls the Blinks. Inspector and dial.to work without it. |
 | 40 | No new variables. Migration `landing_stats` applied (`public.landing_stats()`, service role only). |
+| 41.2 | **`ELEVENLABS_API_KEY` on the web service** (add it yourself in Render → codestreak → Environment; never paste it anywhere else). `ELEVENLABS_VOICE_ID` / `ELEVENLABS_MODEL_ID` set to the defaults. Migration `voice_companion` applied (notification preferences, last-call deadline warnings in local time, voice settings / cache index / usage log, private `voice` storage bucket). |

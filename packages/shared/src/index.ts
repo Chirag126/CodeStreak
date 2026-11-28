@@ -9,6 +9,7 @@ export * from './challenge-form.js';
 export * from './payout.js';
 export * from './shield.js';
 export * from './deadline.js';
+export * from './briefing.js';
 export * from './notifications.js';
 export * from './explain.js';
 export * from './insights.js';

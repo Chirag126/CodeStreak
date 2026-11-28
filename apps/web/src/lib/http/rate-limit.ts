@@ -43,6 +43,9 @@ export function overLimit(req: Request, rule: LimitRule): number {
   return takeToken(clientAddress(req), rule);
 }
 
+/** Voice briefings and announcements (signed in; each may call ElevenLabs). */
+export const VOICE: LimitRule = { name: 'voice', limit: 12, windowMs: 60_000 };
+
 /** Plain 429 for non-Blink endpoints. */
 export function tooManyRequests(retryAfter: number): Response {
   return new Response(JSON.stringify({ error: `Too many requests. Try again in ${retryAfter} s.` }), {

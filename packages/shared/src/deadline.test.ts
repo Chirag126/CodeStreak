@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { currentDeadline, utcClock, warningLeadSecs } from './deadline.js';
+import { currentDeadline, finalLeadSecs, utcClock, warningLeadSecs } from './deadline.js';
 
 describe('UTC deadline warnings', () => {
   it('warns 3 hours ahead on real days, a quarter-day ahead on demo days', () => {
@@ -27,5 +27,15 @@ describe('UTC deadline warnings', () => {
     expect(currentDeadline(t, 2800)).toBeNull();
     expect(currentDeadline(t, 1599)).toMatchObject({ day: 0, due: true, secsLeft: 1 });
     expect(currentDeadline(t, 1600)).toMatchObject({ day: 1, due: false });
+  });
+});
+
+describe('finalLeadSecs (mirrors private.final_lead_secs)', () => {
+  it('is 30 min for real days and a twelfth (at least a minute) for demo days', () => {
+    expect(finalLeadSecs(86_400)).toBe(1_800);
+    expect(finalLeadSecs(43_200)).toBe(1_800);
+    expect(finalLeadSecs(3_600)).toBe(300);
+    expect(finalLeadSecs(600)).toBe(60);
+    expect(finalLeadSecs(120)).toBe(60);
   });
 });

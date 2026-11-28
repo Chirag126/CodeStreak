@@ -62,3 +62,24 @@ export async function verifyAuditChainAction(): Promise<ActionResult> {
   const r = data as { ok: boolean; entries: number; first_bad_id: number | null };
   return r.ok ? { ok: true, message: `Intact: all ${r.entries} entries verify.` } : { ok: false, error: `Broken at entry #${r.first_bad_id} (of ${r.entries} checked).` };
 }
+
+/** Phase 41.2 - voice kill switches and app-side limits (one audited database call). */
+export async function saveVoiceSettingsAction(input: { enabled: boolean; announcements: boolean; monthlyCharLimit: number; userDailyLimit: number }): Promise<ActionResult> {
+  const owner = await currentOwner();
+  if (!owner) return { ok: false, error: 'Not authorized.' };
+  const monthly = Number(input?.monthlyCharLimit);
+  const daily = Number(input?.userDailyLimit);
+  if (typeof input?.enabled !== 'boolean' || typeof input?.announcements !== 'boolean') return { ok: false, error: 'Malformed request.' };
+  if (!Number.isInteger(monthly) || monthly < 0 || monthly > 10_000_000) return { ok: false, error: 'Monthly limit must be a whole number from 0 to 10,000,000 characters.' };
+  if (!Number.isInteger(daily) || daily < 0 || daily > 1000) return { ok: false, error: 'Per-user daily limit must be a whole number from 0 to 1,000.' };
+  const { error } = await createSupabaseAdminClient().rpc('admin_voice_settings_set', {
+    p_actor: owner.id,
+    p_enabled: input.enabled,
+    p_announcements: input.announcements,
+    p_monthly_char_limit: monthly,
+    p_user_daily_limit: daily,
+  });
+  if (error) return { ok: false, error: error.message };
+  revalidatePath('/admin/settings');
+  return { ok: true, message: 'Voice settings saved.' };
+}

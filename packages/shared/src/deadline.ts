@@ -6,6 +6,11 @@ export function warningLeadSecs(dayLengthSecs: number): number {
   return dayLengthSecs >= 43_200 ? 10_800 : Math.max(60, Math.floor(dayLengthSecs / 4));
 }
 
+/** Phase 41.2 "last call": 30 minutes before the end for real days, a twelfth of the day (≥ 1 min) on demo days. */
+export function finalLeadSecs(dayLengthSecs: number): number {
+  return dayLengthSecs >= 43_200 ? 1_800 : Math.max(60, Math.floor(dayLengthSecs / 12));
+}
+
 export interface DeadlineInfo {
   day: number;
   endsAt: number;

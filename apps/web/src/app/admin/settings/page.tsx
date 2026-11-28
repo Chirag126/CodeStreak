@@ -4,6 +4,10 @@ import { PageHeader } from '@/components/admin/ui';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ownerConfigFromEnv } from '@/lib/admin/identity';
 import { requireOwnerPage } from '@/lib/admin/owner';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { voiceConfig } from '@/lib/voice/config';
+import { accountUsage } from '@/lib/voice/eleven';
+import { VoiceControls, type VoiceSettingsView } from '@/components/admin/voice-controls';
 
 export const metadata: Metadata = { title: 'Platform Settings' };
 
@@ -14,6 +18,9 @@ const set = (name: string) => (process.env[name] ? 'configured' : 'missing');
 export default async function SettingsPage() {
   const owner = await requireOwnerPage();
   const cfg = ownerConfigFromEnv();
+  const voice = voiceConfig();
+  const [{ data: voiceData }, usage] = await Promise.all([createSupabaseAdminClient().rpc('admin_voice_overview', { p_actor: owner.id }), accountUsage(voice)]);
+  const vo = (voiceData ?? null) as VoiceOverview | null;
   const rows: [string, string][] = [
     ['Owner account', owner.email],
     ['Owner id (CODESTREAK_OWNER_ID)', mask(cfg.id)],
@@ -59,6 +66,82 @@ export default async function SettingsPage() {
           </ul>
         </CardContent>
       </Card>
+      <VoiceSection voice={voice} overview={vo} usage={usage} />
     </>
+  );
+}
+
+interface VoiceOverview {
+  settings: VoiceSettingsView;
+  month: { generated: number; cached: number; fallbacks: number; errors: number; chars: number; briefings: number; announcements: number; users: number };
+  clips: { count: number; plays: number };
+  recent_errors: { at: string; kind: string; error: string | null }[];
+}
+
+const fmt = (n: number) => n.toLocaleString('en-US');
+
+/** Phase 41.2 - the voice companion: switches, limits and usage (small on purpose). */
+function VoiceSection({ voice, overview, usage }: { voice: ReturnType<typeof voiceConfig>; overview: VoiceOverview | null; usage: Awaited<ReturnType<typeof accountUsage>> }) {
+  const m = overview?.month;
+  const served = (m?.generated ?? 0) + (m?.cached ?? 0);
+  const hitRate = served > 0 ? Math.round(((m?.cached ?? 0) / served) * 100) : null;
+  const tiles: [string, string, string][] = [
+    ['Audio generated', fmt(m?.generated ?? 0), 'this month (UTC)'],
+    ['Served from cache', hitRate === null ? '–' : `${hitRate}%`, `${fmt(m?.cached ?? 0)} replays, no credits`],
+    ['Characters sent', fmt(m?.chars ?? 0), 'counted by CodeStreak (estimate of credits)'],
+    ['Fallbacks · errors', `${fmt(m?.fallbacks ?? 0)} · ${fmt(m?.errors ?? 0)}`, 'browser voice used instead'],
+  ];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Voice companion (ElevenLabs)</CardTitle>
+        <CardDescription>
+          One voice for everyone, set in Render: ELEVENLABS_VOICE_ID ({voice.voiceId}) and ELEVENLABS_MODEL_ID ({voice.modelId}). Key:{' '}
+          {voice.apiKey ? 'configured' : voice.keyProblem ?? 'missing (browsers read aloud instead)'}.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {overview ? <VoiceControls initial={overview.settings} /> : <p className="text-sm text-destructive-text">Voice settings couldn&apos;t be loaded.</p>}
+        <dl className="grid gap-3 sm:grid-cols-4">
+          {tiles.map(([k, v, hint]) => (
+            <div key={k} className="rounded-lg border border-border p-3">
+              <dt className="text-xs text-muted-foreground">{k}</dt>
+              <dd className="mt-1 text-lg font-semibold tabular-nums">{v}</dd>
+              <p className="text-[11px] text-muted-foreground">{hint}</p>
+            </div>
+          ))}
+        </dl>
+        <div className="rounded-lg border border-border p-3 text-sm">
+          <p className="font-medium">ElevenLabs account (reported by ElevenLabs)</p>
+          {usage === null ? (
+            <p className="text-muted-foreground">Not available: no API key is configured.</p>
+          ) : 'error' in usage ? (
+            <p className="text-muted-foreground">Not available: {usage.error}</p>
+          ) : (
+            <p className="text-muted-foreground">
+              {usage.tier} plan: {fmt(usage.used)} of {fmt(usage.limit)} credits used
+              {usage.resetsAt ? `, resets ${new Date(usage.resetsAt * 1000).toISOString().slice(0, 10)}` : ''}. This includes anything else on the account, not only CodeStreak.
+            </p>
+          )}
+          <p className="mt-1 text-xs text-muted-foreground">
+            This month: {fmt(m?.briefings ?? 0)} briefings and {fmt(m?.announcements ?? 0)} announcements for {fmt(m?.users ?? 0)} players. {fmt(overview?.clips.count ?? 0)} clips cached.
+          </p>
+        </div>
+        {overview && overview.recent_errors.length > 0 && (
+          <div>
+            <p className="mb-1 text-sm font-medium">Recent errors</p>
+            <ul className="space-y-1 text-xs text-muted-foreground">
+              {overview.recent_errors.map((e, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="shrink-0 font-mono">{new Date(e.at).toISOString().slice(0, 16).replace('T', ' ')}</span>
+                  <span className="shrink-0">{e.kind}</span>
+                  <span className="min-w-0 break-words">{e.error}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
