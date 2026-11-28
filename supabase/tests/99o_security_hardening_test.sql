@@ -34,7 +34,8 @@ begin
   -- Service-role-only tables carry no grants for API roles.
   select string_agg(t, ', ') into bad
   from unnest(array['admin_audit', 'admin_notes', 'admins', 'moderation_flags', 'leetcode_binding_codes',
-                    'leetcode_snapshots', 'linked_account_releases', 'sign_in_attempts', 'wallet_login_challenges']) t
+                    'leetcode_snapshots', 'linked_account_releases', 'sign_in_attempts', 'wallet_login_challenges',
+                    'chain_lookup_tables']) t
   where has_table_privilege('anon', 'public.' || t, 'select') or has_table_privilege('authenticated', 'public.' || t, 'select')
      or has_table_privilege('authenticated', 'public.' || t, 'insert');
   assert bad is null, 'service-role tables still granted: ' || bad;
