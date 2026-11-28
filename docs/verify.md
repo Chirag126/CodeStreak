@@ -22,7 +22,7 @@ In this repository: **Actions → Verify devnet program → Run workflow**. It r
 Needs Docker and Rust.
 
 ```bash
-cargo install solana-verify --version 0.6.0 --locked
+cargo install solana-verify --git https://github.com/solana-foundation/solana-verifiable-build --rev 64a7fd490b4ea8f8c203d3268c24760529b17208 --locked
 
 # The hash of what is deployed
 solana-verify -u devnet get-program-hash A4ohMziwegRbnV2DFHKW1YkNoVNeeiWuCJS5MjWeJT7J

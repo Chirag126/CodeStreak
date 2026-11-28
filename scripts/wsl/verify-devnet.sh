@@ -7,7 +7,7 @@
 # Usage (WSL Ubuntu, repo root, after `bash scripts/wsl/deploy-devnet.sh`):
 #   bash scripts/wsl/verify-devnet.sh
 #
-# Needs: Docker running, solana-verify (`cargo install solana-verify --version 0.6.0 --locked`),
+# Needs: Docker running, solana-verify (`cargo install solana-verify --git https://github.com/solana-foundation/solana-verifiable-build --rev 64a7fd490b4ea8f8c203d3268c24760529b17208 --locked`),
 # and the deployed program built by `solana-verify build` from a commit that is pushed to GitHub.
 set -euo pipefail
 
@@ -25,7 +25,11 @@ fail() { echo "ERROR: $1" >&2; exit 1; }
 
 [[ -f Anchor.toml ]] || fail "run this from the repo root (cd /mnt/c/dev/CodeStreak)"
 [[ -f "$AUTHORITY" ]] || fail "upgrade-authority key not found at $AUTHORITY"
-command -v solana-verify >/dev/null 2>&1 || fail "solana-verify not found: cargo install solana-verify --version 0.6.0 --locked"
+command -v solana-verify >/dev/null 2>&1 || fail "solana-verify not found: cargo install solana-verify --git https://github.com/solana-foundation/solana-verifiable-build --rev 64a7fd490b4ea8f8c203d3268c24760529b17208 --locked"
+# The devnet verifier (verify-devnet.osec.io) is only chosen automatically from 0.6.0 on; 0.5.x
+# would send the job to the mainnet verifier, which can't find a devnet program.
+sv_version="$(solana-verify --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"
+case "$sv_version" in 0.[0-5].*) fail "solana-verify $sv_version can't submit devnet verifications; install the pinned version: cargo install solana-verify --git https://github.com/solana-foundation/solana-verifiable-build --rev 64a7fd490b4ea8f8c203d3268c24760529b17208 --locked" ;; esac
 docker info >/dev/null 2>&1 || fail "Docker is not running (start Docker Desktop with WSL integration, or the docker service)"
 
 step "Cluster"

@@ -36,7 +36,7 @@ fi
 if command -v solana-verify >/dev/null 2>&1; then
   ok "solana-verify" "$(first_line solana-verify --version)"
 else
-  warn "solana-verify" "not found (verifiable builds): cargo install solana-verify --version 0.6.0 --locked"
+  warn "solana-verify" "not found (verifiable builds): cargo install solana-verify --git https://github.com/solana-foundation/solana-verifiable-build --rev 64a7fd490b4ea8f8c203d3268c24760529b17208 --locked"
 fi
 if docker info >/dev/null 2>&1; then
   ok "docker" "$(first_line docker --version)"

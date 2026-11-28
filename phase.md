@@ -1844,4 +1844,4 @@ No app behaviour changes. One program upgrade (it only adds the `security.txt` d
 
 **Docs.** `README.md` (what CodeStreak is, the program address, how it uses Solana), `SECURITY.md`, `docs/verify.md`.
 
-**To do after merging (WSL, repo root, once):** `cargo install solana-verify --version 0.6.0 --locked`, start Docker Desktop (WSL integration on), `bash scripts/wsl/doctor.sh`, then `git pull` and `bash scripts/wsl/deploy-devnet.sh`. Also on GitHub: Settings → Security → **Private vulnerability reporting: Enable** (the security.txt contact link uses it).
+**To do after merging (WSL, repo root, once):** `cargo install solana-verify --git https://github.com/solana-foundation/solana-verifiable-build --rev 64a7fd490b4ea8f8c203d3268c24760529b17208 --locked`, start Docker Desktop (WSL integration on), `bash scripts/wsl/doctor.sh`, then `git pull` and `bash scripts/wsl/deploy-devnet.sh`. Also on GitHub: Settings → Security → **Private vulnerability reporting: Enable** (the security.txt contact link uses it).

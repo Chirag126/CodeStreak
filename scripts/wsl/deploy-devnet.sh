@@ -9,7 +9,7 @@
 #
 # The verifiable build runs `solana-verify build` in a pinned Docker image (Solana 3.1.10, from
 # [workspace.metadata.cli] in Cargo.toml), so anyone can rebuild the same bytes from GitHub. It needs
-# Docker and solana-verify (`cargo install solana-verify --version 0.6.0 --locked`), and a clean,
+# Docker and solana-verify (`cargo install solana-verify --git https://github.com/solana-foundation/solana-verifiable-build --rev 64a7fd490b4ea8f8c203d3268c24760529b17208 --locked`), and a clean,
 # committed tree (the verification names the commit).
 #
 # Safety:
@@ -63,7 +63,7 @@ echo "program ID $PROGRAM_ID"
 
 if [[ $SKIP_BUILD -eq 0 ]]; then
   if [[ $VERIFIABLE -eq 1 ]]; then
-    command -v solana-verify >/dev/null 2>&1 || fail "solana-verify not found: cargo install solana-verify --version 0.6.0 --locked (or use --quick)"
+    command -v solana-verify >/dev/null 2>&1 || fail "solana-verify not found: cargo install solana-verify --git https://github.com/solana-foundation/solana-verifiable-build --rev 64a7fd490b4ea8f8c203d3268c24760529b17208 --locked (or use --quick)"
     docker info >/dev/null 2>&1 || fail "Docker is not running (start Docker Desktop with WSL integration), or use --quick"
     [[ -z "$(git status --porcelain --untracked-files=no)" ]] || fail "uncommitted changes: a verifiable build must come from a commit (commit first, or use --quick)"
   fi
