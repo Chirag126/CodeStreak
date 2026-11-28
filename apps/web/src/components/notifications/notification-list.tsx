@@ -4,6 +4,7 @@ import type { NotificationItem, NotificationKind } from '@codestreak/shared';
 import { AlarmClockIcon, BadgeCheckIcon, BellIcon, CoinsIcon, GavelIcon, GiftIcon, MailIcon, TrophyIcon, UserPlusIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { SpeakButton } from '@/components/voice/speak-button';
 import { cn } from '@/lib/utils';
 
 const ICON: Record<NotificationKind, typeof BellIcon> = {
@@ -49,7 +50,7 @@ export function NotificationList({ items, now, onOpen }: { items: NotificationIt
       {items.map((n) => {
         const Icon = ICON[n.kind] ?? BellIcon;
         const inner = (
-          <div className={cn('flex gap-3 px-3 py-2.5 text-sm', !n.read_at && 'bg-cobalt-400/5')}>
+          <div className={cn('flex gap-3 py-2.5 pr-10 pl-3 text-sm', !n.read_at && 'bg-cobalt-400/5')}>
             <Icon className={cn('mt-0.5 size-4 shrink-0', n.kind === 'deadline_warning' ? 'text-warning-400' : 'text-muted-foreground')} aria-hidden />
             <div className="min-w-0 flex-1">
               <p className={cn('leading-snug', !n.read_at && 'font-medium')}>{n.title}</p>
@@ -60,7 +61,7 @@ export function NotificationList({ items, now, onOpen }: { items: NotificationIt
           </div>
         );
         return (
-          <li key={n.id}>
+          <li key={n.id} className="relative">
             {n.href ? (
               <Link href={n.href} onClick={() => onOpen(n)} className="block outline-none hover:bg-muted focus-visible:bg-muted">
                 {inner}
@@ -70,6 +71,7 @@ export function NotificationList({ items, now, onOpen }: { items: NotificationIt
                 {inner}
               </button>
             )}
+            <SpeakButton notificationId={n.id} className="absolute top-2 right-2" />
           </li>
         );
       })}

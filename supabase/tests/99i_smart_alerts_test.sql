@@ -70,17 +70,23 @@ begin
   assert (select profile_id from public.notifications where challenge_id = 'fc000000-0000-0000-0000-000000000001' and kind = 'deadline_warning') = '00000000-0000-0000-0000-0000000000a6', 'to the unverified player';
   assert (select title from public.notifications where challenge_id = 'fc000000-0000-0000-0000-000000000001' and kind = 'deadline_warning') =
          'Day 2 of Alerts group ends at ' || to_char((start_at + interval '20 minutes') at time zone 'UTC', 'HH24:MI') || ' UTC', 'UTC end time in the title';
-  -- Again a minute later: deduplicated.
-  perform private.send_deadline_warnings(start_at + interval '19 minutes');
+  -- 30 s later (still before the final lead of 60 s): deduplicated.
+  perform private.send_deadline_warnings(start_at + interval '18 minutes 30 seconds');
   assert pg_temp.warnings() = 1, 'no duplicate';
+  -- Phase 41.2: inside the final minute, one "last call", also deduplicated.
+  perform private.send_deadline_warnings(start_at + interval '19 minutes');
+  perform private.send_deadline_warnings(start_at + interval '19 minutes 20 seconds');
+  assert pg_temp.warnings() = 2, format('early + final, got %s', pg_temp.warnings());
+  assert exists (select 1 from public.notifications where challenge_id = 'fc000000-0000-0000-0000-000000000001' and dedupe_key like 'deadline-final:%'
+                 and title = 'Last call: day 2 of Alerts group ends in 1 min'), 'final warning title';
   -- Day 3, 1 minute before its end: Alice has a Shield, Bob's check met the goal: nobody.
   insert into public.shields (membership_id, day, price_paid, tx_signature) values ('fc100000-0000-0000-0000-000000000001', 2, 2000000, '4' || repeat('5', 86));
   insert into public.member_day_checks (membership_id, day, provider, lines, goal, outcome, complete) values ('fc100000-0000-0000-0000-000000000002', 2, 'github', 50, 10, 'met', true);
   perform private.send_deadline_warnings(start_at + interval '29 minutes');
-  assert pg_temp.warnings() = 1, 'shielded and met players not warned';
+  assert pg_temp.warnings() = 2, 'shielded and met players not warned';
   -- After the challenge ended: nothing.
   perform private.send_deadline_warnings(start_at + interval '31 minutes');
-  assert pg_temp.warnings() = 1, 'no warnings after the last day';
+  assert pg_temp.warnings() = 2, 'no warnings after the last day';
 end $$;
 
 -- ---- settlement and payout

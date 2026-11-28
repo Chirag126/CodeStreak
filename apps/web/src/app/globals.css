@@ -199,3 +199,44 @@ html[data-motion='reduce'] .streak-cell {
     animation: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Phase 41.2 voice companion: a small waveform while the update is prepared or
+   spoken. Static bars when motion is reduced.
+   --------------------------------------------------------------------------- */
+@keyframes voice-wave {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+.voice-wave > span {
+  transform-origin: center;
+  transform: scaleY(0.35);
+}
+.voice-wave[data-active='true'] > span {
+  animation: voice-wave 900ms ease-in-out infinite;
+}
+.voice-wave[data-active='true'] > span:nth-child(2) {
+  animation-delay: -150ms;
+}
+.voice-wave[data-active='true'] > span:nth-child(3) {
+  animation-delay: -300ms;
+}
+.voice-wave[data-active='true'] > span:nth-child(4) {
+  animation-delay: -450ms;
+}
+.voice-wave[data-active='true'] > span:nth-child(5) {
+  animation-delay: -600ms;
+}
+html[data-motion='reduce'] .voice-wave > span {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion='full']) .voice-wave > span {
+    animation: none;
+  }
+}

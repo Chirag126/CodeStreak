@@ -1,7 +1,8 @@
 'use client';
 
 import { emptyInbox, inboxReducer, type NotificationItem } from '@codestreak/shared';
-import { useCallback, useEffect, useReducer, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useVoiceStatus } from '@/components/voice/use-voice-status';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 const COLUMNS = 'id, kind, title, body, href, created_at, read_at';
@@ -15,6 +16,14 @@ export function useInbox(limit = 20) {
   const [state, dispatch] = useReducer(inboxReducer, emptyInbox);
   const [userId, setUserId] = useState<string | null | undefined>(undefined);
   const [loaded, setLoaded] = useState(false);
+  // Phase 41.2: optional browser pop-ups for new notifications while the tab is in the background
+  // (only if the player switched them on and granted permission). The tag makes the browser show
+  // one pop-up per notification even when several hooks receive it.
+  const status = useVoiceStatus(Boolean(userId));
+  const popups = useRef(false);
+  useEffect(() => {
+    popups.current = Boolean(status?.browser);
+  }, [status]);
 
   const load = useCallback(async () => {
     const supabase = createSupabaseBrowserClient();
@@ -53,7 +62,19 @@ export function useInbox(limit = 20) {
         .channel(`inbox:${userId}:${crypto.randomUUID()}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `profile_id=eq.${userId}` }, (payload) => {
           if (payload.eventType === 'DELETE') return;
-          dispatch({ type: 'upsert', item: payload.new as NotificationItem });
+          const item = payload.new as NotificationItem;
+          dispatch({ type: 'upsert', item });
+          if (payload.eventType === 'INSERT' && popups.current && document.visibilityState === 'hidden' && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            try {
+              const pop = new Notification(item.title, { body: item.body || undefined, tag: `codestreak:${item.id}` });
+              pop.onclick = () => {
+                window.focus();
+                if (item.href) window.location.assign(item.href);
+              };
+            } catch {
+              /* some browsers only allow pop-ups from a service worker: the in-app inbox still has it */
+            }
+          }
         })
         .subscribe((status) => {
           if (status === 'SUBSCRIBED' && wasDown) void load();

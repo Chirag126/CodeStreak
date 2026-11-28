@@ -1769,3 +1769,31 @@ Checked what was already there first; nothing that existed was replaced or added
 - **Leaderboards:** the disabled "My groups" hint says to sign in and join a challenge.
 - **PNG / JPG widget:** rounded, bordered frame like the SVG.
 - Checked and fine: every public page, 404s, leaderboard tabs, embed iframe and SVG, Blink endpoints, server logs (no errors since the 25 Nov fix).
+
+## Phase 41.2: Voice companion and smarter deadline alerts (ElevenLabs)
+
+Built on what was already there: the Phase 33 notification system (triggers, dedupe, Realtime inbox,
+pg_cron deadline warnings), the dashboard loaders, the claims service and the Control Center. One
+new table family and one storage bucket; no new service, worker job or dependency.
+
+**Deadline alerts.**
+- Two warnings per unverified day instead of one: the existing early warning (3 h before the end; a quarter-day on demo days) and a new **last call** (30 min before; a twelfth of the day, at least a minute, on demo days). Each is sent once per player and day (dedupe keys `deadline:` and `deadline-final:`), only while the day is unverified, not shielded and the latest check isn't met.
+- End times are shown in the **player's own time zone** (`profiles.timezone`, e.g. "ends at 21:30 IST"); unknown zones fall back to UTC. Settings → *Alerts and voice* offers "Use <your browser's zone>".
+- **Preferences** per player: deadline alerts, day results and disputes, rewards (results, payouts, badges), group updates, voice, browser pop-ups. `private.notify` checks them, so every existing trigger respects them. Account notices (moderation) are always delivered.
+- **Browser pop-ups** (optional, off by default): asks the browser for permission when switched on, and shows new notifications only while the tab is in the background (one per notification). The in-app inbox stays the main channel.
+
+**"Get my update".** One button on the dashboard (and on a challenge page for its members). It builds a briefing from the player's own data, read with their session (RLS) through the same loaders the dashboard uses: the challenge with the most urgent day, time left, today's status (verified / met / behind / not checked…), streak and best, group rank (from the standings the player can see, never guessed), money ready to claim (from the chain via the claims service; left out if that is slow), unread notifications, and **one next step** (finish today / claim / link an account / join a challenge). Times are rounded (5 minutes, hours, days), so asking again a minute later gives the same words. The text is capped at about a minute of speech; less important lines are dropped first. Links, wallet/transaction addresses, emails and long numbers are stripped before anything is sent to ElevenLabs.
+
+**Voice.** One fixed voice for everyone, configured only in the server environment: `ELEVENLABS_VOICE_ID` (default Sarah, `EXAVITQu4vr4xnSDxMaL`) and `ELEVENLABS_MODEL_ID` (default `eleven_flash_v2_5`: natural, low latency, half the credits of Multilingual v2), 64 kbps MP3. Player controls: play, pause/resume, stop, replay, volume (remembered on the device) and a text-only switch (no audio is generated at all). Nothing ever autoplays: sound starts from the player's click. Notifications get a small listen button (hidden when the player turned voice off or the owner turned announcements off).
+
+**Credits.**
+- Cache: the clip for an exact text (voice + model + words, SHA-256) is generated once and kept in the private `voice` storage bucket; replays and other players with the same text cost nothing. Clips unplayed for 30 days are pruned.
+- Limits in the database, checked and counted atomically before every ElevenLabs call: an app-wide monthly character limit (default 60,000) and new clips per player per day (default 15). Failed calls don't count; cache hits never count.
+- Audio is generated only when a player asks (button or listen), never on page load or refresh.
+- Fallback everywhere: kill switch off, no key, over a limit, or ElevenLabs down → the browser's own voice reads the same text, with a one-line note why.
+
+**Control Center → Platform Settings → Voice companion.** Global kill switch, announcements switch, the two limits (saved through one owner-only, hash-chain-audited call), this month's generations, cache hit rate, characters sent (labelled as CodeStreak's own count, an estimate of credits), fallbacks and errors, recent errors, and the **real** account usage as ElevenLabs reports it (`/v1/user/subscription`; shown only when the key may read it, and noted as covering the whole account). No roles were added.
+
+**Security.** The key is read only on the web server (never `NEXT_PUBLIC_`, never sent to the browser; the existing secret scanner already blocks `sk_…` keys in commits and public variables, and the env checker validates it). The voice routes are read-only, signed-in only, rate limited, and never touch wallets, claims, settlement or transactions. Voice tables are service-role only (RLS deny + no grants); the 99o invariants still hold.
+
+**Tests.** `briefing.test.ts` (durations, rounding stability, rank/claims never invented, next-step priorities, length cap, determinism, private data stripped), `deadline.test.ts` (final lead mirror), `lib/voice/policy.test.ts` (cache key, announcement text), `99p_voice_companion_test.sql` (preferences, muted categories, account notices, local-time titles and UTC fallback, final warning dedupe, voice limits / kill switches / accounting, owner-only audited settings, no access for users) and the updated `99i` (early + final warnings).

@@ -134,6 +134,10 @@ const githubToken = (v) =>
 
 const firecrawlKey = (v) => /^fc-[A-Za-z0-9]{24,}$/.test(v) || 'expected a Firecrawl key starting with fc-';
 
+const elevenlabsKey = (v) => /^sk_[A-Za-z0-9]{32,}$/.test(v) || 'expected an ElevenLabs API key starting with sk_';
+
+const elevenlabsVoiceId = (v) => /^[A-Za-z0-9]{16,40}$/.test(v) || 'expected an ElevenLabs voice ID (letters and digits, e.g. EXAVITQu4vr4xnSDxMaL)';
+
 const longSecret = (v) => v.length >= 32 || 'must be at least 32 characters (use 32 random bytes as hex)';
 
 const nonEmpty = (v) => v.length > 0 || 'must not be empty';
@@ -191,6 +195,9 @@ export const SPEC = [
   // Local only (one-time `pnpm devnet:init-config`); never set on Render.
   { name: 'UPGRADE_AUTHORITY_KEYPAIR_PATH', phase: 9, validate: keypairPath, secret: true, optional: true },
   // Local only (one-time `pnpm devnet:set-entry-gate`, Phase 37.2); never set on Render.
+  { name: 'ELEVENLABS_API_KEY', phase: 41, validate: elevenlabsKey, secret: true, optional: true },
+  { name: 'ELEVENLABS_VOICE_ID', phase: 41, validate: elevenlabsVoiceId, optional: true },
+  { name: 'ELEVENLABS_MODEL_ID', phase: 41, validate: nonEmpty, optional: true },
   { name: 'ADMIN_KEYPAIR_PATH', phase: 37, validate: keypairPath, secret: true, optional: true },
   { name: 'VERIFIER_KEYPAIR_PATH', phase: 28, validate: keypairPath, secret: true, altName: 'VERIFIER_KEYPAIR_JSON' },
 ];

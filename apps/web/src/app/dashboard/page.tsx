@@ -8,6 +8,7 @@ import { MyInvites } from '@/components/groups/my-invites';
 import { Reveal } from '@/components/motion/primitives';
 import { RefreshOnFocus } from '@/components/motion/refresh-on-focus';
 import { Badge } from '@/components/ui/badge';
+import { VoiceBriefing } from '@/components/voice/voice-briefing';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { SIGN_IN_PATH, USERNAME_PATH } from '@/lib/auth/routes';
@@ -53,6 +54,10 @@ export default async function DashboardPage() {
             </Button>
           </form>
         </div>
+      </Reveal>
+
+      <Reveal trigger="mount" delay={0.02}>
+        <VoiceBriefing />
       </Reveal>
 
       <LiveDashboard view={view} />
