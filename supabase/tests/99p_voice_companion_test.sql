@@ -58,29 +58,29 @@ end $$;
 insert into public.challenges (id, creator_id, title, visibility, token, mint, buy_in, start_at, day_length_secs, num_days,
   join_deadline_at, min_participants, max_participants, shield_price, max_shields, shield_grace_secs, verify_window_secs,
   dispute_window_secs, rules, rules_hash, onchain_address, onchain_challenge_id, participant_count) values
-  ('fd000000-0000-0000-0000-000000000001', 'ff000000-0000-0000-0000-0000000000a1', 'Voice group', 'public', 'sol', 'So11111111111111111111111111111111111111112', 10000000,
+  ('a4120000-0000-0000-0000-000000000001', 'ff000000-0000-0000-0000-0000000000a1', 'Voice group', 'public', 'sol', 'So11111111111111111111111111111111111111112', 10000000,
    now() - interval '1 hour', 86400, 3, now() - interval '2 hours', 2, 10, 2000000, 1, 300, 600, 900, '{"providers":["github"]}', repeat('cd', 32),
-   'Vx111111111111111111111111111111111111111111', 991, 2);
+   'Vq412111111111111111111111111111111111111111', 41201, 2);
 insert into public.memberships (id, challenge_id, profile_id, wallet_address, deposited) values
-  ('fd100000-0000-0000-0000-000000000001', 'fd000000-0000-0000-0000-000000000001', 'ff000000-0000-0000-0000-0000000000a2', 'Va5vCCzJBaUEiv4omcdY5Hu2fwk8VpaSC3fCPuu7JTaa', 10000000),
-  ('fd100000-0000-0000-0000-000000000002', 'fd000000-0000-0000-0000-000000000001', 'ff000000-0000-0000-0000-0000000000a3', 'Vb5vCCzJBaUEiv4omcdY5Hu2fwk8VpaSC3fCPuu7JTaa', 10000000);
+  ('a4121000-0000-0000-0000-000000000001', 'a4120000-0000-0000-0000-000000000001', 'ff000000-0000-0000-0000-0000000000a2', 'Va5vCCzJBaUEiv4omcdY5Hu2fwk8VpaSC3fCPuu7JTaa', 10000000),
+  ('a4121000-0000-0000-0000-000000000002', 'a4120000-0000-0000-0000-000000000001', 'ff000000-0000-0000-0000-0000000000a3', 'Vb5vCCzJBaUEiv4omcdY5Hu2fwk8VpaSC3fCPuu7JTaa', 10000000);
 
 do $$
-declare s timestamptz := (select start_at from public.challenges where id = 'fd000000-0000-0000-0000-000000000001');
+declare s timestamptz := (select start_at from public.challenges where id = 'a4120000-0000-0000-0000-000000000001');
 declare ends timestamptz := s + interval '1 day';
 declare w text;
 begin
   assert private.final_lead_secs(86400) = 1800 and private.final_lead_secs(600) = 60 and private.final_lead_secs(3600) = 300, 'final leads';
   -- 2 h before the end: early warning for Ann only (Ben muted deadlines), in IST.
   perform private.send_deadline_warnings(ends - interval '2 hours');
-  select title into w from public.notifications where challenge_id = 'fd000000-0000-0000-0000-000000000001' and dedupe_key like 'deadline:%';
+  select title into w from public.notifications where challenge_id = 'a4120000-0000-0000-0000-000000000001' and dedupe_key like 'deadline:%';
   assert w = 'Day 1 of Voice group ends at ' || to_char(ends at time zone 'Asia/Kolkata', 'HH24:MI') || ' IST', format('local time in title, got %s', w);
-  assert (select count(*) from public.notifications where challenge_id = 'fd000000-0000-0000-0000-000000000001' and kind = 'deadline_warning') = 1, 'muted player skipped';
+  assert (select count(*) from public.notifications where challenge_id = 'a4120000-0000-0000-0000-000000000001' and kind = 'deadline_warning') = 1, 'muted player skipped';
   -- 25 min before: one final warning; repeated runs add nothing.
   perform private.send_deadline_warnings(ends - interval '25 minutes');
   perform private.send_deadline_warnings(ends - interval '20 minutes');
-  assert (select count(*) from public.notifications where challenge_id = 'fd000000-0000-0000-0000-000000000001' and dedupe_key like 'deadline-final:%') = 1, 'one final warning';
-  assert (select title from public.notifications where challenge_id = 'fd000000-0000-0000-0000-000000000001' and dedupe_key like 'deadline-final:%')
+  assert (select count(*) from public.notifications where challenge_id = 'a4120000-0000-0000-0000-000000000001' and dedupe_key like 'deadline-final:%') = 1, 'one final warning';
+  assert (select title from public.notifications where challenge_id = 'a4120000-0000-0000-0000-000000000001' and dedupe_key like 'deadline-final:%')
          = 'Last call: day 1 of Voice group ends in 25 min', 'final title';
 end $$;
 
@@ -91,7 +91,7 @@ select public.set_notification_prefs('{"deadlines": true}');
 reset role;
 reset request.jwt.claim.sub;
 do $$
-declare ends timestamptz := (select start_at from public.challenges where id = 'fd000000-0000-0000-0000-000000000001') + interval '1 day';
+declare ends timestamptz := (select start_at from public.challenges where id = 'a4120000-0000-0000-0000-000000000001') + interval '1 day';
 begin
   perform private.send_deadline_warnings(ends - interval '2 hours');
   assert (select title from public.notifications where profile_id = 'ff000000-0000-0000-0000-0000000000a3' and dedupe_key like 'deadline:%')
