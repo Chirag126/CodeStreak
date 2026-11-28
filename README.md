@@ -3,7 +3,7 @@
 **Stake on your coding streak.** Players put SOL or USDC into a shared escrow, code every day (GitHub pushes or LeetCode solves, checked automatically), and the ones who keep their streak split the stakes of the ones who don't. Sponsors can add to the pot. Every deposit, day result, payout and badge is on Solana.
 
 - **Live app (devnet):** https://codestreak-k0uv.onrender.com
-- **Program (devnet):** [`A4ohMziwegRbnV2DFHKW1YkNoVNeeiWuCJS5MjWeJT7J`](https://explorer.solana.com/address/A4ohMziwegRbnV2DFHKW1YkNoVNeeiWuCJS5MjWeJT7J?cluster=devnet) — verified build, on-chain IDL and `security.txt`; [check it yourself](docs/verify.md)
+- **Program (devnet):** [`A4ohMziwegRbnV2DFHKW1YkNoVNeeiWuCJS5MjWeJT7J`](https://explorer.solana.com/address/A4ohMziwegRbnV2DFHKW1YkNoVNeeiWuCJS5MjWeJT7J?cluster=devnet) — reproducible build that matches this repository, on-chain IDL and `security.txt`; [check it yourself](docs/verify.md)
 - **Network:** Solana devnet only. No real money.
 
 ## How it uses Solana
@@ -14,7 +14,7 @@
 - **Gasless for players**: a relayer pays fees and co-signs; the program checks who may approve what (entry gate for private groups).
 - **Blinks / Solana Actions**: a challenge link unfurls as a join or sponsor button.
 - **Fast, cheap transactions**: compute limits from simulation, priority fees from the network, resend until confirmed or expired; the worker packs many players into versioned transactions with an address lookup table.
-- **Trust**: reproducible build verified by OtterSec's devnet verifier, IDL on-chain (Program Metadata), `security.txt` in the binary.
+- **Trust**: reproducible build (anyone can rebuild it and compare hashes; the verification record is on-chain), IDL on-chain (Program Metadata), `security.txt` in the binary.
 
 ## Repository
 

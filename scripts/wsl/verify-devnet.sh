@@ -67,7 +67,11 @@ solana-verify -u "$URL" verify-from-repo "$REPO_URL" \
 
 step "OtterSec devnet verifier"
 authority_pk="$(solana-keygen pubkey "$AUTHORITY")"
-solana-verify -u "$URL" remote submit-job --program-id "$PROGRAM_ID" --uploader "$authority_pk"
+if ! solana-verify -u "$URL" remote submit-job --program-id "$PROGRAM_ID" --uploader "$authority_pk"; then
+  echo "The verification record is on-chain; only OtterSec's devnet verifier (verify-devnet.osec.io) could not be reached." >&2
+  echo "Submit again later (no rebuild needed): solana-verify -u $URL remote submit-job --program-id $PROGRAM_ID --uploader $authority_pk" >&2
+  exit 1
+fi
 solana-verify -u "$URL" remote get-status --program-id "$PROGRAM_ID" || true
 
 step "Done"
