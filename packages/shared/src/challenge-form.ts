@@ -27,8 +27,10 @@ export const STAKE_LIMITS = {
 
 export const DEMO_DAY_MINUTES = [2, 5, 10] as const;
 export const DEMO_NUM_DAYS = 3;
-const REAL_VERIFY_WINDOW = 6 * 3600;
-const REAL_DISPUTE_WINDOW = 24 * 3600;
+// Real windows: 3 h to record the last day (recorded ~45 min after it ends, with retries through a
+// provider outage), then 12 h for disputes. Payouts ~15 h after the last day.
+const REAL_VERIFY_WINDOW = 3 * 3600;
+const REAL_DISPUTE_WINDOW = 12 * 3600;
 // Demo windows: 3 min to record the last day (GitHub lag + a retry), then 3 min for disputes.
 const DEMO_VERIFY_WINDOW = 3 * 60;
 const DEMO_DISPUTE_WINDOW = 3 * 60;
