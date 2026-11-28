@@ -89,11 +89,10 @@ export async function syncJoin(connection: Connection, input: { challengeAddress
   );
   if (memberError) throw new Error(`membership sync failed: ${memberError.message}`);
 
-  const { error: receiptError } = await admin.from('receipts').upsert(
-    { challenge_id: challengeId, profile_id: input.profileId, wallet: input.wallet, kind: 'join', amount: deposited, tx_signature: input.signature },
-    { onConflict: 'tx_signature', ignoreDuplicates: true },
-  );
-  if (receiptError) throw new Error(`receipt sync failed: ${receiptError.message}`);
+  const { error: receiptError } = await admin
+    .from('receipts')
+    .insert({ challenge_id: challengeId, profile_id: input.profileId, wallet: input.wallet, kind: 'join', amount: deposited, tx_signature: input.signature });
+  if (receiptError && !alreadyRecorded(receiptError)) throw new Error(`receipt sync failed: ${receiptError.message}`);
 }
 
 /**
@@ -155,11 +154,10 @@ export async function syncSponsor(
     { onConflict: 'tx_signature', ignoreDuplicates: true },
   );
   if (error) throw new Error(`sponsorship sync failed: ${error.message}`);
-  const { error: receiptError } = await admin.from('receipts').upsert(
-    { challenge_id: challengeId, profile_id: input.profileId, wallet: input.wallet, kind: 'sponsor', amount: input.amount, tx_signature: input.signature },
-    { onConflict: 'tx_signature', ignoreDuplicates: true },
-  );
-  if (receiptError) throw new Error(`receipt sync failed: ${receiptError.message}`);
+  const { error: receiptError } = await admin
+    .from('receipts')
+    .insert({ challenge_id: challengeId, profile_id: input.profileId, wallet: input.wallet, kind: 'sponsor', amount: input.amount, tx_signature: input.signature });
+  if (receiptError && !alreadyRecorded(receiptError)) throw new Error(`receipt sync failed: ${receiptError.message}`);
 }
 
 /** Mirrors a confirmed Shield: the shields row (board shows the day as covered), the receipt, the totals. */
@@ -182,10 +180,13 @@ export async function syncShield(connection: Connection, input: { challengeAddre
     .from('shields')
     .upsert({ membership_id: m.id, day: input.day, price_paid: price, tx_signature: input.signature }, { onConflict: 'membership_id,day', ignoreDuplicates: true });
   if (error) throw new Error(`shield sync failed: ${error.message}`);
-  await admin
+  const { error: receiptError } = await admin
     .from('receipts')
-    .upsert(
-      { challenge_id: challengeId, profile_id: m.profile_id, wallet: input.wallet, kind: 'shield', amount: price, tx_signature: input.signature },
-      { onConflict: 'tx_signature', ignoreDuplicates: true },
-    );
+    .insert({ challenge_id: challengeId, profile_id: m.profile_id, wallet: input.wallet, kind: 'shield', amount: price, tx_signature: input.signature });
+  if (receiptError && !alreadyRecorded(receiptError)) throw new Error(`receipt sync failed: ${receiptError.message}`);
+}
+
+/** A receipt for this transaction is already there (a repeated sync): fine, it is recorded once. */
+function alreadyRecorded(error: { code?: string }): boolean {
+  return error.code === '23505';
 }
