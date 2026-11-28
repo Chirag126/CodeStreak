@@ -75,7 +75,41 @@ export interface GithubRules {
    * them (a team repo): the user must still be the author and the pusher of each commit.
    */
   repos?: number[] | null;
+  /**
+   * Whose list `repos` is: the creator's (shared: a team repo, anyone's pushes there count if they
+   * are the player's own) or the player's own choice (member: individual mode, so the repository
+   * must also still be owned by the player and not be a fork unless forks are allowed).
+   */
+  repoScope?: 'shared' | 'member';
   allow?: GithubAllowances;
+}
+
+/** How a challenge restricts repositories (rules.github.repoMode; older challenges: from `repos`). */
+export type RepoMode = 'any' | 'shared' | 'individual';
+
+/** A player's repository for an individual-mode challenge, in force from `effectiveFrom`. */
+export interface RepoChoice {
+  repoId: number;
+  ownerId: number;
+  fullName: string;
+  /** ISO time from which it applies (a day uses the choice in force when the day started). */
+  effectiveFrom: string;
+}
+
+/** A row of public.challenge_repo_choices as a RepoChoice. */
+export function repoChoiceFromRow(r: { repo_id: number | string; repo_owner_id: number | string; full_name: string; effective_from: string }): RepoChoice {
+  return { repoId: Number(r.repo_id), ownerId: Number(r.repo_owner_id), fullName: r.full_name, effectiveFrom: r.effective_from };
+}
+
+/** The choice that applies to a day starting at `dayStartSec` (the latest one in force then), or null. */
+export function choiceForDay(choices: readonly RepoChoice[], dayStartSec: number): RepoChoice | null {
+  let best: RepoChoice | null = null;
+  for (const c of choices) {
+    const from = Date.parse(c.effectiveFrom) / 1000;
+    if (!Number.isFinite(from) || from > dayStartSec) continue;
+    if (!best || from > Date.parse(best.effectiveFrom) / 1000) best = c;
+  }
+  return best;
 }
 
 export const STRICT_ALLOWANCES: GithubAllowances = { docs: false, generated: false, forks: false, backdateHours: 0 };
@@ -257,7 +291,12 @@ export function evaluateGithubDay(input: {
     if (c.authorId !== input.userGithubId) { skip('author-mismatch'); continue; }
     // Unknown pusher (undefined) only in old records; a known other pusher never counts.
     if (c.pusherId !== undefined && c.pusherId !== input.userGithubId) { skip('pushed-by-other'); continue; }
-    if (rules.repos && rules.repos.length > 0) {
+    if (rules.repoScope === 'member') {
+      // Individual mode: only the player's chosen repository, still theirs, and no fork unless allowed.
+      if (c.repo.id === undefined || !(rules.repos ?? []).includes(c.repo.id)) { skip('other-repo'); continue; }
+      if (c.repo.fork && !allow.forks) { skip('fork'); continue; }
+      if (c.repo.ownerId !== input.userGithubId) { skip('not-repo-owner'); continue; }
+    } else if (rules.repos && rules.repos.length > 0) {
       // Creator-selected repositories replace the "own repos" rule.
       if (c.repo.id === undefined || !rules.repos.includes(c.repo.id)) { skip('other-repo'); continue; }
     } else {
@@ -356,19 +395,38 @@ export interface GithubRulesDocument {
   allow?: Partial<GithubAllowances> | null;
   /** Creator-selected repositories (resolved and checked public when the challenge was created). */
   repos?: { id: number; fullName: string }[] | null;
+  /** individual: each player picks their own repository; shared: `repos`; any: none (own public repos). */
+  repoMode?: RepoMode;
 }
 
-/** Engine rules from a challenge's (hashed, immutable) rules document. Unknown fields stay strict. */
-export function githubRulesFromDocument(doc: GithubRulesDocument): GithubRules {
+/** The repository mode of a rules document (documents before modes existed: shared when repos were set). */
+export function repoModeOf(doc: Pick<GithubRulesDocument, 'repoMode' | 'repos'> | null | undefined): RepoMode {
+  if (doc?.repoMode === 'individual' || doc?.repoMode === 'shared' || doc?.repoMode === 'any') return doc.repoMode;
+  return (doc?.repos ?? []).length > 0 ? 'shared' : 'any';
+}
+
+/**
+ * Engine rules from a challenge's (hashed, immutable) rules document. Unknown fields stay strict.
+ * Individual mode needs the player's repository for the day (`choice`; null = none chosen, so
+ * nothing can count).
+ */
+export function githubRulesFromDocument(doc: GithubRulesDocument, choice?: RepoChoice | null): GithubRules {
   const allow = doc.allow ?? {};
   const filter = doc.fileFilter;
+  const mode = repoModeOf(doc);
+  const repoRules: Pick<GithubRules, 'repos' | 'repoScope'> =
+    mode === 'individual'
+      ? { repos: choice && Number.isSafeInteger(choice.repoId) && choice.repoId > 0 ? [choice.repoId] : [], repoScope: 'member' }
+      : mode === 'shared'
+        ? { repos: (doc.repos ?? []).map((r) => r.id).filter((id) => Number.isSafeInteger(id) && id > 0), repoScope: 'shared' }
+        : { repos: [] };
   return {
     ...DEFAULT_GITHUB_RULES,
     minMeaningfulLines: doc.minMeaningfulLines,
     fileFilter: filter && ((filter.extensions?.length ?? 0) > 0 || (filter.filenames?.length ?? 0) > 0)
       ? { extensions: filter.extensions ?? [], filenames: filter.filenames ?? [] }
       : null,
-    repos: (doc.repos ?? []).map((r) => r.id).filter((id) => Number.isSafeInteger(id) && id > 0),
+    ...repoRules,
     allow: {
       docs: allow.docs === true,
       generated: allow.generated === true,

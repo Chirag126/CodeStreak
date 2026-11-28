@@ -30,6 +30,8 @@ import { MyDaysExplained } from '@/components/explain/my-days-explained';
 import { readDayLogs } from '@/lib/verification/day-check';
 import { cachedRead, throttled } from '@/lib/chain/read-cache';
 import { listGroupInvites } from '@/lib/groups/invites';
+import { RepoChoiceCard } from '@/components/github/repo-choice-card';
+import { forksAllowed, loadRepoStatus, repoModeName } from '@/lib/github/repo-choice';
 import { JoinButton } from './join-button';
 
 /** The tab and link-preview title is the challenge's own (only if this viewer may see it: RLS hides private groups). */
@@ -65,6 +67,8 @@ type GithubRulesDoc = {
   fileFilter?: { extensions?: string[]; filenames?: string[] } | null;
   allow?: { docs?: boolean; generated?: boolean; forks?: boolean; backdateHours?: number } | null;
   repos?: { id: number; fullName: string }[] | null;
+  repoMode?: string;
+  ownNonForkReposOnly?: boolean;
 };
 type LeetcodeRulesDoc = { minNewSolves?: number; minDifficulty?: 'any' | 'medium' | 'hard'; minAcceptedPerDay?: number };
 type Rules = { providers?: string[]; providerRule?: 'any' | 'all'; github?: GithubRulesDoc | null; leetcode?: LeetcodeRulesDoc | null };
@@ -85,15 +89,22 @@ function githubOptionLines(g: GithubRulesDoc | null | undefined): string[] {
   if (!g) return [];
   const min = g.minMeaningfulLines ?? 15;
   const filter = [...(g.fileFilter?.extensions ?? []), ...(g.fileFilter?.filenames ?? [])];
-  const repos = (g.repos ?? []).map((r) => r.fullName);
+  const mode = repoModeName(g);
+  const repos = mode === 'shared' ? (g.repos ?? []).map((r) => r.fullName) : [];
+  const repoLine =
+    mode === 'individual'
+      ? 'Each player chooses one of their own public repositories when joining; only their own pushes there count. It can change until their first verified day (then it is locked), and during the challenge a change applies from the next day.'
+      : mode === 'shared'
+        ? `Repositories for every player: ${repos.join(', ')}. Only your own pushes there count (written and pushed by you).`
+        : 'No repository restriction: pushes to public repositories you own count (pushes to private repositories are never visible).';
   const lines = [
-    repos.length ? `Only your own pushes to ${repos.join(', ')} count.` : 'Only pushes to public repositories you own count (pushes to private repositories are never visible).',
+    repoLine,
     filter.length ? `Only these files count: ${filter.join(', ')}.` : 'Any source file counts (not docs, lockfiles, minified or generated files).',
     'Each commit must be written and pushed by you. Whitespace-only changes, moved lines, re-pushed changes and merges never count.',
   ];
   if (g.allow?.docs) lines.push(`README/docs count, up to ${Math.floor(min * GITHUB_OPTION_LIMITS.docsCapShare)} lines a day.`);
   if (g.allow?.generated) lines.push(`Lockfiles, minified and generated files count, up to ${Math.floor(min * GITHUB_OPTION_LIMITS.generatedCapShare)} lines a day.`);
-  if (!repos.length) lines.push(g.allow?.forks ? 'Your own commits in your forks count.' : 'Forks don’t count.');
+  if (mode !== 'shared') lines.push(g.allow?.forks ? 'Your own commits in your forks count.' : 'Forks don’t count.');
   lines.push(g.allow?.backdateHours ? `Commits made up to ${g.allow.backdateHours}h before a day starts still count for it.` : 'Commits must be made during the day they are pushed.');
   return lines;
 }
@@ -161,6 +172,11 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
             : `This challenge counts ${names.join(' or ')}. Link at least one of them in Dashboard → Settings, then come back to join.`;
     }
   }
+
+  // Individual repository mode: the viewer's repository (needed to join, changeable until locked).
+  const githubDoc = ((row?.rules ?? {}) as Rules).github;
+  const individualRepos = Boolean(githubDoc) && repoModeName(githubDoc) === 'individual';
+  const repoStatus = individualRepos && viewer && row ? await loadRepoStatus(viewer.userId, row.id as string) : null;
 
   const stale = !row || Date.parse(row.updated_at as string) < now * 1000 - 60_000;
   if (stale) {
@@ -266,12 +282,33 @@ export default async function ChallengePage({ params }: { params: Promise<{ addr
               Sign in to join
             </a>
           ) : (
-            <JoinButton challenge={address} linkedWallets={linkedWallets} buyInLabel={buyIn} isSol={isSol} needToLink={needToLink} terms={{ rulesHash: onChainRulesHash, verified: rulesVerified, items: stakeTerms }} />
+            <JoinButton
+              challenge={address}
+              linkedWallets={linkedWallets}
+              buyInLabel={buyIn}
+              isSol={isSol}
+              needToLink={needToLink}
+              needRepo={!needToLink && individualRepos && repoStatus && !repoStatus.current ? 'Choose your verification repository below before joining.' : null}
+              terms={{ rulesHash: onChainRulesHash, verified: rulesVerified, items: stakeTerms }}
+            />
           )}
         </CardContent>
       </Card>
 
       {invites && phase === 'joining' && <InvitePanel address={address} invites={invites} />}
+
+      {repoStatus && (viewerJoined || (phase === 'joining' && !needToLink)) && phase !== 'settled' && phase !== 'cancelled' && (
+        <RepoChoiceCard
+          challenge={address}
+          current={repoStatus.current}
+          upcoming={repoStatus.upcoming}
+          locked={repoStatus.locked}
+          started={now >= times.startTs}
+          canChange={phase === 'joining' || (viewerJoined && (phase === 'starting' || phase === 'active'))}
+          allowForks={forksAllowed(githubDoc)}
+          member={viewerJoined}
+        />
+      )}
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>

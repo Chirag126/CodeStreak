@@ -41,7 +41,7 @@ export async function prepareCreateAction(input: { form: unknown; wallet: string
   if (!checked.ok) return { ok: false, error: 'Some settings need fixing.', code: 'form.invalid', title: 'Check the form', fieldErrors: checked.errors };
 
   // "Only these repositories": resolve to ids now (public check), before the rules are hashed.
-  const repoNames = checked.form.providers.includes('github') ? parseRepoList(checked.form.githubRepos) : { ok: true as const, repos: [] };
+  const repoNames = checked.form.providers.includes('github') && checked.form.githubRepoMode === 'shared' ? parseRepoList(checked.form.githubRepos) : { ok: true as const, repos: [] };
   if (!repoNames.ok) return { ok: false, error: repoNames.error, code: 'form.invalid', title: 'Check the form', fieldErrors: { githubRepos: repoNames.error } };
   const resolved = repoNames.repos.length ? await resolvePublicRepos(repoNames.repos) : { ok: true as const, repos: [] };
   if (!resolved.ok) return { ok: false, error: resolved.error, code: 'form.invalid', title: 'Check the repositories', fieldErrors: { githubRepos: resolved.error } };

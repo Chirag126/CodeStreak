@@ -97,6 +97,12 @@ export async function collectGithubCommits(input: {
   window: { startSec: number; endSec: number };
   /** Creator-selected repositories (numeric ids); empty/absent = the user's own public repos. */
   repoIds?: number[] | null;
+  /**
+   * The ids are the player's own choice (individual mode). Then nothing chosen means nothing can
+   * count, and a chosen repository that is gone or private is the player's doing: the day can fail
+   * (instead of "couldn't be checked", which would let anyone escape a missed day by hiding it).
+   */
+  memberRepo?: boolean;
   /** Upper bound on per-commit detail calls for one day (keeps API usage bounded). */
   maxCommitDetails?: number;
 }): Promise<CollectResult> {
@@ -136,9 +142,18 @@ export async function collectGithubCommits(input: {
   // 2. Repositories to read.
   const targets: { id: number; fullName: string; fork: boolean; ownerId: number }[] = [];
   const selected = (input.repoIds ?? []).filter((id) => Number.isSafeInteger(id) && id > 0);
+  if (input.memberRepo && selected.length === 0) {
+    out.notes.push('No repository was chosen for this challenge, so no push could count.');
+    return out;
+  }
   if (selected.length > 0) {
     for (const id of selected) {
       const r = await call(`/repositories/${id}`);
+      if (input.memberRepo && (r.status === 404 || (r.status === 200 && (r.json as ApiRepo | null)?.private))) {
+        out.repos.push({ fullName: (r.json as ApiRepo | null)?.full_name ?? `repository #${id}`, status: r.status === 404 ? 'missing' : 'private', pushes: 0 });
+        out.notes.push('Your challenge repository was deleted or made private, so no push could count.');
+        return out;
+      }
       if (r.status === 404) {
         // Deleted or made private: nobody can be checked there, so nobody is failed for it.
         out.repos.push({ fullName: `repository #${id}`, status: 'missing', pushes: 0 });
