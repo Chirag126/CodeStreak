@@ -69,7 +69,7 @@ export async function accountUsage(cfg: VoiceConfig): Promise<AccountUsage | { e
   if (!cfg.apiKey) return null;
   try {
     const res = await fetch(`${API}/user/subscription`, { headers: { 'xi-api-key': cfg.apiKey }, signal: AbortSignal.timeout(8000), cache: 'no-store' });
-    if (!res.ok) return { error: res.status === 401 ? 'The key has no "User: read" permission (or was rejected).' : describe(res.status, await res.text().catch(() => '')) };
+    if (!res.ok) return { error: res.status === 401 ? 'This key can make speech but not read the account. To see real usage here, edit the key in ElevenLabs (Developers → API Keys) and set User to Read.' : describe(res.status, await res.text().catch(() => '')) };
     const j = (await res.json()) as { tier?: string; character_count?: number; character_limit?: number; next_character_count_reset_unix?: number | null };
     if (typeof j.character_count !== 'number' || typeof j.character_limit !== 'number') return { error: 'ElevenLabs returned no usage figures.' };
     return { tier: String(j.tier ?? 'unknown'), used: j.character_count, limit: j.character_limit, resetsAt: j.next_character_count_reset_unix ?? null };

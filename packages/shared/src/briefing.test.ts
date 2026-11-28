@@ -46,6 +46,9 @@ describe('speakable', () => {
     const s = speakable('Join https://x.dev/a at 4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T or me@mail.com 123456789012', 200);
     expect(s).not.toMatch(/https|4Nd1m|@|123456789012/);
   });
+  it('turns UI separators into pauses', () => {
+    expect(speakable('Day 3 missed · Video2 Demo', 80)).toBe('Day 3 missed, Video2 Demo');
+  });
   it('trims on a word boundary', () => {
     expect(speakable('one two three four five six', 12)).toBe('one two…');
   });
