@@ -32,6 +32,18 @@ if command -v anchor >/dev/null 2>&1; then
   fi
 fi
 
+# Phase 47: verifiable builds (scripts/wsl/deploy-devnet.sh without --quick).
+if command -v solana-verify >/dev/null 2>&1; then
+  ok "solana-verify" "$(first_line solana-verify --version)"
+else
+  warn "solana-verify" "not found (verifiable builds): cargo install solana-verify --version 0.6.0 --locked"
+fi
+if docker info >/dev/null 2>&1; then
+  ok "docker" "$(first_line docker --version)"
+else
+  warn "docker" "not running (verifiable builds): start Docker Desktop with WSL integration"
+fi
+
 # Anchor's TypeScript tests run inside WSL, so WSL needs its own Node.
 if command -v node >/dev/null 2>&1; then
   ok "node (WSL)" "$(node --version)"

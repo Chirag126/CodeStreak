@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
-# Builds and deploys (or upgrades) the CodeStreak program on Solana DEVNET, then uploads its IDL.
+# Builds and deploys (or upgrades) the CodeStreak program on Solana DEVNET, uploads its IDL, and
+# (Phase 47) publishes it as a verified build.
 #
 # Usage (WSL Ubuntu, from the repo root):
-#   bash scripts/wsl/deploy-devnet.sh               # build + deploy/upgrade + IDL
+#   bash scripts/wsl/deploy-devnet.sh               # verifiable build + deploy/upgrade + IDL + verify
+#   bash scripts/wsl/deploy-devnet.sh --quick       # plain `anchor build` (not verifiable), no verify
 #   bash scripts/wsl/deploy-devnet.sh --skip-build  # deploy the existing target/deploy/codestreak.so
+#
+# The verifiable build runs `solana-verify build` in a pinned Docker image (Solana 3.1.10, from
+# [workspace.metadata.cli] in Cargo.toml), so anyone can rebuild the same bytes from GitHub. It needs
+# Docker and solana-verify (`cargo install solana-verify --version 0.6.0 --locked`), and a clean,
+# committed tree (the verification names the commit).
 #
 # Safety:
 #   - refuses to run unless the RPC endpoint's genesis hash is devnet's;
@@ -21,10 +28,12 @@ BACKUP_PROGRAM_KEYPAIR="$KEY_DIR/program-keypair.json"
 SO="target/deploy/codestreak.so"
 IDL="target/idl/codestreak.json"
 SKIP_BUILD=0
+VERIFIABLE=1
 
 for arg in "$@"; do
   case "$arg" in
     --skip-build) SKIP_BUILD=1 ;;
+    --quick) VERIFIABLE=0 ;;
     *) echo "Unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
@@ -53,10 +62,22 @@ actual_id="$(solana-keygen pubkey "$PROGRAM_KEYPAIR")"
 echo "program ID $PROGRAM_ID"
 
 if [[ $SKIP_BUILD -eq 0 ]]; then
-  step "anchor build"
+  if [[ $VERIFIABLE -eq 1 ]]; then
+    command -v solana-verify >/dev/null 2>&1 || fail "solana-verify not found: cargo install solana-verify --version 0.6.0 --locked (or use --quick)"
+    docker info >/dev/null 2>&1 || fail "Docker is not running (start Docker Desktop with WSL integration), or use --quick"
+    [[ -z "$(git status --porcelain --untracked-files=no)" ]] || fail "uncommitted changes: a verifiable build must come from a commit (commit first, or use --quick)"
+  fi
+  step "anchor build (IDL + tests binary)"
   anchor build
+  if [[ $VERIFIABLE -eq 1 ]]; then
+    step "Verifiable build (solana-verify, Docker)"
+    # Replaces target/deploy/codestreak.so with the reproducible build that gets deployed.
+    solana-verify build --library-name codestreak
+    echo "executable hash: $(solana-verify get-executable-hash "$SO")"
+  fi
 fi
 [[ -f "$SO" ]] || fail "$SO not found (run without --skip-build)"
+grep -aq "=======BEGIN SECURITY.TXT V1=======" "$SO" || fail "$SO has no security.txt (Phase 47): rebuild from the current source"
 
 step "Funds"
 authority_pk="$(solana-keygen pubkey "$AUTHORITY")"
@@ -108,6 +129,15 @@ if "${idl_cmd[@]}" --provider.cluster "$URL" --provider.wallet "$AUTHORITY"; the
 else
   echo "WARNING: IDL upload failed (the program itself is deployed). Retry later with:" >&2
   echo "  ${idl_cmd[*]} --provider.cluster $URL --provider.wallet $AUTHORITY" >&2
+fi
+
+if [[ $VERIFIABLE -eq 1 && $SKIP_BUILD -eq 0 ]]; then
+  step "Verified build (Phase 47)"
+  if git fetch --quiet origin && [[ -n "$(git branch -r --contains HEAD)" ]]; then
+    bash scripts/wsl/verify-devnet.sh || echo "WARNING: verification did not finish (the program is deployed). Retry: bash scripts/wsl/verify-devnet.sh" >&2
+  else
+    echo "This commit is not on GitHub yet: git push, then run: bash scripts/wsl/verify-devnet.sh"
+  fi
 fi
 
 step "Done"

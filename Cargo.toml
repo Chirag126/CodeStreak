@@ -2,6 +2,11 @@
 members = ["programs/*"]
 resolver = "2"
 
+# Phase 47: the Solana/Agave version the verifiable build image uses (solana-verify build). Keep it
+# equal to solana_version in Anchor.toml.
+[workspace.metadata.cli]
+solana = "3.1.10"
+
 [profile.release]
 overflow-checks = true
 lto = "fat"
