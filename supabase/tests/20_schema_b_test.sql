@@ -116,9 +116,10 @@ select pg_temp.expect_fail('fractional receipt', $q$
 select pg_temp.expect_fail('negative receipt', $q$
   insert into public.receipts (challenge_id, wallet, kind, amount, tx_signature)
   values ('b0000000-0000-0000-0000-00000000000a', 'Ee5vCCzJBaUEiv4omcdY5Hu2fwk8VpaSC3fCPuu7JTaa', 'sponsor', -1, repeat('C', 87)) $q$);
+-- Phase 43: one transaction may pay several wallets, but never the same wallet twice for one kind.
 select pg_temp.expect_fail('receipt tx recorded twice', $q$
   insert into public.receipts (challenge_id, wallet, kind, amount, tx_signature)
-  values ('b0000000-0000-0000-0000-00000000000a', 'Ee5vCCzJBaUEiv4omcdY5Hu2fwk8VpaSC3fCPuu7JTaa', 'reward', 1, repeat('A', 87)) $q$);
+  values ('b0000000-0000-0000-0000-00000000000a', 'Ee5vCCzJBaUEiv4omcdY5Hu2fwk8VpaSC3fCPuu7JTaa', 'join', 1, repeat('A', 87)) $q$);
 
 -- Disputes (reworked in Phase 31: see 99g_disputes_test.sql).
 select pg_temp.expect_fail('two open disputes for one member-day', $q$
