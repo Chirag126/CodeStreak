@@ -92,7 +92,8 @@ const BUDGET: u64 = 1_200_000;
 const RECORD_UNITS: u64 = 40_000;
 const FINALIZE_UNITS: u64 = 40_000;
 const CLAIM_UNITS: u64 = 60_000;
-const BADGE_UNITS: u64 = 200_000;
+/// ~75k units, but ~15 inner instructions each and 64 per transaction: 3 badges per transaction.
+const BADGE_UNITS: u64 = 400_000;
 
 /// The worker's packing: consecutive steps, as many per transaction as fit (bytes, accounts, compute).
 fn pack(svm: &LiteSVM, payer: &Pubkey, steps: &[Vec<Instruction>], step_units: u64, tables: &[AddressLookupTableAccount]) -> Vec<Vec<Instruction>> {
@@ -276,7 +277,7 @@ fn fifty_players_settle_in_a_handful_of_versioned_transactions() {
     let batches = pack(&env.svm, &env.relayer.pubkey(), &steps, BADGE_UNITS, &tables);
     let sent = send_batches(&mut env.svm, &env.relayer, batches, &tables);
     println!("badges: 40 survivors in {} transactions (largest {} bytes, {} compute units)", sent.txs, sent.max_bytes, sent.max_units);
-    assert!(sent.txs <= 10, "badges: {} transactions", sent.txs);
+    assert!(sent.txs <= 14, "badges: {} transactions", sent.txs);
     for (kp, _) in &survivors {
         let participant = participant_pda(&challenge, &kp.pubkey());
         let mint = Pubkey::find_program_address(&[BADGE_MINT_SEED, participant.as_ref()], &codestreak::ID).0;

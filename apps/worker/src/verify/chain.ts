@@ -222,13 +222,18 @@ function challengeOf(address: string, a: ChallengeAccount): ChainChallenge {
 /** No verifier key: reads work, every send explains what is missing. */
 const NO_KEY = () => Promise.reject(new Error('VERIFIER_KEYPAIR_JSON is not set on the worker, so it cannot send transactions'));
 
-/** Upper compute estimates per step, for packing (the real limit comes from a simulation). */
+/**
+ * Upper compute estimates per step, for packing (the real limit comes from a simulation). Measured
+ * on the program (tests/batching.rs): record ~6k, finalize ~10k, payout ~17k, badge ~75k. A badge
+ * also runs ~15 inner instructions and a transaction allows 64 in all, so its estimate keeps it at
+ * 3 per transaction.
+ */
 export const STEP_UNITS: Record<ChainOp['kind'] | 'tokenAccount', number> = {
   record: 40_000,
   finalize: 40_000,
   claim: 60_000,
   sponsorRefund: 60_000,
-  badge: 200_000,
+  badge: 400_000,
   tokenAccount: 40_000,
 };
 
