@@ -21,6 +21,19 @@ export interface PickerRepo {
 }
 
 type Load = { status: 'loading' } | { status: 'error'; message: string; notLinked: boolean } | { status: 'ready' };
+type PageResult = { ok: true; repos: PickerRepo[]; hasMore: boolean } | { ok: false; message: string; notLinked: boolean };
+
+/** One page of the signed-in user's repositories (no state: the caller applies the result). */
+async function requestPage(p: number): Promise<PageResult> {
+  try {
+    const res = await fetch(`/api/github/repos?page=${p}`, { cache: 'no-store' });
+    const body = (await res.json().catch(() => ({}))) as { repos?: PickerRepo[]; hasMore?: boolean; error?: string; code?: string };
+    if (!res.ok || !body.repos) return { ok: false, message: body.error ?? `Could not load your repositories (HTTP ${res.status}).`, notLinked: body.code === 'github.not_linked' };
+    return { ok: true, repos: body.repos, hasMore: Boolean(body.hasMore) };
+  } catch {
+    return { ok: false, message: 'Could not reach CodeStreak. Check your connection and retry.', notLinked: false };
+  }
+}
 
 function updated(iso: string | null): string {
   if (!iso) return 'never pushed';
@@ -66,30 +79,29 @@ export function RepoPicker({
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [query, setQuery] = useState('');
 
-  // Fetches a page; the caller shows "loading" first (the first load starts in that state).
-  const fetchPage = useCallback(async (p: number) => {
-    try {
-      const res = await fetch(`/api/github/repos?page=${p}`, { cache: 'no-store' });
-      const body = (await res.json().catch(() => ({}))) as { repos?: PickerRepo[]; hasMore?: boolean; error?: string; code?: string };
-      if (!res.ok || !body.repos) {
-        setLoad({ status: 'error', message: body.error ?? `Could not load your repositories (HTTP ${res.status}).`, notLinked: body.code === 'github.not_linked' });
-        return;
-      }
-      setRepos((prev) => (p === 1 ? body.repos! : [...prev, ...body.repos!.filter((r) => !prev.some((x) => x.id === r.id))]));
-      setHasMore(Boolean(body.hasMore));
-      setPage(p);
-      setLoad({ status: 'ready' });
-    } catch {
-      setLoad({ status: 'error', message: 'Could not reach CodeStreak. Check your connection and retry.', notLinked: false });
+  const apply = useCallback((p: number, r: PageResult) => {
+    if (!r.ok) {
+      setLoad({ status: 'error', message: r.message, notLinked: r.notLinked });
+      return;
     }
+    setRepos((prev) => (p === 1 ? r.repos : [...prev, ...r.repos.filter((x) => !prev.some((y) => y.id === x.id))]));
+    setHasMore(r.hasMore);
+    setPage(p);
+    setLoad({ status: 'ready' });
   }, []);
 
+  // First page on mount (the component starts in the loading state).
   useEffect(() => {
-    void fetchPage(1);
-  }, [fetchPage]);
+    let alive = true;
+    void requestPage(1).then((r) => alive && apply(1, r));
+    return () => {
+      alive = false;
+    };
+  }, [apply]);
+
   const loadPage = (p: number) => {
     setLoad({ status: 'loading' });
-    void fetchPage(p);
+    void requestPage(p).then((r) => apply(p, r));
   };
 
   const chosen = useMemo(() => new Set(selected.map((s) => s.toLowerCase())), [selected]);
