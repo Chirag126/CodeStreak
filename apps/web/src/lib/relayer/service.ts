@@ -37,7 +37,12 @@ import {
   checkRelayedTransaction,
   checkUnwrapTransaction,
   closeWrappedSolAccountInstruction,
+  computeBudgetInstructions,
+  COMPUTE_LIMITS,
   createWrappedSolAccountInstruction,
+  planComputeBudget,
+  sendWithResend,
+  TransactionUnconfirmedError,
   planSolWrap,
   rateLimitDecision,
   wrapSolInstructions,
@@ -45,7 +50,7 @@ import {
   type RelayedInstruction,
   type WrapContext,
 } from '@codestreak/shared/relayer';
-import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction, VersionedTransaction, type TransactionInstruction } from '@solana/web3.js';
+import { Connection, PublicKey, SystemProgram, Transaction, VersionedTransaction, type TransactionInstruction } from '@solana/web3.js';
 import { moderationBlock } from '@/lib/moderation/gate';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { linkedProviders } from '@/lib/accounts/github';
@@ -57,9 +62,6 @@ import { takeLeetcodeSnapshot } from '@/lib/verification/day-check';
 /** Failures carry a plain-language message plus a stable code and headline for the UI. */
 export type RelayResult<T> = ({ ok: true } & T) | { ok: false; error: string; code?: string; title?: string };
 
-const COMPUTE_UNITS = 150_000;
-const COMPUTE_UNITS_WITH_WRAP = 200_000;
-const PRIORITY_MICRO_LAMPORTS = 1_000;
 const MIN_RELAYER_LAMPORTS = 20_000_000; // 0.02 SOL: stop sponsoring before the relayer runs dry
 
 export function serverConnection(): Connection {
@@ -220,18 +222,16 @@ async function prepareRelayed(input: {
   if ((await connection.getBalance(relayer.publicKey)) < MIN_RELAYER_LAMPORTS) {
     return { ok: false, error: 'Sponsored transactions are paused (relayer is low on devnet SOL). Try later.', code: 'relayer.low_funds', title: 'Paused' };
   }
+  // Phase 42: simulate once to learn the compute actually used and the going priority fee, then
+  // ask for exactly that (plus a margin). The simulation also catches a failing action before the
+  // user is asked to sign. The blockhash is fetched last, so the user gets the longest window.
+  const plan = await planComputeBudget(connection, { payer: relayer.publicKey, instructions: input.instructions, cap: COMPUTE_LIMITS.maxUnits });
+  if (plan.err) return failure(plan.err, plan.logs);
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-  const tx = new Transaction({ feePayer: relayer.publicKey, blockhash, lastValidBlockHeight }).add(
-    ComputeBudgetProgram.setComputeUnitLimit({ units: input.wrap ? COMPUTE_UNITS_WITH_WRAP : COMPUTE_UNITS }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: PRIORITY_MICRO_LAMPORTS }),
-    ...input.instructions,
-  );
+  const tx = new Transaction({ feePayer: relayer.publicKey, blockhash, lastValidBlockHeight }).add(...computeBudgetInstructions(plan.units, plan.microLamports), ...input.instructions);
 
   const policy = checkRelayedTransaction(tx, { relayer: relayer.publicKey, user, programId: PROGRAM_ID, allowed: [KIND_INSTRUCTION[input.kind]], wrap: input.wrap });
   if (!policy.ok) return { ok: false, error: `Refused: ${policy.errors.join('; ')}`, code: 'relayer.policy', title: 'Refused by the relayer' };
-
-  const sim = await connection.simulateTransaction(new VersionedTransaction(tx.compileMessage()), { sigVerify: false });
-  if (sim.value.err) return failure(sim.value.err, sim.value.logs);
 
   tx.partialSign(relayer);
   const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64');
@@ -724,15 +724,17 @@ export async function submitRelayed(input: { profileId: string; idempotencyKey: 
   const sim = await connection.simulateTransaction(VersionedTransaction.deserialize(raw), { sigVerify: true });
   if (sim.value.err) return fail(sim.value.err, sim.value.logs);
 
+  // Phase 42: send, re-send the same bytes until it lands, and stop with a definite "expired"
+  // (nothing charged) once its blockhash is gone, instead of a silent timeout.
   let signature: string;
   try {
-    signature = await connection.sendRawTransaction(raw, { skipPreflight: true, maxRetries: 3 });
-    const confirmation = await connection.confirmTransaction(
-      { signature, blockhash: tx.recentBlockhash!, lastValidBlockHeight: Number(row.last_valid_block_height) },
-      'confirmed',
-    );
-    if (confirmation.value.err) return fail(confirmation.value.err);
+    signature = await sendWithResend(connection, raw, { lastValidBlockHeight: Number(row.last_valid_block_height) });
   } catch (e) {
+    // Seen by the network but not confirmed within two minutes (rare): the outcome is unknown, so
+    // the request stays "submitting" (never retried or marked failed) and the sync picks it up.
+    if (e instanceof TransactionUnconfirmedError) {
+      return { ok: false, error: "It was sent, but Solana hasn't confirmed it yet. It will show up here by itself once it does, so don't send it again.", code: 'tx.pending', title: 'Still confirming' };
+    }
     return fail(e, (e as { logs?: string[] }).logs);
   }
 

@@ -10,7 +10,6 @@ import {
   badgeTokenAccount,
   challengeMirrorRow,
   challengeTimes,
-  ComputeBudgetProgram,
   Connection,
   createProgram,
   enumVariant,
@@ -27,6 +26,7 @@ import {
   type CodestreakProgram,
   type ParticipantAccount,
 } from '@codestreak/shared/program';
+import { computeBudgetInstructions, planComputeBudget, sendWithResend } from '@codestreak/shared/relayer';
 
 export type DayResultName = 'verified' | 'failed' | 'indeterminate';
 export type ParticipantStatusName = 'active' | 'survived' | 'failed' | 'voided';
@@ -188,7 +188,20 @@ export function createSolanaChain(rpcUrl: string, verifier: Keypair | null): Cha
   const signer: Keypair = verifier;
   const program: CodestreakProgram = createProgram(connection, keypairWallet(signer));
   const key = (s: string) => new PublicKey(s);
-  const priority = [ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 10_000 })];
+
+  /**
+   * Phase 42: every worker transaction gets a compute limit from a simulation (what it really uses,
+   * plus a margin), the going priority fee, a fresh blockhash, and is re-sent until it is confirmed
+   * or its blockhash expires (then run.ts re-checks the chain and tries again).
+   */
+  async function send(instructions: TransactionInstruction[], cap = 200_000): Promise<string> {
+    const plan = await planComputeBudget(connection, { payer: signer.publicKey, instructions, cap });
+    if (plan.err) throw Object.assign(new Error(`Simulation failed: ${JSON.stringify(plan.err)}`), { logs: plan.logs ?? undefined });
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+    const tx = new Transaction({ feePayer: signer.publicKey, blockhash, lastValidBlockHeight }).add(...computeBudgetInstructions(plan.units, plan.microLamports), ...instructions);
+    tx.sign(signer);
+    return sendWithResend(connection, tx.serialize(), { lastValidBlockHeight });
+  }
 
   /** The owner's associated token account for the challenge's mint, created (rent paid by the verifier) if missing. */
   async function ensureTokenAccount(c: ChainChallenge, owner: string): Promise<PublicKey> {
@@ -206,8 +219,7 @@ export function createSolanaChain(rpcUrl: string, verifier: Keypair | null): Cha
       ],
       data: Buffer.from([1]), // CreateIdempotent: safe to repeat
     });
-    const sig = await connection.sendTransaction(new Transaction().add(ix), [signer]);
-    await connection.confirmTransaction(sig, 'confirmed');
+    await send([ix], 60_000);
     return account;
   }
 
@@ -218,28 +230,28 @@ export function createSolanaChain(rpcUrl: string, verifier: Keypair | null): Cha
       program.methods
         .recordVerification(day, { [result]: {} } as never, Array.from(Buffer.from(hashHex, 'hex')))
         .accountsPartial({ verifier: signer.publicKey, challenge: key(challenge), participant: key(participant) })
-        .preInstructions(priority)
-        .rpc(),
-    cancel: (challenge) => program.methods.cancelPool().accountsPartial({ authority: signer.publicKey, challenge: key(challenge) }).preInstructions(priority).rpc(),
+        .instruction()
+        .then((ix) => send([ix])),
+    cancel: async (challenge) => send([await program.methods.cancelPool().accountsPartial({ authority: signer.publicKey, challenge: key(challenge) }).instruction()]),
     finalize: (challenge, participant) =>
-      program.methods.finalizeParticipant().accountsPartial({ challenge: key(challenge), participant: key(participant) }).preInstructions(priority).rpc(),
-    settle: (challenge) => program.methods.settleChallenge().accountsPartial({ challenge: key(challenge) }).preInstructions(priority).rpc(),
+      program.methods.finalizeParticipant().accountsPartial({ challenge: key(challenge), participant: key(participant) }).instruction().then((ix) => send([ix])),
+    settle: async (challenge) => send([await program.methods.settleChallenge().accountsPartial({ challenge: key(challenge) }).instruction()]),
     claimParticipant: async (c, p, kind) => {
       const destination = await ensureTokenAccount(c, p.user);
       const accounts = { challenge: key(c.address), participant: key(p.address), mint: key(c.mint), destination, vault: key(c.vault), tokenProgram: key(c.tokenProgram) };
-      return (kind === 'reward' ? program.methods.claimReward() : program.methods.claimRefund()).accountsPartial(accounts).preInstructions(priority).rpc();
+      return send([await (kind === 'reward' ? program.methods.claimReward() : program.methods.claimRefund()).accountsPartial(accounts).instruction()]);
     },
     claimSponsorRefund: async (c, r) => {
       const destination = await ensureTokenAccount(c, r.sponsor);
-      return program.methods
+      const ix = await program.methods
         .claimSponsorRefund()
         .accountsPartial({ challenge: key(c.address), receipt: key(r.address), mint: key(c.mint), destination, vault: key(c.vault), tokenProgram: key(c.tokenProgram) })
-        .preInstructions(priority)
-        .rpc();
+        .instruction();
+      return send([ix]);
     },
-    mintBadge: (c, p) => {
+    mintBadge: async (c, p) => {
       const participant = key(p.address);
-      return program.methods
+      const ix = await program.methods
         .mintBadge()
         .accountsPartial({
           payer: signer.publicKey,
@@ -253,9 +265,9 @@ export function createSolanaChain(rpcUrl: string, verifier: Keypair | null): Cha
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
-        // Several CPIs (allocate, extensions, metadata, ATA): more than the default 200k units.
-        .preInstructions([ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), ...priority])
-        .rpc();
+        .instruction();
+      // Several CPIs (allocate, extensions, metadata, ATA): up to 400k units; the simulation sets the real limit.
+      return send([ix], 400_000);
     },
   };
 }

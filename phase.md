@@ -1797,3 +1797,19 @@ new table family and one storage bucket; no new service, worker job or dependenc
 **Security.** The key is read only on the web server (never `NEXT_PUBLIC_`, never sent to the browser; the existing secret scanner already blocks `sk_…` keys in commits and public variables, and the env checker validates it). The voice routes are read-only, signed-in only, rate limited, and never touch wallets, claims, settlement or transactions. Voice tables are service-role only (RLS deny + no grants); the 99o invariants still hold.
 
 **Tests.** `briefing.test.ts` (durations, rounding stability, rank/claims never invented, next-step priorities, length cap, determinism, private data stripped), `deadline.test.ts` (final lead mirror), `lib/voice/policy.test.ts` (cache key, announcement text), `99p_voice_companion_test.sql` (preferences, muted categories, account notices, local-time titles and UTC fallback, final warning dedupe, voice limits / kill switches / accounting, owner-only audited settings, no access for users) and the updated `99i` (early + final warnings).
+
+## Phase 42: Transactions that land faster and cheaper
+
+Backend only; no screens changed (only clearer error text when Solana is busy).
+
+**Compute budget from a simulation.** Before any transaction CodeStreak pays for (join, sponsor, Shield, create, Blink join/sponsor, claim, unwrap, payout token accounts) and every worker transaction (record a day, cancel, finalize, settle, automatic payouts, badge mint), it is simulated once with a generous limit. The limit it then asks for is what the simulation actually used × 1.15 + 5,000 units (at least 10,000, never above the cap: 200,000 for relayed transactions, matching the relayer policy; 400,000 for badge mints). The priority fee you pay is price × *requested* units, so a tight limit keeps it as small as possible. The same simulation still stops a failing action before the user is asked to sign.
+
+**Priority fee from the network.** `getRecentPrioritizationFees` for the accounts the transaction writes; the 75th percentile of what was actually paid, never below 1,000 micro-lamports per unit (a little priority so it isn't stuck behind zero-fee traffic) and never above 50,000 (half the relayer policy's cap). A quiet network or an RPC that doesn't answer → the floor. Worst case per transaction: 50,000 × 200,000 / 10⁶ = 10,000 lamports (0.00001 SOL). Typical on devnet: ~50–100 lamports.
+
+**Send until it lands or expires.** The blockhash is fetched last (longest window to sign). After sending, the same signed bytes are re-sent every 2 s while the network hasn't seen them (same signature, so it can never be paid twice) and the status is polled every 0.8 s, so "confirmed" shows up sooner than with a websocket wait. Outcomes are definite:
+- confirmed → done;
+- failed on-chain → the program's own error message;
+- blockhash expired and it never landed → "Solana didn't include the transaction before it expired, so nothing was charged and nothing changed" (it can never land later); the worker retries these with a fresh transaction after re-checking the chain;
+- seen but not confirmed within 2 minutes (rare) → "Still confirming": the request is **not** marked failed, the sync records it when it lands, and nothing is re-sent blindly.
+
+**Where.** `packages/shared/src/relayer/fast.ts` (`planComputeBudget`, `recentPriorityFee`, `sendWithResend`, typed errors; unit-tested with a fake RPC), used by `lib/relayer/service.ts`, `lib/claims/service.ts`, `lib/chain/send.ts` (web) and `verify/chain.ts` (worker). The relayer policy is unchanged: compute-budget values are still checked against its caps on prepare and again on submit. Blink transactions get the same budget (they are prepared by the same code); the wallet sends those itself.

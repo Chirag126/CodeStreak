@@ -19,6 +19,9 @@ const TRANSIENT = [
   /service unavailable|bad gateway|gateway time-?out/i,
   /timed? ?out|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|socket hang up|fetch failed|network error/i,
   /blockhash not found|block height exceeded|transaction was not confirmed|node is behind/i,
+  // Phase 42 sendWithResend: expired (never landed) or not confirmed in time. The caller re-checks
+  // the chain before trying again, so a late landing is never sent twice by mistake.
+  /did not include it before its blockhash expired|not confirmed yet/i,
 ];
 const FINAL = [/custom program error/i, /Error Code: /, /AnchorError/, /InstructionError/];
 
