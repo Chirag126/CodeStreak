@@ -1853,3 +1853,5 @@ No app behaviour changes. One program upgrade (it only adds the `security.txt` d
 ## Shorter demo windows (3 + 3 minutes)
 
 Demo challenges now finalize 6 minutes after their last day instead of 25: 3 minutes of final checks (the worker records the last day a minute after it ends, so GitHub has time to list a push, and retries an unreachable provider once) and 3 minutes for disputes. Real challenges keep 6 hours + 24 hours. Only new demo challenges are affected (the windows are fixed on-chain at creation); the program allows any window from 1 minute, so no upgrade. The worker's "last call" for a provider that can't be reached is now the last third of a short window (1 minute for demos) and stays 3 minutes for longer ones, so a short window still gets a retry.
+
+**Real challenges: 3 + 12 hours.** Real (24-hour-day) challenges now use 3 hours of final checks (the last day is recorded ~45 minutes after it ends; over 2 hours of retries if GitHub or LeetCode is down) and 12 hours for disputes, so payouts arrive ~15 hours after the last day instead of ~30. New challenges only; the program allows it as is.
