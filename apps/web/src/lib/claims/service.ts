@@ -24,8 +24,21 @@ import {
   type ChallengeAccount,
   type ParticipantAccount,
 } from '@codestreak/shared/program';
-import { checkRelayedTransaction, checkUnwrapTransaction, closeWrappedSolAccountInstruction, rateLimitDecision, WSOL_MINT_KEY } from '@codestreak/shared/relayer';
-import { ComputeBudgetProgram, PublicKey, SystemProgram, Transaction, TransactionInstruction, VersionedTransaction, type Connection } from '@solana/web3.js';
+import {
+  checkRelayedTransaction,
+  checkUnwrapTransaction,
+  closeWrappedSolAccountInstruction,
+  computeBudgetInstructions,
+  COMPUTE_LIMITS,
+  planComputeBudget,
+  rateLimitDecision,
+  sendWithResend,
+  TransactionExpiredError,
+  TransactionUnconfirmedError,
+  WSOL_MINT_KEY,
+} from '@codestreak/shared/relayer';
+import { PublicKey, SystemProgram, Transaction, TransactionInstruction, VersionedTransaction, type Connection } from '@solana/web3.js';
+import { sendServerTransaction } from '@/lib/chain/send';
 import { relayerKeypair } from '@/lib/relayer/keypair';
 import { relayerUsage, serverConnection, type RelayResult } from '@/lib/relayer/service';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
@@ -240,8 +253,7 @@ async function ensureTokenAccount(connection: Connection, owner: PublicKey, mint
     ],
     data: Buffer.from([1]), // CreateIdempotent
   });
-  const sig = await connection.sendTransaction(new Transaction().add(ix), [relayer]);
-  await connection.confirmTransaction(sig, 'confirmed');
+  await sendServerTransaction(connection, relayer, [ix], 60_000);
   return account;
 }
 
@@ -341,12 +353,11 @@ export async function claimNow(input: { profileId: string; challengeAddress: str
       : { challenge: challengeKey, participant: target, mint: account.mint, destination, vault: account.vault, tokenProgram: account.tokenProgram };
   const method = kind === 'claim_reward' ? program.methods.claimReward() : kind === 'claim_refund' ? program.methods.claimRefund() : program.methods.claimSponsorRefund();
   const ix = await method.accountsPartial(accounts as never).instruction();
+  // Phase 42: compute limit and priority fee from a simulation (a failing claim falls back to the
+  // cap here and is reported by the simulation below, after the lock, as before).
+  const plan = await planComputeBudget(connection, { payer: relayer.publicKey, instructions: [ix], cap: COMPUTE_LIMITS.maxUnits });
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-  const tx = new Transaction({ feePayer: relayer.publicKey, blockhash, lastValidBlockHeight }).add(
-    ComputeBudgetProgram.setComputeUnitLimit({ units: 120_000 }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000 }),
-    ix,
-  );
+  const tx = new Transaction({ feePayer: relayer.publicKey, blockhash, lastValidBlockHeight }).add(...computeBudgetInstructions(plan.err ? COMPUTE_LIMITS.maxUnits : plan.units, plan.microLamports), ix);
   const policy = checkRelayedTransaction(tx, { relayer: relayer.publicKey, user: owner, allowed: [kind] });
   if (!policy.ok) return refuse(`Refused: ${policy.errors.join('; ')}`, 'relayer.policy', 'Refused by the relayer');
   tx.sign(relayer);
@@ -378,12 +389,16 @@ export async function claimNow(input: { profileId: string; challengeAddress: str
   }
   let signature: string;
   try {
-    signature = await connection.sendRawTransaction(raw, { skipPreflight: true, maxRetries: 3 });
-    const confirmation = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
-    if (confirmation.value.err) throw new Error(JSON.stringify(confirmation.value.err));
+    signature = await sendWithResend(connection, raw, { lastValidBlockHeight });
   } catch (e) {
+    // Sent but not confirmed within two minutes: unknown outcome, so don't mark it failed (the
+    // worker's sync records the payout if it lands; the stale lock is re-taken on a later claim).
+    if (e instanceof TransactionUnconfirmedError) {
+      return refuse("Your claim was sent but Solana hasn't confirmed it yet. It will show as paid by itself once it does.", 'claim.pending', 'Still confirming');
+    }
     await admin.from('relayer_requests').update({ status: 'failed', error: (e instanceof Error ? e.message : String(e)).slice(0, 500) }).eq('id', id);
     if (await alreadyClaimed(program, input.role, target)) return { ok: true, alreadyPaid: true };
+    if (e instanceof TransactionExpiredError) return refuse("Solana was busy and didn't include your claim before it expired. Nothing changed; please try again.", 'tx.expired', 'Network busy');
     return refuse('Solana devnet did not confirm the claim. Try again in a minute.', 'claim.unconfirmed', 'Not confirmed');
   }
   await admin.from('relayer_requests').update({ status: 'confirmed', signature, error: null }).eq('id', id);
@@ -441,12 +456,10 @@ export async function prepareUnwrap(input: { profileId: string; wallet: string; 
     return refuse('Unwrapping is paused (the relayer is low on devnet SOL). Your wrapped SOL is safe.', 'relayer.low_funds', 'Paused');
   }
 
+  const close = closeWrappedSolAccountInstruction(user, account);
+  const plan = await planComputeBudget(connection, { payer: relayer.publicKey, instructions: [close], cap: 50_000 });
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-  const tx = new Transaction({ feePayer: relayer.publicKey, blockhash, lastValidBlockHeight }).add(
-    ComputeBudgetProgram.setComputeUnitLimit({ units: 20_000 }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000 }),
-    closeWrappedSolAccountInstruction(user, account),
-  );
+  const tx = new Transaction({ feePayer: relayer.publicKey, blockhash, lastValidBlockHeight }).add(...computeBudgetInstructions(plan.err ? 50_000 : plan.units, plan.microLamports), close);
   const policy = checkUnwrapTransaction(tx, { relayer: relayer.publicKey, user, account });
   if (!policy.ok) return refuse(`Refused: ${policy.errors.join('; ')}`, 'relayer.policy', 'Refused by the relayer');
   const sim = await connection.simulateTransaction(new VersionedTransaction(tx.compileMessage()), { sigVerify: false });

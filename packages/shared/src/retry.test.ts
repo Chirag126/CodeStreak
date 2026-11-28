@@ -43,3 +43,12 @@ describe('isTransientError', () => {
     expect(isTransientError(new Error('Invalid public key input'))).toBe(false);
   });
 });
+
+describe('Phase 42 send errors', () => {
+  it('retries an expired or unconfirmed send, never an on-chain failure', async () => {
+    const { TransactionExpiredError, TransactionFailedError, TransactionUnconfirmedError } = await import('./relayer/fast.js');
+    expect(isTransientError(new TransactionExpiredError('s'))).toBe(true);
+    expect(isTransientError(new TransactionUnconfirmedError('s'))).toBe(true);
+    expect(isTransientError(new TransactionFailedError('s', { InstructionError: [0, { Custom: 6001 }] }))).toBe(false);
+  });
+});

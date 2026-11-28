@@ -116,6 +116,12 @@ export function friendlyTxError(err: unknown, logs?: readonly string[] | null): 
     const mapped = errorFromCode(Number(custom[1]));
     if (mapped) return mapped;
   }
+  if (/did not include it before its blockhash expired/i.test(text)) {
+    return { code: 'tx.expired', title: 'Network busy', message: "Solana didn't include the transaction before it expired, so nothing was charged and nothing changed. Please try again." };
+  }
+  if (/exceeded CUs meter|computational budget exceeded/i.test(text)) {
+    return { code: 'tx.compute', title: 'Try again', message: 'The transaction needed a little more computing than planned, so it was stopped and nothing changed. Please try again.' };
+  }
   if (/blockhash not found|block height exceeded|expired/i.test(text)) {
     return { code: 'tx.expired', title: 'Took too long', message: 'The transaction expired before it was sent. Please try again.' };
   }

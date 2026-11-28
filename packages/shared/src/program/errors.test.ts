@@ -1,3 +1,4 @@
+import { TransactionExpiredError } from '../relayer/fast.js';
 import { describe, expect, it } from 'vitest';
 import { errorFromCode, errorFromLogs, friendlyTxError } from './errors.js';
 
@@ -34,6 +35,9 @@ describe('friendly transaction errors', () => {
 
   it('handles expiry, network trouble and the unknown', () => {
     expect(friendlyTxError(new Error('Blockhash not found')).code).toBe('tx.expired');
+    // Phase 42: an expired send says nothing was charged; a tight compute limit hit says try again.
+    expect(friendlyTxError(new TransactionExpiredError('sig'))).toMatchObject({ code: 'tx.expired', title: 'Network busy' });
+    expect(friendlyTxError(new Error('Program failed: exceeded CUs meter at BPF instruction')).code).toBe('tx.compute');
     expect(friendlyTxError(new Error('TypeError: Failed to fetch')).code).toBe('network');
     expect(friendlyTxError(new Error('weird')).code).toBe('unknown');
   });
