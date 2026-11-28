@@ -6,6 +6,11 @@
 //   5. badge   - settled, each Survived player        -> mint_badge (soulbound Token-2022) -> record_badge
 // and mirrors every confirmed step to the database and the audit log.
 //
+// Phase 43: steps of one kind (record, finalize, pay out, badge) go out several players per
+// versioned transaction (Chain.pack / Chain.sendBatch). A batch lands whole or not at all; if one
+// fails for any reason other than the network, its steps are sent one by one, so a single bad step
+// never blocks the others and reports its own error.
+//
 // Idempotency: the chain is the source of truth. Every attempt to send (including each retry)
 // first re-reads the account it would change and sends nothing if the change is already there, so
 // a duplicate run, or a retry after a lost confirmation, never sends a second transaction. A saved
@@ -13,7 +18,7 @@
 import { buildReceipt, canonicalJson, isTransientError, RULES_ENGINE_ID, sealReceipt, sha256Hex, withRetry, type ProviderRule, type RetryOptions } from '@codestreak/shared';
 import { disputeEndTs, friendlyTxError, verifyEndTs } from '@codestreak/shared/program';
 import { reconcileOne } from '../reconcile/run.js';
-import { dayResultOf, type Chain, type ChainChallenge, type ChainParticipant, type DayResultName } from './chain.js';
+import { dayResultOf, type Chain, type ChainChallenge, type ChainOp, type ChainParticipant, type ChainSponsorReceipt, type DayResultName } from './chain.js';
 import type { Db } from './db.js';
 import type { DayEvaluation, RulesDocument } from './evaluate.js';
 import { participantPayout } from './payout.js';
@@ -134,6 +139,18 @@ export async function runVerification(deps: VerifyDeps): Promise<{ skipped?: str
 
 type Sent = { ok: true; tx: string | null } | { ok: false };
 
+/** Phase 43: how to send a list of same-kind steps, batched when the chain can. */
+interface Many<T> {
+  label: (t: T) => string;
+  op: (t: T) => ChainOp;
+  /** A fresh chain read: true for each step whose change is already there. */
+  done: (items: T[]) => Promise<boolean[]>;
+  /** The step on its own (the path without batching, and the fallback when a batch fails). */
+  single: (t: T) => Promise<string>;
+  /** After the steps landed (tx), or were found already done (null). */
+  landed: (items: T[], tx: string | null) => Promise<void>;
+}
+
 class ChallengeRun {
   private c!: ChainChallenge;
   private row!: ChallengeRow;
@@ -169,6 +186,71 @@ class ChallengeRun {
       this.report.errors.push(`${what}: ${errText(e)}`);
       return { ok: false };
     }
+  }
+
+  /**
+   * Sends same-kind steps packed into as few transactions as fit (Phase 43). Each batch is retried
+   * on network failures, re-checking the chain first (steps already there are not sent again). A
+   * batch that fails otherwise is sent step by step, so only the step at fault reports an error.
+   */
+  private async sendMany<T>(what: string, items: T[], m: Many<T>): Promise<void> {
+    if (!items.length) return;
+    const chain = this.chain;
+    let batches: number[][] | null = null;
+    if (items.length > 1 && chain.pack && chain.sendBatch) {
+      try {
+        batches = await this.read(() => chain.pack!(this.c, items.map(m.op)));
+      } catch (e) {
+        this.deps.log(`${what}: could not group the steps (${errText(e)}); sending them one by one`);
+      }
+    }
+    if (!batches) {
+      for (const t of items) await this.sendOne(m, t);
+      return;
+    }
+    for (const group of batches) {
+      const batch = group.map((i) => items[i]!);
+      if (batch.length === 1) {
+        await this.sendOne(m, batch[0]!);
+        continue;
+      }
+      let already: T[] = [];
+      let left: T[] = [];
+      let tx: string | null;
+      try {
+        tx = await withRetry(
+          async () => {
+            const done = await m.done(batch);
+            already = batch.filter((_, i) => done[i]);
+            left = batch.filter((_, i) => !done[i]);
+            return left.length ? chain.sendBatch!(this.c, left.map(m.op)) : null;
+          },
+          { ...this.deps.retry, retryable: isTransientError, onRetry: (n, e, ms) => this.deps.log(`${what} (${batch.length} steps): attempt ${n} failed (${errText(e)}); retrying in ${ms} ms`) },
+        );
+      } catch (e) {
+        this.deps.log(`${what}: a batch of ${batch.length} failed (${errText(e)}); sending them one by one`);
+        for (const t of batch) await this.sendOne(m, t);
+        continue;
+      }
+      if (already.length) await m.landed(already, null);
+      if (tx) {
+        this.report.txs.push(tx);
+        this.deps.log(`${what}: ${left.length} steps in one transaction (${tx.slice(0, 8)}…)`);
+      }
+      if (left.length) await m.landed(left, tx);
+    }
+  }
+
+  private async sendOne<T>(m: Many<T>, t: T): Promise<void> {
+    const sent = await this.send(m.label(t), async () => (await m.done([t]))[0] === true, () => m.single(t));
+    if (sent.ok) await m.landed([t], sent.tx);
+  }
+
+  /** Fresh participant accounts: one read for one, one list read for several. */
+  private async freshParticipants(addresses: string[]): Promise<Map<string, ChainParticipant>> {
+    const list =
+      addresses.length === 1 ? [await this.chain.participant(addresses[0]!)].filter((p): p is ChainParticipant => !!p) : await this.chain.participants(this.c.address);
+    return new Map(list.map((p) => [p.address, p]));
   }
 
   private async refresh(): Promise<void> {
@@ -208,9 +290,17 @@ class ChallengeRun {
 
     // 3. Finalize every player, then settle.
     if (open() && now >= disputeEndTs(this.c.times)) {
-      for (const p of await this.read(() => this.chain.participants(address))) {
-        await this.send(`finalize ${short(p.user)}`, async () => (await this.chain.participant(p.address))?.finalized !== false, () => this.chain.finalize(address, p.address));
-      }
+      const unfinalized = (await this.read(() => this.chain.participants(address))).filter((p) => !p.finalized);
+      await this.sendMany('finalize', unfinalized, {
+        label: (p) => `finalize ${short(p.user)}`,
+        op: (p) => ({ kind: 'finalize', participant: p.address }),
+        done: async (ps) => {
+          const fresh = await this.freshParticipants(ps.map((p) => p.address));
+          return ps.map((p) => fresh.get(p.address)?.finalized !== false);
+        },
+        single: (p) => this.chain.finalize(address, p.address),
+        landed: async () => {},
+      });
       await this.send('settle', async () => (await this.chain.challenge(address))?.times.state !== 'open', () => this.chain.settle(address));
       await this.refresh();
     }
@@ -319,6 +409,7 @@ class ChallengeRun {
     const lastCall = now >= verifyEndTs(c.times) - LAST_CALL_SECS;
     const markRecorded = (m: MemberRow, day: number, tx: string | null) => db.rpc('mark_day_recorded', { p_membership: m.id, p_day: day, p_tx: tx });
 
+    const todo: { p: ChainParticipant; m: MemberRow | undefined; day: number; result: DayResultName; hash: string }[] = [];
     for (const day of days) {
       const window = dayWindow(c.times, day);
       for (const p of participants) {
@@ -372,19 +463,29 @@ class ChallengeRun {
           }
         }
 
-        const sent = await this.send(
-          `day ${day + 1} for ${short(p.user)}`,
-          async () => {
-            const fresh = await this.chain.participant(p.address);
-            return !fresh || fresh.finalized || dayResultOf(fresh, day) !== null;
-          },
-          () => this.chain.recordVerification(c.address, p.address, day, result, hash),
-        );
-        if (!sent.ok) continue;
-        if (sent.tx) this.report.recorded++;
-        if (m) await markRecorded(m, day, sent.tx);
+        todo.push({ p, m, day, result, hash });
       }
     }
+
+    // Every result is saved; now on-chain, several player-days per transaction.
+    await this.sendMany('record days', todo, {
+      label: (t) => `day ${t.day + 1} for ${short(t.p.user)}`,
+      op: (t) => ({ kind: 'record', participant: t.p.address, day: t.day, result: t.result, hash: t.hash }),
+      done: async (ts) => {
+        const fresh = await this.freshParticipants([...new Set(ts.map((t) => t.p.address))]);
+        return ts.map((t) => {
+          const f = fresh.get(t.p.address);
+          return !f || f.finalized || dayResultOf(f, t.day) !== null;
+        });
+      },
+      single: (t) => this.chain.recordVerification(c.address, t.p.address, t.day, t.result, t.hash),
+      landed: async (ts, tx) => {
+        for (const t of ts) {
+          if (tx) this.report.recorded++;
+          if (t.m) await markRecorded(t.m, t.day, tx);
+        }
+      },
+    });
   }
 
   /**
@@ -394,14 +495,23 @@ class ChallengeRun {
    */
   private async mintBadges(participants: ChainParticipant[]): Promise<void> {
     const { db } = this.deps;
+    const ready: { p: ChainParticipant; badge: Awaited<ReturnType<Chain['badge']>> }[] = [];
+    const toMint: { p: ChainParticipant; badge: Awaited<ReturnType<Chain['badge']>> }[] = [];
     for (const p of participants) {
       if (!p.finalized || p.status !== 'survived') continue;
-      let badge = await this.read(() => this.chain.badge(p.address));
-      if (!badge.minted) {
-        const sent = await this.send(`badge for ${short(p.user)}`, async () => (await this.chain.badge(p.address)).minted, () => this.chain.mintBadge(this.c, p));
-        if (!sent.ok) continue;
-        badge = sent.tx ? { ...badge, minted: true, tx: sent.tx } : await this.read(() => this.chain.badge(p.address));
-      }
+      const badge = await this.read(() => this.chain.badge(p.address));
+      (badge.minted ? ready : toMint).push({ p, badge });
+    }
+    await this.sendMany('badges', toMint, {
+      label: (t) => `badge for ${short(t.p.user)}`,
+      op: (t) => ({ kind: 'badge', participant: t.p }),
+      done: (ts) => Promise.all(ts.map(async (t) => (await this.chain.badge(t.p.address)).minted)),
+      single: (t) => this.chain.mintBadge(this.c, t.p),
+      landed: async (ts, tx) => {
+        for (const t of ts) ready.push({ p: t.p, badge: tx ? { ...t.badge, minted: true, tx } : await this.read(() => this.chain.badge(t.p.address)) });
+      },
+    });
+    for (const { p, badge } of ready) {
       if (!badge.tx) {
         this.report.errors.push(`badge for ${short(p.user)}: minted (${badge.mint}) but its transaction was not found yet; will retry`);
         continue;
@@ -416,6 +526,7 @@ class ChallengeRun {
 
   private async payOut(participants: ChainParticipant[]): Promise<void> {
     const { db } = this.deps;
+    const owed: ChainParticipant[] = [];
     for (const p of participants) {
       // Paid earlier outside this job (e.g. devnet:close-challenges), or added by reconcile with only
       // `claimed_at`: the amount was never mirrored, so record it now (no receipt: no transaction).
@@ -425,28 +536,52 @@ class ChallengeRun {
         if (paid) await db.rpc('record_payout', { p_challenge: this.row.id, p_wallet: p.user, p_kind: paid.kind, p_amount: paid.amount.toString(), p_tx: null });
         continue;
       }
-      if (!participantPayout(this.c, p)) continue;
-      // The amount is fixed right before sending: the dust share depends on the claim order.
-      await this.refresh();
-      const owed = participantPayout(this.c, p);
-      if (!owed) continue;
-      const sent = await this.send(
-        `${owed.kind} to ${short(p.user)}`,
-        async () => (await this.chain.participant(p.address))?.claimed !== false,
-        () => this.chain.claimParticipant(this.c, p, owed.kind),
-      );
-      if (sent.ok) await db.rpc('record_payout', { p_challenge: this.row.id, p_wallet: p.user, p_kind: owed.kind, p_amount: owed.amount.toString(), p_tx: sent.tx });
+      if (participantPayout(this.c, p)) owed.push(p);
     }
+
+    // The amounts are fixed from the challenge as read right before each send: the dust goes to the
+    // last survivor to claim, so it depends on the order (the order of the steps in a batch).
+    let before = this.c;
+    const kindOf = (p: ChainParticipant) => participantPayout(this.c, { ...p, claimed: false })?.kind ?? 'refund';
+    await this.sendMany('payouts', owed, {
+      label: (p) => `${kindOf(p)} to ${short(p.user)}`,
+      op: (p) => ({ kind: 'claim', participant: p, payout: kindOf(p) }),
+      done: async (ps) => {
+        this.c = (await this.chain.challenge(this.c.address)) ?? this.c;
+        before = this.c;
+        const fresh = await this.freshParticipants(ps.map((p) => p.address));
+        return ps.map((p) => fresh.get(p.address)?.claimed !== false);
+      },
+      single: (p) => this.chain.claimParticipant(this.c, p, kindOf(p)),
+      landed: async (ps, tx) => {
+        let c = before;
+        for (const p of ps) {
+          const paid = participantPayout(c, { ...p, claimed: false });
+          if (!paid) continue;
+          if (paid.kind === 'reward') c = { ...c, survivorsClaimed: c.survivorsClaimed + 1 };
+          await db.rpc('record_payout', { p_challenge: this.row.id, p_wallet: p.user, p_kind: paid.kind, p_amount: paid.amount.toString(), p_tx: tx });
+        }
+      },
+    });
+
     await this.refresh();
     if (this.c.times.state !== 'cancelled' && !this.c.fullRefund) return; // sponsorships became rewards
-    for (const r of await this.read(() => this.chain.sponsorReceipts(this.c.address))) {
-      if (r.refunded) continue;
-      const sent = await this.send(
-        `sponsor refund to ${short(r.sponsor)}`,
-        async () => (await this.chain.sponsorReceipt(r.address))?.refunded !== false,
-        () => this.chain.claimSponsorRefund(this.c, r),
-      );
-      if (sent.ok) await db.rpc('record_payout', { p_challenge: this.row.id, p_wallet: r.sponsor, p_kind: 'sponsor_refund', p_amount: r.amount.toString(), p_tx: sent.tx });
-    }
+    const unpaid = (await this.read(() => this.chain.sponsorReceipts(this.c.address))).filter((r) => !r.refunded);
+    await this.sendMany('sponsor refunds', unpaid, {
+      label: (r) => `sponsor refund to ${short(r.sponsor)}`,
+      op: (r) => ({ kind: 'sponsorRefund', receipt: r }),
+      done: async (rs) => {
+        const fresh =
+          rs.length === 1
+            ? [await this.chain.sponsorReceipt(rs[0]!.address)].filter((r): r is ChainSponsorReceipt => !!r)
+            : await this.chain.sponsorReceipts(this.c.address);
+        const byAddress = new Map(fresh.map((r) => [r.address, r]));
+        return rs.map((r) => byAddress.get(r.address)?.refunded !== false);
+      },
+      single: (r) => this.chain.claimSponsorRefund(this.c, r),
+      landed: async (rs, tx) => {
+        for (const r of rs) await db.rpc('record_payout', { p_challenge: this.row.id, p_wallet: r.sponsor, p_kind: 'sponsor_refund', p_amount: r.amount.toString(), p_tx: tx });
+      },
+    });
   }
 }

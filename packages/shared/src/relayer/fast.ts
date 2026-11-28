@@ -12,7 +12,17 @@
 //
 // Pure helpers are unit-tested; the RPC helpers take a Connection-like object so they can be too.
 
-import { ComputeBudgetProgram, PublicKey, Transaction, VersionedTransaction, type Connection, type TransactionError, type TransactionInstruction } from '@solana/web3.js';
+import {
+  ComputeBudgetProgram,
+  PublicKey,
+  Transaction,
+  TransactionMessage,
+  VersionedTransaction,
+  type AddressLookupTableAccount,
+  type Connection,
+  type TransactionError,
+  type TransactionInstruction,
+} from '@solana/web3.js';
 
 export const FEE_POLICY = {
   /** Always pay at least this (micro-lamports per compute unit): cheap, but ahead of zero-priority traffic. */
@@ -83,18 +93,25 @@ export interface ComputePlan {
 type PlanRpc = FeeRpc & Pick<Connection, 'simulateTransaction'>;
 
 // Simulation replaces the blockhash, so any well-formed one will do (saves an RPC round trip).
-const PLACEHOLDER_BLOCKHASH = new PublicKey(0).toBase58();
+export const PLACEHOLDER_BLOCKHASH = new PublicKey(0).toBase58();
 
 /**
  * Simulates `instructions` (paid by `payer`) with `cap` units and the current priority fee, then
- * returns a tight limit and the fee to use. Doesn't sign or send anything.
+ * returns a tight limit and the fee to use. Doesn't sign or send anything. With `lookupTables`
+ * (Phase 43) it simulates the versioned (v0) transaction that will actually be sent.
  */
-export async function planComputeBudget(connection: PlanRpc, input: { payer: PublicKey; instructions: TransactionInstruction[]; cap: number }): Promise<ComputePlan> {
+export async function planComputeBudget(
+  connection: PlanRpc,
+  input: { payer: PublicKey; instructions: TransactionInstruction[]; cap: number; lookupTables?: AddressLookupTableAccount[] },
+): Promise<ComputePlan> {
   const writable = input.instructions.flatMap((ix) => ix.keys.filter((k) => k.isWritable).map((k) => k.pubkey));
   const microLamports = await recentPriorityFee(connection, [input.payer, ...writable]);
-  const tx = new Transaction({ feePayer: input.payer, recentBlockhash: PLACEHOLDER_BLOCKHASH }).add(...computeBudgetInstructions(input.cap, microLamports), ...input.instructions);
+  const instructions = [...computeBudgetInstructions(input.cap, microLamports), ...input.instructions];
   try {
-    const sim = await connection.simulateTransaction(new VersionedTransaction(tx.compileMessage()), { sigVerify: false, replaceRecentBlockhash: true, commitment: 'confirmed' });
+    const message = input.lookupTables
+      ? new TransactionMessage({ payerKey: input.payer, recentBlockhash: PLACEHOLDER_BLOCKHASH, instructions }).compileToV0Message(input.lookupTables)
+      : new Transaction({ feePayer: input.payer, recentBlockhash: PLACEHOLDER_BLOCKHASH }).add(...instructions).compileMessage();
+    const sim = await connection.simulateTransaction(new VersionedTransaction(message), { sigVerify: false, replaceRecentBlockhash: true, commitment: 'confirmed' });
     const used = sim.value.unitsConsumed ?? null;
     return { units: tightComputeUnits(used, input.cap), microLamports, unitsConsumed: used, err: sim.value.err ?? null, logs: sim.value.logs ?? null };
   } catch {

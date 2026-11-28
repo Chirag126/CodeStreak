@@ -5,6 +5,7 @@ import { PublicKey, SystemProgram, TransactionInstruction, type Transaction } fr
 import { CODESTREAK_IDL_JSON } from '../program/idl/codestreak.idl.js';
 import { ASSOCIATED_TOKEN_PROGRAM_ID, entryGatePda, PROGRAM_ID, TOKEN_PROGRAM_ID } from '../program/pdas.js';
 
+export * from './batch.js';
 export * from './fast.js';
 
 export const COMPUTE_BUDGET_PROGRAM_ID = new PublicKey('ComputeBudget111111111111111111111111111111');

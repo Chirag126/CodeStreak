@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProviderEvaluation } from '@codestreak/shared';
-import { dayResultOf, type Chain, type ChainChallenge, type ChainParticipant, type ChainSponsorReceipt, type DayResultName } from './chain.js';
+import { dayResultOf, type Chain, type ChainChallenge, type ChainOp, type ChainParticipant, type ChainSponsorReceipt, type DayResultName } from './chain.js';
 import type { Db } from './db.js';
 import type { DayEvaluation } from './evaluate.js';
 import { participantPayout, runVerification, type VerifyDeps } from './run.js';
@@ -156,6 +156,66 @@ class FakeChain implements Chain {
   }
 }
 
+/**
+ * Phase 43: the same program, plus batches. A batch applies its steps in order and lands whole or
+ * not at all (like one transaction); `pack` groups `batchSize` steps per transaction.
+ */
+class BatchingChain extends FakeChain {
+  batchSize = 3;
+  /** The steps of each batch that landed. */
+  batches: string[][] = [];
+
+  async pack(_c: ChainChallenge, ops: ChainOp[]) {
+    const out: number[][] = [];
+    ops.forEach((_, i) => (i % this.batchSize === 0 ? out.push([i]) : out[out.length - 1]!.push(i)));
+    return out;
+  }
+
+  private apply(c: ChainChallenge, op: ChainOp): Promise<string> {
+    switch (op.kind) {
+      case 'record':
+        return this.recordVerification(c.address, op.participant, op.day, op.result);
+      case 'finalize':
+        return this.finalize(c.address, op.participant);
+      case 'claim':
+        return this.claimParticipant(c, op.participant, op.payout);
+      case 'sponsorRefund':
+        return this.claimSponsorRefund(c, op.receipt);
+      case 'badge':
+        return this.mintBadge(c, op.participant);
+    }
+  }
+
+  async sendBatch(c: ChainChallenge, ops: ChainOp[]): Promise<string> {
+    const before = { ps: structuredClone(this.ps), c: structuredClone(this.c), sponsors: structuredClone(this.sponsors), badges: new Map(this.badges), sent: this.sent.length };
+    const restore = () => {
+      Object.assign(this, { ps: before.ps, c: before.c, sponsors: before.sponsors, badges: before.badges });
+      this.sent.length = before.sent;
+    };
+    try {
+      for (const op of ops) await this.apply(c, op);
+    } catch (e) {
+      restore();
+      throw new Error(`Simulation failed: {"InstructionError":[0,{"Custom":6000}]} (${(e as Error).message})`);
+    }
+    const steps = this.sent.splice(before.sent);
+    this.batches.push(steps);
+    const sig = `sig-batch-${this.batches.length}`;
+    this.sent.push(`batch(${steps.join(' ')})`);
+    for (const op of ops) if (op.kind === 'badge') this.badges.set(op.participant.address, sig);
+    const fault = this.faults.find((f) => f.method === 'batch' && f.times > 0);
+    if (fault) {
+      fault.times--;
+      if (!fault.landed) {
+        restore();
+        this.batches.pop();
+      }
+      throw fault.error;
+    }
+    return sig;
+  }
+}
+
 /** The SQL functions the job calls, in memory. */
 class FakeDb implements Db {
   lease = new Set<string>();
@@ -244,8 +304,8 @@ class FakeDb implements Db {
 const met = (value = 25): ProviderEvaluation => ({ provider: 'github', outcome: 'met', value, goal: 10, quality: { complete: true, gaps: 0, coveragePct: 100 }, evidence: [] });
 const notMet: ProviderEvaluation = { provider: 'github', outcome: 'not_met', value: 0, goal: 10, quality: { complete: true, gaps: 0, coveragePct: 100 }, evidence: [] };
 
-function setup(players = [ALICE, BOB], over: Partial<ChainChallenge['times']> = {}) {
-  const chain = new FakeChain(players, over);
+function setup(players = [ALICE, BOB], over: Partial<ChainChallenge['times']> = {}, batching = false) {
+  const chain = batching ? new BatchingChain(players, over) : new FakeChain(players, over);
   const db = new FakeDb();
   const evaluations: string[] = [];
   let outcome: (profile: string, day: number) => DayEvaluation = () => ({ providers: [met()], evidence: [], transientFailure: null });
@@ -536,6 +596,87 @@ describe('verification job', () => {
     const report = await one(deps);
     expect(chain.sent).toEqual([]);
     expect(report.errors[0]).toMatch(/cannot record days/);
+  });
+});
+
+describe('Phase 43: several players per transaction', () => {
+  const players = [ALICE, BOB, ...['Ca', 'Da', 'Ed', 'Fy', 'Gu'].map((n) => n.padEnd(43, '1'))];
+  const batching = (list = players) => {
+    const s = setup(list, {}, true);
+    return { ...s, chain: s.chain as BatchingChain };
+  };
+
+  it('records 7 players in 3 transactions (3 + 3 + 1) instead of 7, mirrored with the batch signature', async () => {
+    const { chain, db, deps } = batching();
+    chain.clock = START + DAY + 200;
+    const report = await one(deps);
+    expect(chain.batches.map((b) => b.length)).toEqual([3, 3]);
+    expect(chain.sent.filter((x) => x.startsWith('record:'))).toHaveLength(1); // the last one goes alone
+    expect(report).toMatchObject({ recorded: 7, errors: [] });
+    expect(report.txs).toHaveLength(3);
+    expect(db.dayResults.get('m-alice:0')).toMatchObject({ record_tx: 'sig-batch-1' });
+    expect([...chain.ps.values()].every((p) => dayResultOf(p, 0) !== null)).toBe(true);
+  });
+
+  it('settles with batched finalize, payouts and badges; the dust goes to the last survivor in the batch', async () => {
+    const { chain, db, deps } = batching();
+    // 3 survivors, 4 failed (10 each): 40 / 3 = 13 each and 1 of dust.
+    [...chain.ps.values()].forEach((p, i) => (i < 3 ? (p.verifiedDays = 0b111n) : (p.failedDays = 0b001n)));
+    chain.clock = START + 3 * DAY + 900 + 600;
+    const report = await one(deps);
+    expect(report.errors).toEqual([]);
+    expect(chain.c.times.state).toBe('settled');
+    expect(chain.batches.filter((b) => b[0]!.startsWith('finalize:')).map((b) => b.length)).toEqual([3, 3]);
+    expect(chain.batches.filter((b) => b[0]!.startsWith('reward:'))).toHaveLength(1);
+    expect(db.payouts.map((p) => [p.wallet, p.amount])).toEqual([
+      [players[0], '23'],
+      [players[1], '23'],
+      [players[2], '24'],
+    ]);
+    expect(db.payouts.every((p) => p.tx === db.payouts[0]!.tx && p.tx!.startsWith('sig-batch-'))).toBe(true);
+    expect(db.badges.map((b) => b.wallet)).toEqual(players.slice(0, 3));
+    expect(db.badges.every((b) => b.tx === 'sig-batch-4')).toBe(true);
+    // 2 finalize batches + 1 alone, settle, 1 payout batch, 1 badge batch: 6 instead of 14.
+    expect(report.txs).toHaveLength(6);
+
+    const sent = chain.sent.length;
+    await runVerification(deps);
+    expect(chain.sent.length).toBe(sent); // nothing twice
+  });
+
+  it('a batch with a bad step is sent one by one: only that step fails, the others are paid', async () => {
+    const { chain, db, deps, logs } = batching(players.slice(0, 4));
+    [...chain.ps.values()].forEach((p) => (p.verifiedDays = 0b111n));
+    chain.c.minParticipants = 2;
+    chain.clock = START + 3 * DAY + 900 + 600;
+    // The first reward fails in the batch and again on its own.
+    chain.faults.push({ method: 'reward', error: new Error('custom program error: 0x1771 InvalidVault'), landed: false, times: 2 });
+    const report = await one(deps);
+    expect(logs.some((l) => /payouts: a batch of 3 failed .*one by one/.test(l))).toBe(true);
+    expect(report.errors).toHaveLength(1);
+    expect(report.errors[0]).toMatch(/reward to A1ic/);
+    expect(db.payouts.map((p) => p.wallet)).toEqual(players.slice(1, 4));
+  });
+
+  it('a batch that landed but lost its confirmation is not sent again', async () => {
+    const { chain, db, deps } = batching(players.slice(0, 3));
+    chain.clock = START + DAY + 200;
+    chain.faults.push({ method: 'batch', error: new Error('Transaction was not confirmed in 30.00 seconds'), landed: true, times: 1 });
+    const report = await one(deps);
+    expect(report.errors).toEqual([]);
+    expect(chain.batches).toHaveLength(1);
+    expect(chain.sent).toHaveLength(1);
+    expect(db.dayResults.get('m-alice:0')?.onchain_at).toBeTruthy();
+  });
+
+  it('falls back to one by one when the steps cannot be grouped', async () => {
+    const { chain, deps, logs } = batching(players.slice(0, 3));
+    chain.pack = () => Promise.reject(new Error('custom program error: config account missing'));
+    chain.clock = START + DAY + 200;
+    const report = await one(deps);
+    expect(report).toMatchObject({ recorded: 3, errors: [] });
+    expect(chain.batches).toEqual([]);
+    expect(logs.some((l) => /could not group the steps/.test(l))).toBe(true);
   });
 });
 
