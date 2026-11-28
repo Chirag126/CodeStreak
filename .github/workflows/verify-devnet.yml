@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       commit:
-        description: Commit to rebuild (default: the selected branch's latest)
+        description: "Commit to rebuild (default: the selected branch's latest)"
         required: false
 
 permissions:
