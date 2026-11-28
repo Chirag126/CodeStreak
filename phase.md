@@ -1855,3 +1855,21 @@ No app behaviour changes. One program upgrade (it only adds the `security.txt` d
 Demo challenges now finalize 6 minutes after their last day instead of 25: 3 minutes of final checks (the worker records the last day a minute after it ends, so GitHub has time to list a push, and retries an unreachable provider once) and 3 minutes for disputes. Real challenges keep 6 hours + 24 hours. Only new demo challenges are affected (the windows are fixed on-chain at creation); the program allows any window from 1 minute, so no upgrade. The worker's "last call" for a provider that can't be reached is now the last third of a short window (1 minute for demos) and stays 3 minutes for longer ones, so a short window still gets a retry.
 
 **Real challenges: 3 + 12 hours.** Real (24-hour-day) challenges now use 3 hours of final checks (the last day is recorded ~45 minutes after it ends; over 2 hours of retries if GitHub or LeetCode is down) and 12 hours for disputes, so payouts arrive ~15 hours after the last day instead of ~30. New challenges only; the program allows it as is.
+
+## Repository modes: individual, shared, no restriction
+
+GitHub challenges now say which repositories count, chosen by the creator in the Rules step (and fingerprinted on-chain as `rules.github.repoMode`):
+
+- **Individual repository** (default, recommended for competitions): each player picks one of their own public repositories when joining, from a picker of their GitHub repos. Only their own pushes there count. The rules document records the change policy (`repoChange: until-first-verified-day`).
+- **Shared repositories**: the creator picks up to 5 (from their repos, or by typing owner/name for a team repo they don't own); they apply to everyone, and each player's own pushes there count (the existing Phase 24 rule, unchanged). Now chosen with the same picker.
+- **No restriction**: the old behaviour, exactly: any public repository the player owns.
+
+Challenges created before this keep their meaning: a document with `repos` reads as shared, without as no restriction.
+
+**A player's repository** is stored in `public.challenge_repo_choices` (challenge + player + GitHub repo id + owner id + name + `effective_from`), written only by `public.set_repo_choice` (service role), and only after the server asked GitHub about the repository **by id**: it must exist, be public, be owned by the player's linked GitHub account, and not be a fork unless the challenge counts forks. The browser sends only an id, never a name or owner. Rules enforced by the database: individual-mode challenges only; members, or people who may still join (private groups: creator or invited); max 20 changes; **locked after the player's first verified day**; before day 1 a pick applies from day 1 (later picks replace it), during the challenge it applies from the **next** day. A day is checked against the choice in force when it started, so a change never reaches back. Joining (in the app or by Blink) is refused until a player whose GitHub counts has chosen.
+
+**Verification** reads the chosen repository by id; it must still be owned by the player and not a fork (`not-repo-owner`, `fork`), and pushes elsewhere are "made in a repository that is not selected for this challenge". No repository chosen → nothing can count. **Loophole closed:** for shared repos a deleted or private repository makes days "couldn't be checked" (the creator controls it, never the player's fault); for a player's *own* repository that would let anyone escape a missed day by hiding it, so in individual mode it fails the day instead. A GitHub outage is still never the player's fault.
+
+**Not possible (by design):** private repositories. CodeStreak reads GitHub with a server token and never holds a player's private-repository access, so their pushes are invisible; the picker lists public repositories only and says why.
+
+Tests: `github-fetch.test.ts` (individual mode: counted, other repo, transferred, fork, deleted/hidden → failed, outage → indeterminate, none chosen, older documents, choice in force per day), `challenge-form.test.ts` (modes in the rules document), `supabase/tests/99s_repo_choices_test.sql` (timing, replacement, lock, join deadline, shared mode, private group, bad names, grants and RLS).

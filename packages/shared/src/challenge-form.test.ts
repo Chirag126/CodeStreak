@@ -139,3 +139,30 @@ describe('selected repositories (Phase 24)', () => {
     expect(parseRepoList('a/1 a/2 a/3 a/4 a/5 a/6').ok).toBe(false);
   });
 });
+
+describe('repository modes', () => {
+  it('individual is the default: no repositories in the rules, a change policy instead', () => {
+    const r = check({});
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(rulesDocument(r.form).github).toMatchObject({ repoMode: 'individual', repoChange: 'until-first-verified-day' });
+    expect(rulesDocument(r.form).github).not.toHaveProperty('repos');
+  });
+  it('shared needs at least one repository; the resolved ids go into the rules', () => {
+    const empty = check({ githubRepoMode: 'shared', githubRepos: '' });
+    expect(empty.ok).toBe(false);
+    if (!empty.ok) expect(empty.errors.githubRepos).toMatch(/at least one repository/);
+    const r = check({ githubRepoMode: 'shared', githubRepos: 'acme/b acme/a' });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const doc = rulesDocument(r.form, { repos: [{ id: 9, fullName: 'acme/b' }, { id: 3, fullName: 'acme/a' }] });
+    expect(doc.github).toMatchObject({ repoMode: 'shared', repos: [{ id: 3 }, { id: 9 }] });
+  });
+  it('any keeps the old behaviour: no repositories, whatever was typed', () => {
+    const r = check({ githubRepoMode: 'any', githubRepos: 'acme/a' });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(rulesDocument(r.form, { repos: [{ id: 3, fullName: 'acme/a' }] }).github).toMatchObject({ repoMode: 'any' });
+    expect(rulesDocument(r.form, { repos: [{ id: 3, fullName: 'acme/a' }] }).github).not.toHaveProperty('repos');
+  });
+});

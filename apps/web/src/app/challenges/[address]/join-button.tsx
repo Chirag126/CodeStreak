@@ -37,6 +37,7 @@ export function JoinButton({
   buyInLabel,
   isSol = false,
   needToLink = null,
+  needRepo = null,
   terms,
 }: {
   challenge: string;
@@ -45,6 +46,8 @@ export function JoinButton({
   isSol?: boolean;
   /** Set when the viewer must link GitHub/LeetCode first: shown up front instead of after a failed join. */
   needToLink?: string | null;
+  /** Individual repository mode: set until the viewer has chosen their repository (on this page). */
+  needRepo?: string | null;
   terms: StakeTerms;
 }) {
   const [agreed, setAgreed] = useState(false);
@@ -128,6 +131,10 @@ export function JoinButton({
           <a className="underline underline-offset-4" href="/dashboard/settings">
             Open Settings
           </a>
+        </p>
+      ) : needRepo ? (
+        <p role="status" className="rounded-lg border border-warning-400/40 bg-warning-400/10 p-3 text-sm">
+          {needRepo}
         </p>
       ) : wallets.length === 0 ? (
         <p className="text-sm text-muted-foreground">No Solana wallet found in this browser. Install Phantom and reload.</p>

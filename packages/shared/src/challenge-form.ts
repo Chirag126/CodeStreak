@@ -62,7 +62,12 @@ export const challengeFormSchema = z
     minLines: z.number().int().min(1, 'At least 1 line.').max(500, 'At most 500 lines.'),
     /** GitHub options (strict by default): file filter and capped allowances. */
     githubFileTypes: z.string().max(400, 'Too long.').default(''),
-    /** Only pushes to these repositories count ("owner/name", resolved to ids on the server). */
+    /**
+     * Which repositories count: each player's own choice (individual, the default for competitions),
+     * the creator's list for everyone (shared, team projects), or any public repo the player owns.
+     */
+    githubRepoMode: z.enum(['individual', 'shared', 'any']).default('individual'),
+    /** Shared mode: only pushes to these repositories count ("owner/name", resolved to ids on the server). */
     githubRepos: z.string().max(500, 'Too long.').default(''),
     allowDocs: z.boolean().default(false),
     /** LeetCode: new problems per day and minimum difficulty. */
@@ -88,8 +93,11 @@ export const challengeFormSchema = z
     }
     const filter = parseFileFilter(f.githubFileTypes);
     if (!filter.ok) ctx.addIssue({ code: 'custom', path: ['githubFileTypes'], message: filter.error });
-    const repos = parseRepoList(f.githubRepos);
-    if (!repos.ok) ctx.addIssue({ code: 'custom', path: ['githubRepos'], message: repos.error });
+    if (f.providers.includes('github') && f.githubRepoMode === 'shared') {
+      const repos = parseRepoList(f.githubRepos);
+      if (!repos.ok) ctx.addIssue({ code: 'custom', path: ['githubRepos'], message: repos.error });
+      else if (repos.repos.length === 0) ctx.addIssue({ code: 'custom', path: ['githubRepos'], message: 'Choose at least one repository, or pick another repository rule.' });
+    }
     if (f.mode === 'real' && !f.startDate) ctx.addIssue({ code: 'custom', path: ['startDate'], message: 'Pick a start date.' });
     if (f.maxPlayers < f.minPlayers) ctx.addIssue({ code: 'custom', path: ['maxPlayers'], message: 'Must be at least the minimum.' });
     if (f.shieldsEnabled) {
@@ -162,15 +170,21 @@ export function parseRepoList(raw: string): { ok: true; repos: string[] } | { ok
 /** Repositories resolved on the server (numeric id, current name), checked public at creation. */
 export type ResolvedRepo = { id: number; fullName: string };
 
+/** How a player's repository may change in individual mode (written into the hashed rules). */
+export const REPO_CHANGE_POLICY = 'until-first-verified-day';
+
 function githubRulesDoc(f: ChallengeForm, repos: ResolvedRepo[]) {
   const filter = parseFileFilter(f.githubFileTypes);
   const fileFilter = filter.ok && (filter.extensions.length || filter.filenames.length) ? { extensions: filter.extensions, filenames: filter.filenames } : null;
+  const mode = f.githubRepoMode;
   return {
     minMeaningfulLines: f.minLines,
     ownNonForkReposOnly: !f.allowForks,
     fileFilter,
     allow: { docs: f.allowDocs, generated: f.allowGenerated, forks: f.allowForks, backdateHours: f.backdateHours },
-    ...(repos.length ? { repos: [...repos].sort((a, b) => a.id - b.id) } : {}),
+    repoMode: mode,
+    ...(mode === 'individual' ? { repoChange: REPO_CHANGE_POLICY } : {}),
+    ...(mode === 'shared' && repos.length ? { repos: [...repos].sort((a, b) => a.id - b.id) } : {}),
   };
 }
 

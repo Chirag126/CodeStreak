@@ -9,9 +9,9 @@ export const SKIP_REASON_TEXT: Record<GithubSkipReason, string> = {
   'author-mismatch': 'Written by another GitHub account.',
   'author-unlinked': "Its git email isn't on your GitHub account, so GitHub can't tell it's yours.",
   'pushed-by-other': 'Carries your name but was pushed by another account.',
-  'other-repo': "Not in one of this challenge's repositories.",
+  'other-repo': 'Made in a repository that is not selected for this challenge.',
   fork: 'In a fork (this challenge doesn’t count forks).',
-  'not-repo-owner': "In a repository you don't own.",
+  'not-repo-owner': "In a repository you don't own (or no longer own).",
   backdated: 'Made before the day started (old work pushed late).',
   'duplicate-sha': 'Already counted on an earlier day.',
   'duplicate-diff': 'The same change was already counted (rebase or cherry-pick).',
@@ -29,10 +29,18 @@ export interface CollectSummary {
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** Short, specific explanations of a day, most important first. */
-export function explainGithubDay(data: CollectSummary, day: GithubDayResult, goal: number, opts: { selectedRepos: boolean }): string[] {
+export function explainGithubDay(
+  data: CollectSummary,
+  day: GithubDayResult,
+  goal: number,
+  opts: { selectedRepos: boolean; memberRepo?: string | null },
+): string[] {
   const hints: string[] = [];
   if (data.pushes === 0 && data.complete) {
-    if (opts.selectedRepos) hints.push("You made no pushes to this challenge's repositories on this day.");
+    if (opts.memberRepo === null) hints.push('Choose your repository for this challenge on the challenge page: until you do, no push can count.');
+    else if (opts.memberRepo && data.repos.some((r) => r.status === 'missing' || r.status === 'private')) hints.push(`Your challenge repository ${opts.memberRepo} was deleted or made private, so no push could count.`);
+    else if (opts.memberRepo) hints.push(`You made no pushes to your challenge repository ${opts.memberRepo} on this day.`);
+    else if (opts.selectedRepos) hints.push("You made no pushes to this challenge's repositories on this day.");
     else if (data.repos.length === 0) hints.push('None of your public repositories was pushed on this day. Pushes to private repositories are never visible: make the repository public to have it count.');
     else hints.push(`These repositories were pushed on this day, but not by you: ${data.repos.map((r) => r.fullName).join(', ')}.`);
   }
@@ -41,6 +49,7 @@ export function explainGithubDay(data: CollectSummary, day: GithubDayResult, goa
   if (count('author-unlinked')) hints.push(`${commits(count('author-unlinked'))} used a git email that isn't on your GitHub account. Add that email in GitHub → Settings → Emails, or commit with one that is (check \`git config user.email\`).`);
   if (count('author-mismatch')) hints.push(`${commits(count('author-mismatch'))} ${count('author-mismatch') === 1 ? 'was' : 'were'} written by another GitHub account, so ${count('author-mismatch') === 1 ? 'it doesn’t' : 'they don’t'} count for you.`);
   if (count('pushed-by-other')) hints.push(`${commits(count('pushed-by-other'))} carry your name but were pushed by another account.`);
+  if (count('other-repo')) hints.push(`${commits(count('other-repo'))} ${count('other-repo') === 1 ? 'was' : 'were'} made in a repository that is not selected for this challenge.`);
   if (count('backdated')) hints.push(`${commits(count('backdated'))} were made before the day started.`);
   if (count('merge-commit')) hints.push(`${commits(count('merge-commit'))} ${count('merge-commit') === 1 ? 'is a merge' : 'are merges'}; merged work counts on the day it is pushed.`);
   if (count('whitespace-only')) hints.push(`${commits(count('whitespace-only'))} only re-indent or move existing lines.`);

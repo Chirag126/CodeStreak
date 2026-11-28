@@ -2,6 +2,7 @@
 // (Phase 24 GitHub, Phase 26 LeetCode, Phase 27 rules engine). Read-only: it never writes results.
 import { type ProviderEvaluation } from '@codestreak/shared';
 import {
+  choiceForDay,
   collectGithubCommits,
   createGithubGet,
   evaluateGithubDay,
@@ -11,6 +12,8 @@ import {
   leetcodeEvaluation,
   leetcodeRulesFromDocument,
   readLeetcodeSnapshot,
+  repoChoiceFromRow,
+  repoModeOf,
   SKIP_REASON_TEXT,
   snapshotRecordFromRow,
   type GithubRulesDocument,
@@ -74,7 +77,7 @@ const unknown = (provider: 'github' | 'leetcode', goal: number): ProviderEvaluat
 
 export async function evaluateMemberDay(
   deps: EvaluateDeps,
-  input: { profileId: string; membershipId: string; day: number; window: { startSec: number; endSec: number }; rules: RulesDocument },
+  input: { challengeId: string; profileId: string; membershipId: string; day: number; window: { startSec: number; endSec: number }; rules: RulesDocument },
 ): Promise<DayEvaluation> {
   const out: DayEvaluation = { providers: [], evidence: [], transientFailure: null };
   const accounts = await deps.db.select<{ provider: string; provider_user_id: string }>(
@@ -85,15 +88,28 @@ export async function evaluateMemberDay(
 
   // ---- GitHub
   if (input.rules.github) {
-    const rules = githubRulesFromDocument(input.rules.github);
+    // Individual repository mode: the player's repository in force when this day started.
+    const individual = repoModeOf(input.rules.github) === 'individual';
+    const choice = individual
+      ? choiceForDay(
+          (
+            await deps.db.select<{ repo_id: number; repo_owner_id: number; full_name: string; effective_from: string }>(
+              'challenge_repo_choices',
+              `select=repo_id,repo_owner_id,full_name,effective_from&challenge_id=eq.${input.challengeId}&profile_id=eq.${input.profileId}&order=effective_from.asc&limit=100`,
+            )
+          ).map(repoChoiceFromRow),
+          input.window.startSec,
+        )
+      : null;
+    const rules = githubRulesFromDocument(input.rules.github, choice);
     const githubId = linked('github');
     if (!githubId) out.providers.push(unknown('github', rules.minMeaningfulLines));
     else {
       try {
-        const cacheKey = `${githubId}:${input.window.startSec}:${(rules.repos ?? []).join(',')}`;
+        const cacheKey = `${githubId}:${input.window.startSec}:${rules.repoScope ?? 'own'}:${(rules.repos ?? []).join(',')}`;
         let pending = deps.githubCache.get(cacheKey);
         if (!pending) {
-          pending = collectGithubCommits({ get: createGithubGet(deps.githubToken), githubId: Number(githubId), window: input.window, repoIds: rules.repos ?? null });
+          pending = collectGithubCommits({ get: createGithubGet(deps.githubToken), githubId: Number(githubId), window: input.window, repoIds: rules.repos ?? null, memberRepo: rules.repoScope === 'member' });
           deps.githubCache.set(cacheKey, pending);
         }
         const data = await pending;

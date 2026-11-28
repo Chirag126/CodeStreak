@@ -54,6 +54,7 @@ import { Connection, PublicKey, SystemProgram, Transaction, VersionedTransaction
 import { moderationBlock } from '@/lib/moderation/gate';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { linkedProviders } from '@/lib/accounts/github';
+import { hasRepoChoice } from '@/lib/github/repo-choice';
 import { syncChallenge, syncJoin, syncShield, syncSponsor } from '@/lib/sync/chain';
 import { relayerKeypair } from './keypair';
 import { after } from 'next/server';
@@ -113,13 +114,22 @@ export async function rulesMatchChain(challengeAddress: string, onChainHashHex: 
 const LINKABLE = new Set(['github', 'leetcode']);
 
 /** A message if the challenge's rules need accounts the profile hasn't linked, else null. */
+const REPO_NEEDED = 'This challenge checks each player’s own repository. Choose yours on the challenge page, then join.';
+
 async function joinRequirement(profileId: string, challengeAddress: string): Promise<string | null> {
-  const { data } = await createSupabaseAdminClient().from('challenges').select('rules').eq('onchain_address', challengeAddress).maybeSingle();
-  const rules = (data?.rules ?? null) as { providers?: ('github' | 'leetcode')[]; providerRule?: 'any' | 'all' } | null;
+  const { data } = await createSupabaseAdminClient().from('challenges').select('id, rules').eq('onchain_address', challengeAddress).maybeSingle();
+  const rules = (data?.rules ?? null) as { providers?: ('github' | 'leetcode')[]; providerRule?: 'any' | 'all'; github?: { repoMode?: string } | null } | null;
   const linked = await linkedProviders(profileId);
   const notYetLinkable = (rules?.providers ?? []).filter((p) => !LINKABLE.has(p));
   const check = missingProviders(rules, [...linked, ...notYetLinkable]);
-  if (check.ok) return null;
+  if (check.ok) {
+    // Individual repository mode: a player whose GitHub counts must choose their repository first
+    // (also for Blink joins, which come through here too).
+    if (data && rules?.github?.repoMode === 'individual' && linked.includes('github') && !(await hasRepoChoice(profileId, data.id as string))) {
+      return REPO_NEEDED;
+    }
+    return null;
+  }
   if (check.rule === 'all') {
     return `This challenge counts ${check.need.map((p) => PROVIDER_LABELS[p]).join(' and ')} activity, and your ${check.need.map((p) => PROVIDER_LABELS[p]).join(' and ')} account isn't linked yet. Link it in Dashboard → Settings, then join.`;
   }
@@ -320,6 +330,7 @@ export async function prepareJoin(input: {
 
   // The rules' providers must be linked before joining (otherwise days could never be verified).
   const requirement = await joinRequirement(input.profileId, input.challengeAddress);
+  if (requirement === REPO_NEEDED) return { ok: false, error: requirement, code: 'repo.not_chosen', title: 'Choose your repository first' };
   if (requirement) return { ok: false, error: requirement, code: 'account.not_linked', title: 'Link your accounts first' };
 
   const buyIn = BigInt(challenge.buyIn.toString());

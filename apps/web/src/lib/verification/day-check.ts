@@ -2,6 +2,7 @@ import 'server-only';
 
 import { checkableDay, providerConfidence, type ProviderOutcome } from '@codestreak/shared';
 import {
+  choiceForDay,
   collectGithubCommits,
   createGithubGet,
   evaluateGithubDay,
@@ -13,9 +14,12 @@ import {
   githubRulesFromDocument,
   leetcodeRulesFromDocument,
   readLeetcodeSnapshot,
+  repoChoiceFromRow,
+  repoModeOf,
   SKIP_REASON_TEXT,
   snapshotRecordFromRow,
   type GithubRulesDocument,
+  type RepoChoice,
   type LeetcodeRulesDocument,
   type SnapshotRow,
 } from '@codestreak/shared/verification';
@@ -105,7 +109,7 @@ async function saveDay(admin: Admin, input: { membershipId: string; day: number;
 
 // ---------------------------------------------------------------- GitHub
 
-async function checkGithub(admin: Admin, a: { profileId: string; membershipId: string; day: number; window: Window; doc: GithubRulesDocument; runId: string | null }): Promise<string | null> {
+async function checkGithub(admin: Admin, a: { challengeId: string; profileId: string; membershipId: string; day: number; window: Window; doc: GithubRulesDocument; runId: string | null }): Promise<string | null> {
   const { data: account } = await admin.from('linked_accounts').select('provider_user_id').eq('profile_id', a.profileId).eq('provider', 'github').maybeSingle();
   if (!account) return 'GitHub is not linked (Dashboard → Settings).';
   const githubId = Number(account.provider_user_id);
@@ -115,8 +119,21 @@ async function checkGithub(admin: Admin, a: { profileId: string; membershipId: s
     shas: new Set((earlier ?? []).map((e) => e.external_id as string)),
     diffHashes: new Set((earlier ?? []).filter((e) => e.counted && e.diff_hash).map((e) => e.diff_hash as string)),
   };
-  const rules = githubRulesFromDocument(a.doc);
-  const data = await collectGithubCommits({ get: createGithubGet(process.env.GITHUB_API_TOKEN || undefined), githubId, window: a.window, repoIds: rules.repos ?? null });
+  // Individual repository mode: the player's repository in force when this day started.
+  const individual = repoModeOf(a.doc) === 'individual';
+  let choice: RepoChoice | null = null;
+  if (individual) {
+    const { data: rows } = await admin
+      .from('challenge_repo_choices')
+      .select('repo_id, repo_owner_id, full_name, effective_from')
+      .eq('challenge_id', a.challengeId)
+      .eq('profile_id', a.profileId)
+      .order('effective_from', { ascending: true })
+      .limit(100);
+    choice = choiceForDay((rows ?? []).map((r) => repoChoiceFromRow(r as Parameters<typeof repoChoiceFromRow>[0])), a.window.startSec);
+  }
+  const rules = githubRulesFromDocument(a.doc, choice);
+  const data = await collectGithubCommits({ get: createGithubGet(process.env.GITHUB_API_TOKEN || undefined), githubId, window: a.window, repoIds: rules.repos ?? null, memberRepo: rules.repoScope === 'member' });
   const day = evaluateGithubDay({ commits: data.commits, userGithubId: githubId, window: a.window, rules, seen });
   const pushedAt = new Map(data.commits.map((x) => [x.sha, x.pushedAt]));
   const evidence: EvidenceRow[] = [
@@ -142,7 +159,7 @@ async function checkGithub(admin: Admin, a: { profileId: string; membershipId: s
       complete: data.complete,
       pushes: data.pushes,
       breakdown: day.breakdown as unknown as Record<string, unknown>,
-      hints: explainGithubDay(data, day, rules.minMeaningfulLines, { selectedRepos: (rules.repos ?? []).length > 0 }),
+      hints: explainGithubDay(data, day, rules.minMeaningfulLines, { selectedRepos: (rules.repos ?? []).length > 0, memberRepo: individual ? (choice?.fullName ?? null) : undefined }),
       notes: data.notes,
     },
   });
@@ -292,7 +309,7 @@ export async function checkMemberDay(profileId: string, challengeAddress: string
   }
 
   const { data: run } = await admin.from('verification_runs').insert({ challenge_id: c.id, day: slot.day, triggered_by: 'manual' }).select('id').single();
-  const args = { profileId, membershipId: m.id as string, day: slot.day, window: slot.window, runId: (run?.id as string | undefined) ?? null };
+  const args = { challengeId: c.id as string, profileId, membershipId: m.id as string, day: slot.day, window: slot.window, runId: (run?.id as string | undefined) ?? null };
   const problems: string[] = [];
   const checked: Provider[] = [];
   for (const p of providers) {

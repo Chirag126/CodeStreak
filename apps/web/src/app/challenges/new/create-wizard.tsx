@@ -1,6 +1,6 @@
 'use client';
 
-import { DEMO_DAY_MINUTES, GITHUB_OPTION_LIMITS, STAKE_LIMITS, validateChallengeForm, type ChallengeFormInput } from '@codestreak/shared';
+import { DEMO_DAY_MINUTES, GITHUB_OPTION_LIMITS, MAX_SELECTED_REPOS, parseRepoList, STAKE_LIMITS, validateChallengeForm, type ChallengeFormInput } from '@codestreak/shared';
 import type { Wallet, WalletAccount } from '@wallet-standard/base';
 import { AnimatePresence, motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
@@ -14,6 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { RepoPicker, type PickerRepo } from '@/components/github/repo-picker';
 import { connectWallet, DEVNET_CHAIN, useSolanaWallets } from '@/components/wallet/use-wallets';
 import { variants } from '@/lib/motion';
 import { cn } from '@/lib/utils';
@@ -25,7 +26,7 @@ const STEPS = [
   { title: 'Basics', fields: ['title', 'description', 'visibility'] },
   { title: 'Stake', fields: ['token', 'buyIn'] },
   { title: 'Schedule', fields: ['mode', 'durationDays', 'startDate', 'demoDayMinutes', 'demoStartMinutes'] },
-  { title: 'Rules', fields: ['providers', 'providerRule', 'minLines', 'githubFileTypes', 'githubRepos', 'allowDocs', 'allowGenerated', 'allowForks', 'backdateHours', 'leetcodeMinSolves', 'leetcodeDifficulty'] },
+  { title: 'Rules', fields: ['providers', 'providerRule', 'minLines', 'githubFileTypes', 'githubRepoMode', 'githubRepos', 'allowDocs', 'allowGenerated', 'allowForks', 'backdateHours', 'leetcodeMinSolves', 'leetcodeDifficulty'] },
   { title: 'Players & Shields', fields: ['minPlayers', 'maxPlayers', 'shieldsEnabled', 'shieldPrice', 'maxShields', 'shieldGraceMinutes'] },
   { title: 'Review', fields: [] as string[] },
 ] as const;
@@ -51,6 +52,7 @@ const INITIAL: Form = {
   providerRule: 'any',
   minLines: 15,
   githubFileTypes: '',
+  githubRepoMode: 'individual',
   githubRepos: '',
   allowDocs: false,
   allowGenerated: false,
@@ -110,6 +112,12 @@ function Choice<T extends string | number>({ value, options, onChange, label }: 
   );
 }
 
+const REPO_MODES = [
+  { value: 'individual', label: 'Individual repository', hint: 'Each player picks their own repository from their GitHub. Best for competitions.' },
+  { value: 'shared', label: 'Shared repositories', hint: 'You pick up to 5 repositories for everyone. For team projects and hackathons.' },
+  { value: 'any', label: 'No restriction', hint: 'Any public repository the player owns counts.' },
+] as const;
+
 /** Current unix time; read in event handlers only (never during render). */
 const nowSecs = () => Math.floor(Date.now() / 1000);
 
@@ -144,6 +152,14 @@ export function CreateWizard({ linkedWallets }: { linkedWallets: string[] }) {
     });
   };
   const symbol = STAKE_LIMITS[form.token].symbol;
+  // Shared mode: the picker and the text field edit the same list.
+  const parsedShared = parseRepoList(form.githubRepos);
+  const sharedRepos = parsedShared.ok ? parsedShared.repos : [];
+  const toggleShared = (r: PickerRepo) => {
+    const has = sharedRepos.some((x) => x.toLowerCase() === r.fullName.toLowerCase());
+    const next = has ? sharedRepos.filter((x) => x.toLowerCase() !== r.fullName.toLowerCase()) : sharedRepos.length >= MAX_SELECTED_REPOS ? sharedRepos : [...sharedRepos, r.fullName];
+    set('githubRepos', next.join(' '));
+  };
 
   /** Client-side validation with the same rules the server and program use. */
   function errorsFor(fields: readonly string[]): Record<string, string> {
@@ -346,7 +362,52 @@ export function CreateWizard({ linkedWallets }: { linkedWallets: string[] }) {
                     </Field>
                   )}
                   {form.providers.includes('github') && (
-                    <Field label="Minimum meaningful lines per day" htmlFor="minLines" error={errors.minLines} hint="Added + changed code lines in your own repos (not forks).">
+                    <Field label="Which repositories count" error={errors.githubRepoMode}>
+                      <div role="radiogroup" aria-label="Which repositories count" className="grid gap-2 sm:grid-cols-3">
+                        {REPO_MODES.map((o) => (
+                          <button
+                            key={o.value}
+                            type="button"
+                            role="radio"
+                            aria-checked={form.githubRepoMode === o.value}
+                            onClick={() => set('githubRepoMode', o.value)}
+                            className={cn(
+                              'rounded-lg border p-3 text-left transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
+                              form.githubRepoMode === o.value ? 'border-cobalt-400 bg-cobalt-400/10' : 'border-border hover:bg-muted',
+                            )}
+                          >
+                            <span className="flex items-center gap-2 text-sm font-medium">
+                              {o.label}
+                              {o.value === 'individual' && <Badge variant="accent">Recommended</Badge>}
+                            </span>
+                            <span className="mt-1 block text-xs text-muted-foreground">{o.hint}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </Field>
+                  )}
+                  {form.providers.includes('github') && form.githubRepoMode === 'individual' && (
+                    <p className="rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+                      Every player picks one of their own public repositories when they join, and only their own pushes there count. They can change it until their first verified day (then it is locked); during the challenge a change applies from the next day, never to a day already under way.
+                    </p>
+                  )}
+                  {form.providers.includes('github') && form.githubRepoMode === 'shared' && (
+                    <div className="space-y-3 rounded-lg border border-border p-4">
+                      <p className="text-sm font-medium">Shared repositories (up to {MAX_SELECTED_REPOS})</p>
+                      <p className="text-xs text-muted-foreground">They apply to every player. Each player’s own pushes there count, whoever owns the repository; nobody gets credit for someone else’s commits.</p>
+                      <RepoPicker mode="multi" max={MAX_SELECTED_REPOS} allowForks selected={sharedRepos} onToggle={toggleShared} />
+                      <Field
+                        label="Selected repositories"
+                        htmlFor="githubRepos"
+                        error={errors.githubRepos}
+                        hint="Picked above, or type owner/name for a team repository you don't own (public only). Checked on GitHub when you create the challenge."
+                      >
+                        <Input id="githubRepos" value={form.githubRepos} onChange={(e) => set('githubRepos', e.target.value)} placeholder="acme/team-app" spellCheck={false} />
+                      </Field>
+                    </div>
+                  )}
+                  {form.providers.includes('github') && (
+                    <Field label="Minimum meaningful lines per day" htmlFor="minLines" error={errors.minLines} hint="Added + changed code lines, in the repositories that count.">
                       <Input id="minLines" type="number" min={1} max={500} value={Number.isNaN(form.minLines) ? '' : form.minLines} onChange={(e) => set('minLines', num(e.target.value))} />
                     </Field>
                   )}
@@ -383,14 +444,6 @@ export function CreateWizard({ linkedWallets }: { linkedWallets: string[] }) {
                           hint="Extensions like .ts .py and/or exact file names like main.py. Empty = all source files."
                         >
                           <Input id="githubFileTypes" value={form.githubFileTypes} onChange={(e) => set('githubFileTypes', e.target.value)} placeholder=".ts .tsx main.py" spellCheck={false} />
-                        </Field>
-                        <Field
-                          label="Only pushes to these repositories (optional)"
-                          htmlFor="githubRepos"
-                          error={errors.githubRepos}
-                          hint="For a team project: owner/name, up to 5, public only. Each member's own pushes there count, whoever owns the repo. Empty = each member's own public repositories."
-                        >
-                          <Input id="githubRepos" value={form.githubRepos} onChange={(e) => set('githubRepos', e.target.value)} placeholder="acme/team-app" spellCheck={false} />
                         </Field>
                         <p className="text-xs text-muted-foreground">
                           Never counted: whitespace-only or re-indented changes, moved lines, and the same change pushed again (rebase, cherry-pick). Counting them would let anyone farm lines.
@@ -482,6 +535,18 @@ export function CreateWizard({ linkedWallets }: { linkedWallets: string[] }) {
                           .join(form.providerRule === 'all' ? ' AND ' : ' OR ')}
                       </dd>
                     </div>
+                    {form.providers.includes('github') && (
+                      <div>
+                        <dt className="text-muted-foreground">Repositories</dt>
+                        <dd>
+                          {form.githubRepoMode === 'individual'
+                            ? 'Each player chooses their own when joining; locked after their first verified day'
+                            : form.githubRepoMode === 'shared'
+                              ? `For everyone: ${sharedRepos.join(', ') || '(none yet)'}`
+                              : 'No restriction (any public repository the player owns)'}
+                        </dd>
+                      </div>
+                    )}
                     <div><dt className="text-muted-foreground">Players</dt><dd>{form.minPlayers} to {form.maxPlayers}</dd></div>
                     <div>
                       <dt className="text-muted-foreground">Shields</dt>

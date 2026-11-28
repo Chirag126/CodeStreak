@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_GITHUB_RULES, evaluateGithubDay, githubDayOutcome } from './github.js';
+import { choiceForDay, DEFAULT_GITHUB_RULES, evaluateGithubDay, githubDayOutcome, githubRulesFromDocument, repoModeOf, type RepoChoice } from './github.js';
 import { collectGithubCommits, type GithubGet, type GithubResponse } from './github-fetch.js';
 
 const ID = 187127921;
@@ -103,6 +103,77 @@ describe('collecting a day of GitHub commits (repository activity)', () => {
     expect(priv.notes[0]).toMatch(/private now/);
     const day = evaluateGithubDay({ commits: [], userGithubId: ID, window: WINDOW, seen: fresh() });
     expect(githubDayOutcome(day, priv)).toBe('indeterminate');
+  });
+
+  describe('individual mode: each player\'s own repository', () => {
+    const mine = { id: 501, full_name: 'Chirag126/streak', fork: false, private: false, owner: { id: ID } };
+    const doc = { minMeaningfulLines: 15, repoMode: 'individual' as const };
+    const choice: RepoChoice = { repoId: 501, ownerId: ID, fullName: 'Chirag126/streak', effectiveFrom: '2026-11-23T00:00:00Z' };
+    const routes = (repoJson: object) => ({
+      ...base,
+      '/repositories/501': ok(repoJson),
+      [activityPath((repoJson as { full_name: string }).full_name)]: ok([activity('2026-11-23T10:00:00Z', sha('a'), sha('b'))]),
+      [`/repos/${(repoJson as { full_name: string }).full_name}/compare/${sha('a')}...${sha('b')}`]: ok({ commits: [listed(sha('b'), [sha('a')], ID)] }),
+      [`/repos/${(repoJson as { full_name: string }).full_name}/commits/${sha('b')}`]: ok({ files: [{ filename: 'src/x.ts', patch: code(16, 'i') }] }),
+    });
+
+    it('counts pushes to the chosen repository only, read by id', async () => {
+      const gh = fakeGithub(routes(mine));
+      const rules = githubRulesFromDocument(doc, choice);
+      expect(rules).toMatchObject({ repos: [501], repoScope: 'member' });
+      const r = await collectGithubCommits({ get: gh.get, githubId: ID, window: WINDOW, repoIds: rules.repos, memberRepo: true });
+      expect(gh.calls).not.toContain(reposPath);
+      const day = evaluateGithubDay({ commits: r.commits, userGithubId: ID, window: WINDOW, rules, seen: fresh() });
+      expect(githubDayOutcome(day, r)).toBe('verified');
+      // The same push, but another repository was chosen: it doesn't count.
+      const other = evaluateGithubDay({ commits: r.commits, userGithubId: ID, window: WINDOW, rules: githubRulesFromDocument(doc, { ...choice, repoId: 502 }), seen: fresh() });
+      expect(other.skipped[0]?.reason).toBe('other-repo');
+    });
+
+    it('a chosen repository transferred to someone else, or a fork, no longer counts', async () => {
+      const rules = githubRulesFromDocument(doc, choice);
+      const moved = await collectGithubCommits({ get: fakeGithub(routes({ ...mine, owner: { id: 42 } })).get, githubId: ID, window: WINDOW, repoIds: [501], memberRepo: true });
+      expect(evaluateGithubDay({ commits: moved.commits, userGithubId: ID, window: WINDOW, rules, seen: fresh() }).skipped[0]?.reason).toBe('not-repo-owner');
+      const fork = await collectGithubCommits({ get: fakeGithub(routes({ ...mine, fork: true })).get, githubId: ID, window: WINDOW, repoIds: [501], memberRepo: true });
+      expect(evaluateGithubDay({ commits: fork.commits, userGithubId: ID, window: WINDOW, rules, seen: fresh() }).skipped[0]?.reason).toBe('fork');
+    });
+
+    it('deleting or hiding your own repository fails the day (it is no escape from a missed day)', async () => {
+      const rules = githubRulesFromDocument(doc, choice);
+      const empty = evaluateGithubDay({ commits: [], userGithubId: ID, window: WINDOW, rules, seen: fresh() });
+      const gone = await collectGithubCommits({ get: fakeGithub(base).get, githubId: ID, window: WINDOW, repoIds: [501], memberRepo: true });
+      expect(gone).toMatchObject({ complete: true, repos: [{ status: 'missing' }] });
+      expect(githubDayOutcome(empty, gone)).toBe('failed');
+      const hidden = await collectGithubCommits({ get: fakeGithub({ ...base, '/repositories/501': ok({ ...mine, private: true }) }).get, githubId: ID, window: WINDOW, repoIds: [501], memberRepo: true });
+      expect(githubDayOutcome(empty, hidden)).toBe('failed');
+      // A GitHub outage is still never the player's fault.
+      const down = await collectGithubCommits({ get: fakeGithub({ ...base, '/repositories/501': { status: 503, json: null } }).get, githubId: ID, window: WINDOW, repoIds: [501], memberRepo: true });
+      expect(githubDayOutcome(empty, down)).toBe('indeterminate');
+    });
+
+    it('no repository chosen: nothing counts, and nothing is read', async () => {
+      const gh = fakeGithub(routes(mine));
+      const rules = githubRulesFromDocument(doc, null);
+      expect(rules).toMatchObject({ repos: [], repoScope: 'member' });
+      const r = await collectGithubCommits({ get: gh.get, githubId: ID, window: WINDOW, repoIds: rules.repos, memberRepo: true });
+      expect(r).toMatchObject({ complete: true, pushes: 0 });
+      expect(r.notes[0]).toMatch(/No repository was chosen/);
+      expect(githubDayOutcome(evaluateGithubDay({ commits: [], userGithubId: ID, window: WINDOW, rules, seen: fresh() }), r)).toBe('failed');
+    });
+  });
+
+  it('repository modes: older documents keep their meaning; a day uses the choice in force when it started', () => {
+    expect(repoModeOf({ repos: [{ id: 1, fullName: 'a/b' }] })).toBe('shared');
+    expect(repoModeOf({})).toBe('any');
+    expect(repoModeOf({ repoMode: 'individual', repos: [{ id: 1, fullName: 'a/b' }] })).toBe('individual');
+    expect(githubRulesFromDocument({ minMeaningfulLines: 15, repos: [{ id: 7, fullName: 'a/b' }] })).toMatchObject({ repos: [7], repoScope: 'shared' });
+    expect(githubRulesFromDocument({ minMeaningfulLines: 15 }).repos).toEqual([]);
+    const day2 = Date.parse('2026-11-24T00:00:00Z') / 1000;
+    const a: RepoChoice = { repoId: 1, ownerId: ID, fullName: 'a/one', effectiveFrom: '2026-11-23T00:00:00Z' };
+    const b: RepoChoice = { repoId: 2, ownerId: ID, fullName: 'a/two', effectiveFrom: '2026-11-24T00:00:00Z' };
+    expect(choiceForDay([a, b], WINDOW.startSec)?.repoId).toBe(1); // a change made on day 1 doesn't reach day 1
+    expect(choiceForDay([b, a], day2)?.repoId).toBe(2);
+    expect(choiceForDay([b], WINDOW.startSec)).toBeNull();
   });
 
   it('a new branch (zero before) and rewritten history use the newest commits on the branch', async () => {

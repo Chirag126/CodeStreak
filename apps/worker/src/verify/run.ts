@@ -27,6 +27,8 @@ import { dayWindow, dueDays } from './schedule.js';
 export { participantPayout };
 
 export interface EvaluateInput {
+  /** The challenge's database id (individual repository mode reads the player's choice by it). */
+  challengeId: string;
   profileId: string;
   membershipId: string;
   day: number;
@@ -437,7 +439,7 @@ class ChallengeRun {
         } else {
           let evaluation: DayEvaluation = { providers: [], evidence: [], transientFailure: null };
           if (m) {
-            evaluation = await this.deps.evaluate({ profileId: m.profile_id, membershipId: m.id, day, window, rules });
+            evaluation = await this.deps.evaluate({ challengeId: this.row.id, profileId: m.profile_id, membershipId: m.id, day, window, rules });
             if (evaluation.transientFailure && !lastCall) {
               this.report.deferred++;
               this.deps.log(`day ${day + 1} for ${short(p.user)} deferred to the next run: ${evaluation.transientFailure}`);
