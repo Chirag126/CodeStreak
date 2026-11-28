@@ -38,10 +38,14 @@ if command -v solana-verify >/dev/null 2>&1; then
 else
   warn "solana-verify" "not found (verifiable builds): cargo install solana-verify --git https://github.com/solana-foundation/solana-verifiable-build --rev 64a7fd490b4ea8f8c203d3268c24760529b17208 --locked"
 fi
-if docker info >/dev/null 2>&1; then
+if ! command -v docker >/dev/null 2>&1; then
+  warn "docker" "no docker command in WSL: Docker Desktop -> Settings -> Resources -> WSL integration -> enable this distro"
+elif docker_err="$(docker info 2>&1 >/dev/null)"; then
   ok "docker" "$(first_line docker --version)"
+elif grep -qi "permission denied" <<<"$docker_err"; then
+  warn "docker" "permission denied on the Docker socket: sudo usermod -aG docker \$USER, then wsl --shutdown (PowerShell) and reopen"
 else
-  warn "docker" "not running (verifiable builds): start Docker Desktop with WSL integration"
+  warn "docker" "not reachable: $(grep -m1 -iE "error|cannot|denied" <<<"$docker_err" || echo "$docker_err" | head -n1)"
 fi
 
 # Anchor's TypeScript tests run inside WSL, so WSL needs its own Node.
