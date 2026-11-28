@@ -9,7 +9,7 @@ You don't have to trust us that the program is the code in this repository. Ther
 ## 1. Look at the Explorer
 
 The program page shows:
-- **Verified**: OtterSec's devnet verifier (verify-devnet.osec.io) rebuilt the program from this repository and got the same bytes as the deployed program. The *Verification* tab names the commit.
+- **Verification**: the on-chain verification record (written by the upgrade authority) names this repository and the commit the program was built from. The **Verified** badge appears once OtterSec's devnet verifier (verify-devnet.osec.io, announced with solana-verify 0.6.0 but not online yet) has rebuilt it; until then, use check 2 or 3 below, which do the same rebuild-and-compare in the open.
 - **IDL**: the program's interface, stored on-chain (Program Metadata). Transactions show instruction names such as `join_pool`, `claim_reward` and `record_verification` instead of raw bytes.
 - **Security**: the program's `security.txt` — who to contact about a vulnerability ([SECURITY.md](../SECURITY.md)).
 
@@ -22,7 +22,7 @@ In this repository: **Actions → Verify devnet program → Run workflow**. It r
 Needs Docker and Rust.
 
 ```bash
-cargo install solana-verify --version 0.6.0 --locked
+cargo install solana-verify --git https://github.com/solana-foundation/solana-verifiable-build --rev 64a7fd490b4ea8f8c203d3268c24760529b17208 --locked
 
 # The hash of what is deployed
 solana-verify -u devnet get-program-hash A4ohMziwegRbnV2DFHKW1YkNoVNeeiWuCJS5MjWeJT7J

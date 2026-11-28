@@ -9,7 +9,7 @@
 #
 # The verifiable build runs `solana-verify build` in a pinned Docker image (Solana 3.1.10, from
 # [workspace.metadata.cli] in Cargo.toml), so anyone can rebuild the same bytes from GitHub. It needs
-# Docker and solana-verify (`cargo install solana-verify --version 0.6.0 --locked`), and a clean,
+# Docker and solana-verify (`cargo install solana-verify --git https://github.com/solana-foundation/solana-verifiable-build --rev 64a7fd490b4ea8f8c203d3268c24760529b17208 --locked`), and a clean,
 # committed tree (the verification names the commit).
 #
 # Safety:
@@ -63,7 +63,7 @@ echo "program ID $PROGRAM_ID"
 
 if [[ $SKIP_BUILD -eq 0 ]]; then
   if [[ $VERIFIABLE -eq 1 ]]; then
-    command -v solana-verify >/dev/null 2>&1 || fail "solana-verify not found: cargo install solana-verify --version 0.6.0 --locked (or use --quick)"
+    command -v solana-verify >/dev/null 2>&1 || fail "solana-verify not found: cargo install solana-verify --git https://github.com/solana-foundation/solana-verifiable-build --rev 64a7fd490b4ea8f8c203d3268c24760529b17208 --locked (or use --quick)"
     docker info >/dev/null 2>&1 || fail "Docker is not running (start Docker Desktop with WSL integration), or use --quick"
     [[ -z "$(git status --porcelain --untracked-files=no)" ]] || fail "uncommitted changes: a verifiable build must come from a commit (commit first, or use --quick)"
   fi
@@ -119,12 +119,20 @@ solana program show "$PROGRAM_ID" --url "$URL"
 step "IDL (on-chain, Program Metadata)"
 # Lets explorers and `anchor idl fetch` read the interface. Not required by the app, which ships
 # the IDL in packages/shared, so a failure here is reported but does not undo the deploy.
-if anchor idl fetch "$PROGRAM_ID" --provider.cluster "$URL" >/dev/null 2>&1; then
+onchain_idl="$(mktemp)"
+if anchor idl fetch "$PROGRAM_ID" --provider.cluster "$URL" -o "$onchain_idl" >/dev/null 2>&1; then
   idl_cmd=(anchor idl upgrade -f "$IDL" "$PROGRAM_ID")
 else
   idl_cmd=(anchor idl init -f "$IDL" "$PROGRAM_ID")
 fi
-if "${idl_cmd[@]}" --provider.cluster "$URL" --provider.wallet "$AUTHORITY"; then
+# Same interface as on-chain (most upgrades don't change it): nothing to write.
+if [[ -s "$onchain_idl" ]] && node -e '
+  const fs = require("fs");
+  const sort = (v) => Array.isArray(v) ? v.map(sort) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sort(v[k])])) : v;
+  const [a, b] = process.argv.slice(1).map((f) => JSON.stringify(sort(JSON.parse(fs.readFileSync(f, "utf8")))));
+  process.exit(a === b ? 0 : 1);' "$onchain_idl" "$IDL"; then
+  echo "IDL on-chain is already up to date"
+elif "${idl_cmd[@]}" --provider.cluster "$URL" --provider.wallet "$AUTHORITY"; then
   echo "IDL uploaded"
 else
   echo "WARNING: IDL upload failed (the program itself is deployed). Retry later with:" >&2

@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       commit:
-        description: Commit to rebuild (default: the selected branch's latest)
+        description: "Commit to rebuild (default: the selected branch's latest)"
         required: false
 
 permissions:
@@ -16,7 +16,8 @@ permissions:
 
 env:
   PROGRAM_ID: A4ohMziwegRbnV2DFHKW1YkNoVNeeiWuCJS5MjWeJT7J
-  SOLANA_VERIFY_VERSION: 0.6.0
+  # solana-verify 0.6.0 (devnet verifier support); not on crates.io yet, so pinned to its commit.
+  SOLANA_VERIFY_REV: 64a7fd490b4ea8f8c203d3268c24760529b17208
 
 jobs:
   verify:
@@ -31,8 +32,8 @@ jobs:
       - name: System packages
         run: sudo apt-get update && sudo apt-get install -y pkg-config libudev-dev libssl-dev
 
-      - name: Install solana-verify ${{ env.SOLANA_VERIFY_VERSION }}
-        run: cargo install solana-verify --version "$SOLANA_VERIFY_VERSION" --locked
+      - name: Install solana-verify
+        run: cargo install solana-verify --git https://github.com/solana-foundation/solana-verifiable-build --rev "$SOLANA_VERIFY_REV" --locked
 
       - name: Verifiable build (Docker, Solana from [workspace.metadata.cli])
         run: solana-verify build --library-name codestreak
