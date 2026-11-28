@@ -3,7 +3,7 @@ import type { ProviderEvaluation } from '@codestreak/shared';
 import { dayResultOf, type Chain, type ChainChallenge, type ChainOp, type ChainParticipant, type ChainSponsorReceipt, type DayResultName } from './chain.js';
 import type { Db } from './db.js';
 import type { DayEvaluation } from './evaluate.js';
-import { participantPayout, runVerification, type VerifyDeps } from './run.js';
+import { lastCallSecs, participantPayout, runVerification, type VerifyDeps } from './run.js';
 import { dueDays, recordDelaySecs } from './schedule.js';
 
 // ------------------------------------------------------------------ fakes
@@ -428,6 +428,18 @@ describe('verification job', () => {
     const last = await one(deps);
     expect(last.recorded).toBe(3);
     expect(chain.sent).toEqual([`record:${ALICE}:0:indeterminate`, `record:${ALICE}:1:indeterminate`, `record:${ALICE}:2:indeterminate`]);
+  });
+
+  it('a 3-minute demo window still retries an unreachable provider once before the last call', async () => {
+    const { chain, deps, setOutcome } = setup([ALICE], { numDays: 1, verifyWindowSecs: 180 });
+    chain.c.minParticipants = 1;
+    setOutcome(() => ({ providers: [{ ...notMet, outcome: 'unknown', quality: { complete: false, gaps: 0, coveragePct: 0 } }], evidence: [], transientFailure: 'GitHub: 502' }));
+    expect([lastCallSecs(180), lastCallSecs(900), lastCallSecs(6 * 3600)]).toEqual([60, 180, 180]);
+    chain.clock = START + DAY + 60; // first try, a minute after the day
+    expect(await one(deps)).toMatchObject({ deferred: 1, recorded: 0 });
+    chain.clock = START + DAY + 125; // the last call (within the final minute)
+    expect((await one(deps)).recorded).toBe(1);
+    expect(chain.sent).toEqual([`record:${ALICE}:0:indeterminate`]);
   });
 
   it('records "could not verify" for a wallet with no CodeStreak account', async () => {

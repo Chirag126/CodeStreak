@@ -99,8 +99,14 @@ export function errText(e: unknown): string {
   const f = friendlyTxError(e);
   return f.code === 'unknown' ? raw : `${f.title} (${raw})`;
 }
-/** A deferred provider read is retried until 3 minutes before the verification window closes. */
-const LAST_CALL_SECS = 180;
+/**
+ * A deferred provider read is retried until the last call: 3 minutes before the verification
+ * window closes, or its last third when the window is short (a 3-minute demo window still gets a
+ * retry a minute after the first try, instead of giving up at once).
+ */
+export function lastCallSecs(verifyWindowSecs: number): number {
+  return Math.min(180, Math.floor(verifyWindowSecs / 3));
+}
 
 export async function runVerification(deps: VerifyDeps): Promise<{ skipped?: string; challenges: ChallengeReport[] }> {
   const { db, chain, log } = deps;
@@ -406,7 +412,7 @@ class ChallengeRun {
     const rules = this.row.rules ?? {};
     const providers = rules.providers ?? (['github', 'leetcode'] as const).filter((p) => rules[p]);
     const rule: ProviderRule = providers.length > 1 ? (rules.providerRule ?? 'any') : 'all';
-    const lastCall = now >= verifyEndTs(c.times) - LAST_CALL_SECS;
+    const lastCall = now >= verifyEndTs(c.times) - lastCallSecs(c.times.verifyWindowSecs);
     const markRecorded = (m: MemberRow, day: number, tx: string | null) => db.rpc('mark_day_recorded', { p_membership: m.id, p_day: day, p_tx: tx });
 
     const todo: { p: ChainParticipant; m: MemberRow | undefined; day: number; result: DayResultName; hash: string }[] = [];
