@@ -63,6 +63,13 @@ jobs:
           solana --version
           anchor --version
 
+      # Phase 47: the verifiable build (solana-verify) builds with --locked, so Cargo.lock must
+      # already contain every dependency. Shows the missing lines if it doesn't.
+      - name: Cargo.lock is up to date
+        run: |
+          cargo metadata --format-version 1 > /dev/null
+          git diff --exit-code Cargo.lock
+
       - name: anchor build
         run: anchor build
 

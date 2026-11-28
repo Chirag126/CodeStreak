@@ -25,6 +25,8 @@ anchor-debug = []
 # init-if-needed: the sponsor receipt accumulates across contributions (guarded by `contributions == 0`).
 anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
 anchor-spl = "1.1.2"
+# Phase 47: security.txt embedded in the program binary (no dependencies of its own).
+solana-security-txt = "1.1.3"
 
 # In-process Solana VM tests (Anchor 1.x default). Run after `anchor build`:  cargo test -p codestreak
 [dev-dependencies]

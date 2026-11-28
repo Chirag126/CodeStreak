@@ -1,0 +1,56 @@
+name: Verify devnet program
+
+# Phase 47: anyone can run this (Actions → "Verify devnet program" → Run workflow) to rebuild the
+# program from a commit in the pinned Docker image and compare it with what is deployed on devnet.
+# Read-only: it uploads nothing and needs no keys. Not run on pull requests (a program change is
+# deployed after merging, so the hashes legitimately differ until then).
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Commit to rebuild (default: the selected branch's latest)
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  PROGRAM_ID: A4ohMziwegRbnV2DFHKW1YkNoVNeeiWuCJS5MjWeJT7J
+  SOLANA_VERIFY_VERSION: 0.6.0
+
+jobs:
+  verify:
+    name: Rebuild and compare with devnet
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+
+      - name: System packages
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libudev-dev libssl-dev
+
+      - name: Install solana-verify ${{ env.SOLANA_VERIFY_VERSION }}
+        run: cargo install solana-verify --version "$SOLANA_VERIFY_VERSION" --locked
+
+      - name: Verifiable build (Docker, Solana from [workspace.metadata.cli])
+        run: solana-verify build --library-name codestreak
+
+      - name: Compare with the deployed program
+        run: |
+          built="$(solana-verify get-executable-hash target/deploy/codestreak.so)"
+          deployed="$(solana-verify -u https://api.devnet.solana.com get-program-hash "$PROGRAM_ID")"
+          {
+            echo "### CodeStreak program on devnet"
+            echo "| | SHA-256 of the executable |"
+            echo "|---|---|"
+            echo "| Built from \`$(git rev-parse --short HEAD)\` | \`$built\` |"
+            echo "| Deployed \`$PROGRAM_ID\` | \`$deployed\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$built" == "$deployed" ]]; then
+            echo "**Match:** the deployed program is exactly this source." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "**Different:** the deployed program was built from another commit." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi

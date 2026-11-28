@@ -1831,3 +1831,17 @@ Backend only (worker); no screens changed, no program change.
 **Test after deploy.** Nothing to configure. On the first verification run the worker log shows `lookup table … created with N addresses`; from the next run, batched steps log `… N steps in one transaction`. Any challenge with 2+ players shows it: e.g. the day results of a 3-player demo challenge land in one transaction instead of three.
 
 **Fix after the first live run (one transaction, several rows).** The first batched day results on devnet landed fine on-chain, but the database still assumed one transaction per row: `day_results.record_tx` and `badges.mint_tx` were unique (the second player's row was refused) and `receipts.tx_signature` was unique (a batched payout would have kept only the first player's receipt). Migration `batched_tx_rows`: those two columns are no longer unique (indexed), receipts are unique per (transaction, wallet, kind) — still never two of the same payout to one wallet from one transaction — and `record_payout` is idempotent on that. The web's join/sponsor/Shield receipt writes now insert and treat "already there" as done, so they work before and after the migration. Test: `supabase/tests/99r_batched_tx_rows_test.sql`.
+
+## Phase 47: Trust and transparency (verified build, on-chain IDL, security.txt)
+
+No app behaviour changes. One program upgrade (it only adds the `security.txt` data).
+
+**security.txt in the program.** `solana-security-txt` 1.1.3 (no dependencies) embeds who to contact: name, project URL, contact (GitHub private vulnerability report link), policy (`SECURITY.md`), source code. Links rather than addresses, so the contact can change without an upgrade. A LiteSVM-suite test (`tests/security_txt.rs`) reads it back out of the built binary; the deploy script refuses a binary without it.
+
+**Verifiable build.** `[workspace.metadata.cli] solana = "3.1.10"` (the same as Anchor.toml) pins the Docker image `solana-verify` builds in, and CI now fails if `Cargo.lock` is incomplete (the verifiable build uses `--locked`). `scripts/wsl/deploy-devnet.sh` builds with `solana-verify build` by default (`--quick` keeps the plain `anchor build`), deploys those exact bytes, uploads the IDL, then runs `scripts/wsl/verify-devnet.sh`: it checks the deployed hash equals the build, rebuilds from GitHub at the commit, uploads the verification record signed by the upgrade authority, and submits the job to OtterSec's devnet verifier (verify-devnet.osec.io) — Solana Explorer shows **Verified** on devnet from that. Anyone can re-check: **Actions → Verify devnet program** (read-only, rebuilds and compares hashes in the run summary) or locally with `solana-verify` (`docs/verify.md`).
+
+**On-chain IDL.** Already uploaded by the deploy script since Anchor 1.x (Program Metadata, `idl` seed, signed by the upgrade authority); current Solana Explorer reads Anchor IDLs from Program Metadata and decodes CodeStreak instructions by name. The deploy re-uploads it every time, so it always matches the deployed program.
+
+**Docs.** `README.md` (what CodeStreak is, the program address, how it uses Solana), `SECURITY.md`, `docs/verify.md`.
+
+**To do after merging (WSL, repo root, once):** `cargo install solana-verify --version 0.6.0 --locked`, start Docker Desktop (WSL integration on), `bash scripts/wsl/doctor.sh`, then `git pull` and `bash scripts/wsl/deploy-devnet.sh`. Also on GitHub: Settings → Security → **Private vulnerability reporting: Enable** (the security.txt contact link uses it).

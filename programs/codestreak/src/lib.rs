@@ -19,6 +19,18 @@ pub use validation::InitializePoolParams;
 
 declare_id!("A4ohMziwegRbnV2DFHKW1YkNoVNeeiWuCJS5MjWeJT7J");
 
+// Phase 47: who to contact about a vulnerability, readable by explorers and `query-security-txt`.
+// Links rather than addresses, so the contact can change without a program upgrade.
+#[cfg(not(feature = "no-entrypoint"))]
+solana_security_txt::security_txt! {
+    name: "CodeStreak",
+    project_url: "https://github.com/Chirag126/CodeStreak",
+    contacts: "link:https://github.com/Chirag126/CodeStreak/security/advisories/new",
+    policy: "https://github.com/Chirag126/CodeStreak/blob/main/SECURITY.md",
+    preferred_languages: "en",
+    source_code: "https://github.com/Chirag126/CodeStreak"
+}
+
 #[program]
 pub mod codestreak {
     use super::*;
