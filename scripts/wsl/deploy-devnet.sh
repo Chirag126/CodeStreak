@@ -119,12 +119,12 @@ solana program show "$PROGRAM_ID" --url "$URL"
 step "IDL (on-chain, Program Metadata)"
 # Lets explorers and `anchor idl fetch` read the interface. Not required by the app, which ships
 # the IDL in packages/shared, so a failure here is reported but does not undo the deploy.
+# Written with the Program Metadata CLI directly (pinned): it creates or resizes the account and
+# retries the public devnet RPC's rate limits (HTTP 429), which made Anchor's bundled upload fail.
+PMP_CLI="@solana-program/program-metadata@0.11.0"
+idl_cmd=(npx --yes "$PMP_CLI" write idl "$PROGRAM_ID" "$IDL" --keypair "$AUTHORITY" --rpc "$URL")
 onchain_idl="$(mktemp)"
-if anchor idl fetch "$PROGRAM_ID" --provider.cluster "$URL" -o "$onchain_idl" >/dev/null 2>&1; then
-  idl_cmd=(anchor idl upgrade -f "$IDL" "$PROGRAM_ID")
-else
-  idl_cmd=(anchor idl init -f "$IDL" "$PROGRAM_ID")
-fi
+anchor idl fetch "$PROGRAM_ID" --provider.cluster "$URL" -o "$onchain_idl" >/dev/null 2>&1 || : > "$onchain_idl"
 # Same interface as on-chain (most upgrades don't change it): nothing to write.
 if [[ -s "$onchain_idl" ]] && node -e '
   const fs = require("fs");
@@ -132,12 +132,13 @@ if [[ -s "$onchain_idl" ]] && node -e '
   const [a, b] = process.argv.slice(1).map((f) => JSON.stringify(sort(JSON.parse(fs.readFileSync(f, "utf8")))));
   process.exit(a === b ? 0 : 1);' "$onchain_idl" "$IDL"; then
   echo "IDL on-chain is already up to date"
-elif "${idl_cmd[@]}" --provider.cluster "$URL" --provider.wallet "$AUTHORITY"; then
+elif "${idl_cmd[@]}"; then
   echo "IDL uploaded"
 else
   echo "WARNING: IDL upload failed (the program itself is deployed). Retry later with:" >&2
-  echo "  ${idl_cmd[*]} --provider.cluster $URL --provider.wallet $AUTHORITY" >&2
+  echo "  ${idl_cmd[*]}" >&2
 fi
+rm -f "$onchain_idl"
 
 if [[ $VERIFIABLE -eq 1 && $SKIP_BUILD -eq 0 ]]; then
   step "Verified build (Phase 47)"
